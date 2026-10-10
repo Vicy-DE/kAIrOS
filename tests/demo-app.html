@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Futuristic Pomodoro Timer</title>
+    <style>
+        body {
+            background-color: #0a0a14;
+            color: #ffffff;
+            font-family: 'system-ui', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            background-color: rgba(255, 255, 255, 0.06);
+            border: 1px rgba(255, 255, 255, 0.08) solid;
+            border-radius: 16px;
+            backdrop-filter: blur(8px);
+            padding: 20px;
+            box-sizing: border-box;
+            width: 300px;
+            text-align: center;
+        }
+        .timer {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        .controls {
+            display: flex;
+            justify-content: space-around;
+        }
+        button {
+            background-color: rgba(255, 255, 255, 0.12);
+            border: 1px rgba(255, 255, 255, 0.08) solid;
+            border-radius: 16px;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+        button:hover {
+            background-color: rgba(255, 255, 255, 0.18);
+        }
+        .settings {
+            display: none;
+            margin-top: 20px;
+        }
+        .settings input[type="number"] {
+            background-color: rgba(255, 255, 255, 0.12);
+            border: 1px rgba(255, 255, 255, 0.08) solid;
+            border-radius: 16px;
+            padding: 10px;
+            margin: 0 10px;
+            width: 50px;
+        }
+        .settings button {
+            background-color: rgba(255, 255, 255, 0.12);
+            border: 1px rgba(255, 255, 255, 0.08) solid;
+            border-radius: 16px;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+        .settings button:hover {
+            background-color: rgba(255, 255, 255, 0.18);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="timer">25:00</div>
+        <div class="controls">
+            <button id="start">Start</button>
+            <button id="reset">Reset</button>
+            <button id="settings">Settings</button>
+        </div>
+        <div class="settings">
+            <label>Work Interval (mins):</label>
+            <input type="number" id="workInterval" value="25">
+            <label>Short Break (mins):</label>
+            <input type="number" id="shortBreak" value="5">
+            <label>Long Break (mins):</label>
+            <input type="number" id="longBreak" value="15">
+            <label>Pomodoros before long break:</label>
+            <input type="number" id="pomodorosBeforeLongBreak" value="4">
+            <button id="saveSettings">Save</button>
+        </div>
+    </div>
+    <script>
+        let interval;
+        let timeLeft;
+        let isRunning = false;
+        let workInterval = 25 * 60;
+        let shortBreak = 5 * 60;
+        let longBreak = 15 * 60;
+        let pomodorosBeforeLongBreak = 4;
+        let pomodorosCompleted = 0;
+
+        function loadSettings() {
+            workInterval = parseInt(await vibe.load('workInterval')) || 25 * 60;
+            shortBreak = parseInt(await vibe.load('shortBreak')) || 5 * 60;
+            longBreak = parseInt(await vibe.load('longBreak')) || 15 * 60;
+            pomodorosBeforeLongBreak = parseInt(await vibe.load('pomodorosBeforeLongBreak')) || 4;
+            pomodorosCompleted = parseInt(await vibe.load('pomodorosCompleted')) || 0;
+        }
+
+        function saveSettings() {
+            vibe.store('workInterval', workInterval);
+            vibe.store('shortBreak', shortBreak);
+            vibe.store('longBreak', longBreak);
+            vibe.store('pomodorosBeforeLongBreak', pomodorosBeforeLongBreak);
+            vibe.store('pomodorosCompleted', pomodorosCompleted);
+        }
+
+        async function updateSettings() {
+            workInterval = parseInt(document.getElementById('workInterval').value) * 60;
+            shortBreak = parseInt(document.getElementById('shortBreak').value) * 60;
+            longBreak = parseInt(document.getElementById('longBreak').value) * 60;
+            pomodorosBeforeLongBreak = parseInt(document.getElementById('pomodorosBeforeLongBreak').value);
+            saveSettings();
+            await updateTimerDisplay();
+        }
+
+        document.getElementById('start').addEventListener('click', () => {
+            if (!isRunning) {
+                isRunning = true;
+                timeLeft = workInterval;
+                interval = setInterval(() => {
+                    timeLeft--;
+                    updateTimerDisplay();
+                    if (timeLeft <= 0) {
+                        pomodorosCompleted++;
+                        if (pomodorosCompleted >= pomodorosBeforeLongBreak) {
+                            timeLeft = longBreak;
+                            pomodorosCompleted = 0;
+                        } else {
+                            timeLeft = shortBreak;
+                        }
+                        updateTimerDisplay();
+                        vibe.notify('Time is up!');
+                    }
+                }, 1000);
+            }
+        });
+
+        document.getElementById('reset').addEventListener('click', () => {
+            if (isRunning) {
+                clearInterval(interval);
+                isRunning = false;
+                timeLeft = workInterval;
+                updateTimerDisplay();
+            }
+        });
+
+        document.getElementById('settings').addEventListener('click', () => {
+            document.querySelector('.settings').style.display = 'block';
+            document.getElementById('workInterval').value = Math.floor(workInterval / 60);
+            document.getElementById('shortBreak').value = Math.floor(shortBreak / 60);
+            document.getElementById('longBreak').value = Math.floor(longBreak / 60);
+            document.getElementById('pomodorosBeforeLongBreak').value = pomodorosBeforeLongBreak;
+        });
+
+        document.getElementById('saveSettings').addEventListener('click', updateSettings);
+
+        function updateTimerDisplay() {
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            document.querySelector('.timer').textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        loadSettings().then(updateTimerDisplay);
+    </script>
+</body>
+</html>

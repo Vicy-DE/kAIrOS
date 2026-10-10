@@ -1,0 +1,33 @@
+== click the app button at 293,233 (xdotool) 05:52:56.921
+== first sight of the confirm, 145 ms after the click:
+{
+ "question": "\u201cd9 format probe\u201d wants to FORMAT /data \u2014 a factory reset that erases every file, note and setting on this OS. There is no undo.",
+ "ok_label": "Erase everything (0.5 s)",
+ "ok_disabled": true,
+ "armed": "0",
+ "focused": "cancel",
+ "cancel_xy": [
+  614,
+  442
+ ]
+}
+/root/vm0929/d9-escape-1-dialog-arming.png 1280x800 depth 24
+== after 1.2 s more:
+{
+ "question": "\u201cd9 format probe\u201d wants to FORMAT /data \u2014 a factory reset that erases every file, note and setting on this OS. There is no undo.",
+ "ok_label": "Erase everything",
+ "ok_disabled": false,
+ "armed": "1",
+ "focused": "cancel",
+ "cancel_xy": [
+  654,
+  442
+ ]
+}
+/root/vm0929/d9-escape-2-dialog-armed.png 1280x800 depth 24
+== Escape key (xdotool)
+== overlay after dismissal: null
+== app output: "REJECTED: cancelled: the user did not confirm the factory reset"
+/root/vm0929/d9-escape-3-after.png 1280x800 depth 24
+== /data marker: {"content": "planted 2026-09-29 by the VM test; must survive the D9 cancel"}
+== kernel journal 'formatted' lines this boot: 0

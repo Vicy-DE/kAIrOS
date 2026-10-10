@@ -1,0 +1,52 @@
+# kAIrOS download list 2026-10-06 — research: docs/bench/models-2026-10-06/research-new-models.md
+# Format: <hf-repo> <path-in-repo> [hold]; sizes + sha256 (LFS oid) in hf-inventory.jsonl, verified against the HF API on 2026-10-06.
+# Order = download order. Sections with '-LLM' go to models/models/llm-candidates; all others to models/models/image-candidates.
+# Files already on disk (same name + size) are listed as '# have' comments and not queued.
+# ---- P1a Krea 2 encoder variants (owner: "other encoders for krea") — drop-in --llm for Krea 2/Kroma; for a 10-prompt same-seed A/B vs the stock Qwen3VL-4B-Instruct-Q8_0 (have)
+DreamFast/Qwen3-VL-4b-Heretic-GGUF qwen3-vl-4b-heretic-Q8_0.gguf
+noctrex/Huihui-Qwen3-VL-4B-Instruct-abliterated-GGUF Huihui-Qwen3-VL-4B-Instruct-abliterated-Q8_0.gguf
+# have (same name+size, skipped): Qwen/Qwen3-VL-4B-Instruct-GGUF Qwen3VL-4B-Instruct-Q8_0.gguf  -> ~/kairos/models/models/image-candidates/Qwen3VL-4B-Instruct-Q8_0.gguf
+# ---- P1b Krea 2 / Kroma workflow: 4-step LoRAs (Krea 2 Turbo 8->4 steps; Kroma v0.3 TDM 4 steps)
+lvladikov/Krea2-Turbo-Distill-4step-LoRA krea2_turbo_4step_rank_64_lora_comfyui.safetensors
+Hiccup1234/Krea-Kroma-v0.3-LoRA-r384-fro-0985 kroma-v0.3-tdm-4steps-comfy-bf16.safetensors
+# ---- P1c new Qwen workflow (Qwen-Image-2.1): Viggle turbo v0.3 6-step LoRA (runs on our qwen_image_2.1-Q8_0.gguf) + Texture-Fix VAE, then the merged single-file DiTs (8 GB: Q6_K, 16 GB: Q8_0)
+Viggle/Qwen-Image-2.1-viggle-turbo Qwen-Image-2.1-viggle-turbo-v0.3-6step-lora-r128.safetensors
+madebyollin/texture-fix-vae-for-qwen-image-2.1 texture_fix_vae_for_qwen_image_2.1_bf16.safetensors
+Viggle/Qwen-Image-2.1-viggle-turbo Qwen-Image-2.1-viggle-turbo-v0.3-6step-Q6_K.gguf
+Viggle/Qwen-Image-2.1-viggle-turbo Qwen-Image-2.1-viggle-turbo-v0.3-6step-Q8_0.gguf
+# have (same name+size, skipped): leejet/Qwen-Image-2.1-GGUF qwen_image_2.1-Q8_0.gguf  -> ~/kairos/models/models/image-candidates/qwen_image_2.1-Q8_0.gguf
+# have (same name+size, skipped): Qwen/Qwen3-VL-8B-Instruct-GGUF Qwen3VL-8B-Instruct-Q8_0.gguf  -> ~/kairos/models/models/image-candidates/Qwen3VL-8B-Instruct-Q8_0.gguf
+# ---- P1-LLM (a) Qwen-Image-2.1 prompt rewriter for the new Qwen workflow (served by llama-server; heretic = no refusals for 18+), with Qwen's official system prompt (required)
+Qwen/Qwen-Image-2.1-PE-T2I system_prompt.txt
+pottokao/Qwen-Image-2.1-PE-T2I-Heretic-GGUF pe_t2i_heretic-Q4_K_M.gguf
+# ---- P1-LLM (b) owner extra task: Bonsai 2 27B (prism fork) PQ2_0 pack + vision projector; the two strongest sub-8 GB coder fine-tunes (stock llama.cpp)
+# have (same name+size, skipped): prism-ml/Ternary-Bonsai-2-27B-gguf Ternary-Bonsai-2-27B-PTQ1_0.gguf  -> ~/kairos/models/models/llm-candidates/Ternary-Bonsai-2-27B-PTQ1_0.gguf
+prism-ml/Ternary-Bonsai-2-27B-gguf Ternary-Bonsai-2-27B-PQ2_0.gguf
+prism-ml/Ternary-Bonsai-2-27B-gguf Ternary-Bonsai-2-27B-mmproj-Q8_0.gguf
+ornith-ai/Ornith-1.5-9B-GGUF Ornith-1.5-9B-Q5_K_M.gguf
+bartowski/MiMo-V2.6-Distill-Qwen-9B-GGUF MiMo-V2.6-Distill-Qwen-9B-Q5_K_M.gguf
+# ---- P2 image: A/B candidates — Qwen-Image-2.1 uncensored merge (Noct-Q V4), Turbo8 LoRA, RAM-saving Q6_K encoder, Viggle r256 (16 GB), Kroma v0.3 as a LoRA on Krea 2, Krea Noct V4 merge
+Noctaluna/Noct-Q-Uncensored-Qwen-Image-2.1 NoctQ_V4_int8_convrot.safetensors
+chriswritescode/Turbo8-LoRA-Qwen-Image-2.1 turbo8_lora_step2500.safetensors
+darrellbest/Qwen-Image-2.1-Text-Encoder-GGUF Qwen-Image-2.1-Text-Encoder-Q6_K.gguf
+Viggle/Qwen-Image-2.1-viggle-turbo Qwen-Image-2.1-viggle-turbo-v0.3-6step-lora-r256.safetensors
+Hiccup1234/Krea-Kroma-v0.3-LoRA-r384-fro-0985 kroma-v0.3-base-lora-rank-384-fro-0985-bf16.safetensors
+Noctaluna/Krea2-Noct-Uncensored KreaNoct_V4_int8_convrot.safetensors
+# ---- P2-LLM 16 GB rewriter quant, the MoE to A/B against Gemma 4 26B-A4B, the Bonsai derivative that thinks less
+pottokao/Qwen-Image-2.1-PE-T2I-Heretic-GGUF pe_t2i_heretic-Q6_K.gguf
+mradermacher/Ornith-1.5-35B-A3B-i1-GGUF Ornith-1.5-35B-A3B.i1-IQ4_XS.gguf
+ukisai/Swift-Bonsai-2-GGUF Swift-Bonsai-2-PQ2_0.gguf
+# ---- P3 image: nice-to-have / watch (alternative Krea VAEs, diversity LoRA, Pruna 8-step, more encoder variants); 'hold' = needs an engine update or curiosity only
+F16/krea2-turbo-sda krea2_turbo_sda_v1.0_comfy.safetensors
+artsyww/KREA2REALVAE krea2RealVae_v10.safetensors
+wikeeyang/Krea2-Turbo-HD-V1 Krea2-HD-vae.safetensors
+PrunaAI/Pruna-Qwen-Image-2.1 p_qwen_image_2.1_8step_v0.1.safetensors
+mradermacher/Qwen3-VL-4B-Instruct-Uncensored-abliterated-GGUF Qwen3-VL-4B-Instruct-Uncensored-abliterated.Q8_0.gguf
+pottokao/Qwen-Image-2.1-Text-Encoder-Heretic-GGUF qwen3vl_8b_heretic-Q8_0.gguf
+Qwen/Qwen3-VL-4B-Thinking-GGUF Qwen3VL-4B-Thinking-Q8_0.gguf
+zhen-nan/L2P model-1k-merge.safetensors
+# ---- P3-LLM watch: Muse Glimmer 30B (16 GB tier), stock (SFW) rewriter, vision projector for Ornith-9B; 'hold' = needs an engine update
+unsloth/Muse-Glimmer-30B-GGUF Muse-Glimmer-30B-UD-Q3_K_XL.gguf
+prithivMLmods/Qwen-Image-2.1-PE-T2I-GGUF Qwen-Image-2.1-PE-T2I.Q4_K_M.gguf
+ornith-ai/Ornith-1.5-9B-GGUF mmproj-Ornith-1.5-9B-BF16.gguf
+Venastine-Research/Xing4.0-29B-A4B-GGUF Xing4.0-29B-A4B-Q4_K_M.gguf hold

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- kAIrOS kiosk openbox config [R28/R68]. openbox-session (.xinitrc) reads
+     ~/.config/openbox/rc.xml before /etc/xdg/openbox/rc.xml; the Debian default gave
+     every real X window (a generated pygame game) a 17-px Linux titlebar + border and
+     a root menu on right-click (docs/DESKTOP-TECH-EVAL-2026-09.md §8.9, F10).
+     Here: no decorations for any client, no root/desktop menu, no key bindings (no
+     Alt-Tab popup, no run dialog, no Alt-drag of the kiosk window), click-to-focus,
+     everything floating, one desktop. The kernel's window layer (kernel/wm.py) is what
+     raises, minimizes and closes game windows — through EWMH, not through chrome.
+     Derived from bench/proto/openbox-rc.xml (the measured configuration). -->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <focus><focusNew>yes</focusNew><followMouse>no</followMouse><raiseOnFocus>no</raiseOnFocus></focus>
+  <placement><policy>Smart</policy><center>no</center></placement>
+  <theme><titleLayout>N</titleLayout><keepBorder>no</keepBorder></theme>
+  <desktops><number>1</number></desktops>
+  <resize><drawContents>yes</drawContents><popupShow>Never</popupShow></resize>
+  <margins><top>0</top><bottom>0</bottom><left>0</left><right>0</right></margins>
+  <keyboard></keyboard>
+  <mouse>
+    <dragThreshold>3</dragThreshold>
+    <context name="Client"><mousebind button="Left" action="Press"><action name="Focus"/><action name="Raise"/></mousebind>
+      <mousebind button="Middle" action="Press"><action name="Focus"/><action name="Raise"/></mousebind>
+      <mousebind button="Right" action="Press"><action name="Focus"/><action name="Raise"/></mousebind></context>
+    <context name="Root"></context>
+    <context name="Desktop"></context>
+  </mouse>
+  <menu></menu>
+  <applications>
+    <!-- every client: undecorated, focused when mapped; a window that does not ask for a
+         position (pygame/SDL) opens centred on the monitor of the focused window — the
+         kiosk the user is working in [R52] — instead of top-left (or, without a monitor
+         given, centred across ALL monitors: measured straddling the seam on 2x1280) -->
+    <application class="*"><decor>no</decor><focus>yes</focus>
+      <position force="no"><x>center</x><y>center</y><monitor>active</monitor></position></application>
+  </applications>
+</openbox_config>

@@ -1,0 +1,144 @@
+{
+ "at": "2026-10-10 11:42:40",
+ "tests": {
+  "imaging_cursor_hw_on_amdgpu_conf": {
+   "reqs": [
+    "R79",
+    "R28"
+   ],
+   "status": "pass",
+   "detail": "active confs ['10-kairos-single-gpu.conf', '20-kairos-swcursor.conf']: no amdgpu SWcursor; fallback 21-kairos-swcursor-amdgpu.conf.disabled + one-line mv; modesetting kept; diag kept"
+  },
+  "imaging_prewarm_llm_first_best_effort_flags": {
+   "reqs": [
+    "R79",
+    "R41"
+   ],
+   "status": "pass",
+   "detail": "desktop -> ionice be/4 -> dd if=<default LLM> bs=16M (wait flag = PID) -> engine -> done flag -> ionice idle -> the rest once"
+  },
+  "imaging_prewarm_ram_guard_and_usb_only": {
+   "reqs": [
+    "R79",
+    "R41"
+   ],
+   "status": "pass",
+   "detail": "fixed disk: nothing read, no flag; 1 TiB LLM: phase 2 skipped, no dd, no flag; unit unchanged"
+  },
+  "imaging_expander_model_resolution_and_setting": {
+   "reqs": [
+    "R79",
+    "R34"
+   ],
+   "status": "pass",
+   "detail": "auto -> llm (section expander_model honoured), encoder -> expander:<kind>; setting validated; manifests: llm everywhere"
+  },
+  "imaging_expand_prompts_on_resident_llm": {
+   "reqs": [
+    "R79",
+    "R34",
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "key llm, neutral/18+ rules, EXPAND_SAMPLING + 512 tokens, 2 calls in flight; encoder setting -> expander:image; failure -> raw + hint"
+  },
+  "imaging_kernel_written_prompts_call_sites": {
+   "reqs": [
+    "R79",
+    "R44",
+    "R60",
+    "R36"
+   ],
+   "status": "pass",
+   "detail": "wallpaper + forge: expand=\"off\"; icon: sd_job only; /genimg, /api/image(s): the setting"
+  },
+  "imaging_fadvise_and_residency_on_real_files": {
+   "reqs": [
+    "R79"
+   ],
+   "status": "pass",
+   "detail": "dropped file 1.00 -> 0.00, untouched file 1.00; missing file skipped"
+  },
+  "imaging_drop_policy_auto_and_periodic": {
+   "reqs": [
+    "R79"
+   ],
+   "status": "fail",
+   "detail": "AssertionError: [kernel] page cache: image's 3 file(s) (11.1 GB) are dropped while sd reads them (RAM 68.7 GB; sd keeps its own copy) [R79]\n[kernel] page cache after the image engine: LLM gemma-4-26B-A4B-it-UD-IQ4_XS.gguf 97% resident, image files 1%\n @ 402"
+  },
+  "imaging_sd_mmap_opt_in": {
+   "reqs": [
+    "R79"
+   ],
+   "status": "pass",
+   "detail": "off by default; on: --mmap on image argv (not video), auto drop off for image, explicit on still drops"
+  },
+  "imaging_r80_gpu_status_names": {
+   "reqs": [
+    "R80"
+   ],
+   "status": "pass",
+   "detail": "names: Gemma 4 26B-A4B-it / Muse / Muse SFW / Wan2.2-TI2V-5B; dead llama = none, loading flag; menubar uses s.gpu"
+  },
+  "imaging_first_llama_start_waits_for_prewarm": {
+   "reqs": [
+    "R79",
+    "R41"
+   ],
+   "status": "pass",
+   "detail": "no flag 0 s; live PID: bounded 2.0 s (limit 1.5); done flag after 0.6 s -> 1.0 s; dead/junk PID 0 s; later starts never wait"
+  },
+  "imaging_e2e_first_start_waits_for_prewarm": {
+   "reqs": [
+    "R79",
+    "R41"
+   ],
+   "status": "pass",
+   "detail": "first ask waited for prewarm-llm-done (2.5 s), second 0.00 s"
+  },
+  "imaging_e2e_resident_llm_expands_no_expander_server": {
+   "reqs": [
+    "R79",
+    "R34",
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "3 expansions on the LLM's server, 1 llama launch(es) all gemma-4-26B-A4B-it-UD-IQ4_XS.gguf, none of the encoder"
+  },
+  "imaging_e2e_kernel_prompts_not_expanded": {
+   "reqs": [
+    "R79",
+    "R44",
+    "R60",
+    "R36",
+    "R58"
+   ],
+   "status": "pass",
+   "detail": "wallpaper = scene + hint, icon = template, forge = data-gen + hint (0 expander calls); /genimg expanded (1 call)"
+  },
+  "imaging_e2e_image_files_leave_page_cache": {
+   "reqs": [
+    "R79"
+   ],
+   "status": "fail",
+   "detail": "AssertionError: [kernel] sd-server image: session of 1 picture(s)\n[kernel] page cache: image's 3 file(s) (0.0 GB) are dropped while sd reads them (RAM 32.9 GB; sd keeps its own copy) [R79]\n[kernel] sd-server ready in 0.5 s\n[kernel] sd-server image: a cached orb, high quality, sharp detail\n[kernel] j"
+  },
+  "imaging_e2e_session_idle_window_joins_and_fifo": {
+   "reqs": [
+    "R79",
+    "R72",
+    "R42"
+   ],
+   "status": "pass",
+   "detail": "batch 1 0.72 s, batch 2 joined (1 launch); ask closed the window (waiter), picture behind it after the answer (new session); safe = own session; LLM started only by the ask"
+  },
+  "imaging_e2e_menubar_gpu_model": {
+   "reqs": [
+    "R80",
+    "R79"
+   ],
+   "status": "pass",
+   "detail": "LLM -> Gemma 4 26B-A4B-it; image job + idle window -> Muse (state idle in the window); none after; LLM again; safe -> Muse SFW"
+  }
+ }
+}

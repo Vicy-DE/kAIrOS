@@ -1,0 +1,41 @@
+#!/bin/sh
+# kairos-esp-sync [D4] — keep the kAIrOS loader entry's kernel + initrd on the
+# EFI partition (/boot/efi/kairos/{vmlinuz,initrd}) in step with the newest
+# installed kernel. Run by /etc/kernel/postinst.d/zz-kairos-esp (new kernel) and
+# /etc/initramfs/post-update.d/zz-kairos-esp (new initrd) — i.e. on every apt
+# kernel / initramfs update of the installed system. kernel-install itself is
+# off (/etc/kernel/install.conf layout=other: no foreign loader entries), so
+# nothing else would refresh the ESP and a kernel upgrade would never boot.
+# Does nothing unless the kAIrOS layout is there (ESP mounted, our entry
+# present); never fails a package install (always exit 0).
+ESP=${KAIROS_ESP:-/boot/efi}
+BOOT=${KAIROS_BOOT:-/boot}
+MODS=${KAIROS_MODULES:-/lib/modules}
+[ -f "$ESP/loader/entries/kairos.conf" ] && [ -d "$ESP/kairos" ] || exit 0
+
+# newest version that has BOTH a kernel and an initrd: a kernel whose initramfs
+# is still being built is skipped, the post-update hook picks it up right after
+KVER=
+for v in $(ls "$MODS" 2>/dev/null | sort -V); do
+  [ -f "$BOOT/vmlinuz-$v" ] && [ -f "$BOOT/initrd.img-$v" ] && KVER=$v
+done
+[ -n "$KVER" ] || exit 0
+
+changed=0
+for pair in "vmlinuz-$KVER:vmlinuz" "initrd.img-$KVER:initrd"; do
+  src="$BOOT/${pair%%:*}"; dst="$ESP/kairos/${pair#*:}"
+  cmp -s "$src" "$dst" && continue
+  # copy beside, then rename: a power cut mid-copy leaves the old file bootable
+  if cp -f "$src" "$dst.new" 2>/dev/null && mv -f "$dst.new" "$dst" 2>/dev/null; then
+    changed=1
+  else
+    rm -f "$dst.new" 2>/dev/null
+    printf 'kairos-esp-sync: could not update %s (ESP full or read-only?)\n' "$dst" >&2
+    exit 0
+  fi
+done
+if [ "$changed" = 1 ]; then
+  sync
+  printf 'kairos-esp-sync: EFI partition kernel + initrd now %s\n' "$KVER"
+fi
+exit 0

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>kairos-search</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#0d0d18}</style>
+<link rel="stylesheet" href="/shell/shell.css">
+<style>#dsearch { top: 14px; width: calc(100% - 28px); } #ds-results { max-height: calc(100vh - 80px); }</style>
+</head>
+<body>
+<!-- bench candidates 2/3a: the everything-search overlay as its own window (C33 moved
+     out of the desk page so it can appear OVER app windows); same markup, same CSS -->
+<div id="desktop">
+  <div id="dsearch">
+    <input id="ds-input" placeholder="⌕  search everything — it always finds something…" autocomplete="off">
+    <div id="ds-results" class="hidden"></div>
+  </div>
+  <div id="toasts"></div>
+</div>
+<script src="/shell/bench/strip.js"></script>
+<script src="/shell/bench/search.js"></script>
+</body>
+</html>

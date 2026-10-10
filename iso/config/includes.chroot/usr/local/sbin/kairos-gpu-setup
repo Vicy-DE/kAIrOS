@@ -1,0 +1,44 @@
+#!/bin/sh
+# kairos-gpu-setup [R41/R50] — run by nvidia-load.service (Before=getty@tty1).
+# NVIDIA loads for COMPUTE always, but only drives the DISPLAY when the monitor
+# is actually on it: boot_vga=1 marks the GPU the firmware used at boot (where
+# the monitor is) — robust across a hybrid laptop (iGPU is boot_vga -> NVIDIA
+# compute-only, no muxless panic), a desktop RTX with the monitor on it (NVIDIA
+# is boot_vga -> NVIDIA drives the display) and a desktop whose monitor is on the
+# Intel/AMD iGPU. Exits 0 on every path so the unit never fails the boot [R63].
+SYS=${KAIROS_SYS:-/sys}          # overridable so the test suite can run this on a fake sysfs
+nvidia_boot_vga=0
+for d in "$SYS"/bus/pci/devices/*/boot_vga; do
+  [ -r "$d" ] || continue
+  [ "$(cat "$d" 2>/dev/null)" = "1" ] || continue
+  [ "$(cat "$(dirname "$d")/vendor" 2>/dev/null)" = "0x10de" ] && nvidia_boot_vga=1
+done
+load_nvidia() {
+  modprobe nvidia 2>/dev/null || return 0
+  modprobe nvidia_uvm 2>/dev/null || true
+  if [ "$nvidia_boot_vga" = "1" ]; then
+    modprobe nvidia_modeset 2>/dev/null || true
+    modprobe nvidia_drm modeset=1 2>/dev/null || true
+  fi
+  # nvidia-persistenced is DISABLED in the build [D11]: the driver package enables
+  # it unconditionally, so it failed on every machine without an NVIDIA GPU (R63)
+  # and was the slowest unit of a GPU boot. Start it here instead, only once a
+  # device is really bound to the driver, and off the boot's critical chain.
+  for d in "$SYS"/bus/pci/drivers/nvidia/0000:*; do
+    [ -e "$d" ] || continue
+    systemctl start --no-block nvidia-persistenced.service 2>/dev/null || true
+    break
+  done
+}
+# The display needs NVIDIA only when the monitor is on it: then X must find nvidia_drm, so load
+# before getty@tty1 (this unit's ordering). Compute-only (the hybrid laptop: AMD drives the panel)
+# loads in the background instead — reading the 120 MB driver + GSP firmware off the USB stick
+# held the kiosk back 49 s (stick run 2026-10-07, docs/STICK-RUN-2026-10-07.md); the kernel picks
+# CUDA per call (/proc/driver/nvidia), and the unit is RemainAfterExit, so the load runs to its
+# end. KAIROS_GPU_SETUP_FOREGROUND=1 keeps it in the foreground (the test suite).
+if [ "$nvidia_boot_vga" = "1" ] || [ "${KAIROS_GPU_SETUP_FOREGROUND:-0}" = 1 ]; then
+  load_nvidia
+else
+  ( load_nvidia ) </dev/null >/dev/null 2>&1 &
+fi
+exit 0

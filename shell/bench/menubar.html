@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>kairos-menubar</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#0a0a14}</style>
+<link rel="stylesheet" href="/shell/shell.css">
+<link rel="stylesheet" href="/shell/bench/strip.css">
+</head>
+<body>
+<!-- bench candidates 2/3a: the menubar as an always-on-top strip window per monitor
+     (index.html markup + a "⌕ search" entry that opens the search window) -->
+<div id="desktop">
+  <div id="menubar">
+    <span class="mb-logo">❖ kAIrOS</span>
+    <span class="mb-item" id="mb-tier"></span>
+    <span class="mb-status"><i id="mb-dot"></i><span id="mb-state">idle</span></span>
+    <span class="mb-item mb-btn" id="mb-search" title="Search everything">⌕ search</span>
+    <span class="mb-spacer"></span>
+    <span class="mb-item mb-btn" id="mb-wallpaper" title="Generate a new AI wallpaper">◐ wallpaper</span>
+    <span class="mb-item" id="mb-clock"></span>
+  </div>
+  <div id="toasts"></div>
+</div>
+<script src="/shell/bench/strip.js"></script>
+<script src="/shell/bench/menubar.js"></script>
+</body>
+</html>

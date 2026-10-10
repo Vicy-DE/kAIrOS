@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>kairos-app:{{APP_ID}}</title>
+<!-- [R28] paint-hold: inline, so the first frame of this window already has the
+     window colour before shell.css arrives (the white-flash window measured as M2b) -->
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#0d0d18}</style>
+<link rel="stylesheet" href="/shell/shell.css">
+<link rel="stylesheet" href="/shell/bench/host.css">
+</head>
+<body data-app="{{APP_ID}}" data-version="{{VERSION}}" data-prompt="{{PROMPT}}" data-broken="{{BROKEN}}">
+<div class="win focused" id="win">
+  <div class="win-bar">
+    <div class="win-title">{{TITLE}}</div>
+    <button class="win-btn win-improve" title="Let the AI improve this app">✨</button>
+    <button class="win-btn win-min" title="Minimize">_</button>
+    <button class="win-btn win-max" title="Maximize">▢</button>
+    <button class="win-btn win-close" title="Close">✕</button>
+  </div>
+  <div class="win-body"><iframe sandbox="allow-scripts allow-pointer-lock" srcdoc="{{SRCDOC}}"></iframe></div>
+  <div class="win-resize"></div>
+</div>
+<div id="toasts"></div>
+<script src="/shell/bench/host.js"></script>
+</body>
+</html>

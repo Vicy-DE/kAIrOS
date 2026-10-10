@@ -1,0 +1,21 @@
+[Unit]
+Description=kAIrOS boot diagnostics after a failure of %i -> EFI partition [R51]
+# One instance per trigger: OnFailure=kairos-bootlog-failure@%n.service in
+# kairos.service, kairos-growroot.service and local-fs.target (drop-in), and
+# Unit=kairos-bootlog-failure@x11.service from kairos-bootlog-xfail.path when X
+# keeps dying on tty1. A single shared handler made systemd's exit-status
+# propagation ambiguous ("multiple trigger source candidates ... skipping" —
+# D10); an instance has exactly one trigger, so the MONITOR_* variables reach the
+# script and the log names what failed. Startable at ANY point of boot (no
+# default deps); not RemainAfterExit so a later failure captures again. Can
+# never fail the boot: ExecStart=- and the script always exits 0 [R63].
+# The script bounds these captures per boot and trigger (a crash-looping unit
+# starts this every few seconds): the EFI partition is written a few times per
+# boot, never every 3 s forever, and a unit that ends in `failed` still gets its
+# final capture.
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/local/sbin/kairos-bootlog failure %i
+TimeoutStartSec=180

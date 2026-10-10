@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Mock rfkill [R78]: `rfkill block|unblock bluetooth|wlan|wifi|all|ID` and `rfkill [list]` on the
+fake sysfs of the test suite ($VIBEOS_SYSFS/class/rfkill/rfkill<N>/{type,name,soft,hard}).
+A hard block cannot be lifted (like the laptop's switch). Calls go to $MOCK_RFKILL_LOG if set."""
+import os
+import sys
+from pathlib import Path
+
+SYSFS = Path(os.environ.get("VIBEOS_SYSFS", "/sys"))
+
+
+def radios():
+    for d in sorted(SYSFS.glob("class/rfkill/rfkill*"), key=lambda p: int(p.name[6:] or 0)):
+        rd = lambda n: (d / n).read_text().strip() if (d / n).exists() else ""
+        yield d, int(d.name[6:] or 0), rd("type"), rd("name"), rd("soft") == "1", rd("hard") == "1"
+
+
+def main():
+    if os.environ.get("MOCK_RFKILL_LOG"):
+        with open(os.environ["MOCK_RFKILL_LOG"], "a") as f:
+            f.write("\t".join(sys.argv[1:]) + "\n")
+    a = sys.argv[1:]
+    if not a or a[0] in ("list", "-n") or a[0].startswith("--output"):
+        for d, i, t, name, soft, hard in radios():
+            print(f"{i}: {name}: {'Wireless LAN' if t == 'wlan' else 'Bluetooth' if t == 'bluetooth' else t}")
+            print(f"\tSoft blocked: {'yes' if soft else 'no'}")
+            print(f"\tHard blocked: {'yes' if hard else 'no'}")
+        return 0
+    if a[0] in ("block", "unblock") and len(a) > 1:
+        want = {"wifi": "wlan"}.get(a[1], a[1])
+        hit = False
+        for d, i, t, name, soft, hard in radios():
+            if want in ("all", t) or want == str(i):
+                (d / "soft").write_text("1\n" if a[0] == "block" else "0\n")
+                hit = True
+        if not hit and want not in ("all", "wlan", "bluetooth"):
+            print(f"rfkill: invalid identifier: {a[1]}", file=sys.stderr)
+            return 1
+        return 0
+    print(f"rfkill: unknown command '{a[0]}'", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

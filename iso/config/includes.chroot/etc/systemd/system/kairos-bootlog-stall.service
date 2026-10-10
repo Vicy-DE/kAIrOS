@@ -1,0 +1,10 @@
+[Unit]
+Description=kAIrOS boot diagnostics for a boot stalled before multi-user.target -> EFI partition [R51]
+# Started by kairos-bootlog-stall.timer only. No default deps (the boot it describes
+# never got there); can never fail or slow anything: ExecStart=- , the script exits 0.
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/local/sbin/kairos-bootlog stalled
+TimeoutStartSec=180

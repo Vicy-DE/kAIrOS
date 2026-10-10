@@ -1,0 +1,124 @@
+#!/bin/sh
+# kairos-bootlog-early [R51] — the FIRST thing written to the stick each boot, as
+# soon as the root fs + EFI partition are mounted (After=local-fs.target): a
+# boot-attempt counter + breadcrumb in KAIROS-LOGS/attempts.txt and a tiny
+# early.txt snapshot. A machine that loops (panics/hangs before the full log
+# runs) leaves "started ... DID NOT COMPLETE" lines readable from Windows — no
+# successful boot required. If even this never appears, the failure is BEFORE
+# the root fs: firmware, systemd-boot, kernel or initramfs (root= not found).
+# Tiny and bounded (a few KB, one sync); never fails the boot.
+# Captured data is printed with printf, never echo (dash's echo eats backslash
+# escapes: the cmdline's initrd=\...\6.12 came out mangled — D2).
+set -u
+ESP=${KAIROS_BOOTLOG_ESP:-/boot/efi}
+LOGDIR="$ESP/KAIROS-LOGS"
+RUNF=${KAIROS_BOOTLOG_RUN:-/run/kairos-bootlog-attempt}
+PSTORE=${KAIROS_BOOTLOG_PSTORE:-/var/lib/systemd/pstore}
+# serialized: the emergency capture runs this too, and both copies at once passed the
+# once-per-boot test below together and wrote the "started" line twice (2026-10-06)
+if : >>"$RUNF.lock" 2>/dev/null; then exec 8>>"$RUNF.lock"; flock -w 30 8 2>/dev/null; fi
+# --crashes-only: kairos-bootlog's fallback — copy kernel crash records (below), nothing else
+CRASHONLY=0; [ "${1:-}" = --crashes-only ] && CRASHONLY=1
+[ "$CRASHONLY" = 0 ] && [ -e "$RUNF" ] && exit 0      # once per boot (the emergency capture calls this too)
+
+# v7.5: the ESP is an AUTOMOUNT (fstab x-systemd.automount): /boot/efi is an autofs until the
+# first access mounts the vfat on top — this listing, as soon as local-fs.target is reached
+# (systemd waits for the device and runs fsck: no 10 s device timeout that gave up on the stick's
+# slow udev coldplug, no unchecked mount racing a pending fsck). A direct mount only when that
+# failed (no device by that UUID within x-systemd.device-timeout). mountpoint(1) is true for the
+# bare autofs, hence the vfat test (kairos-bootlog does the same).
+esp_vfat() { findmnt -n -o FSTYPE --mountpoint "$ESP" 2>/dev/null | grep -qx vfat; }
+esp_vfat || ls "$ESP/" >/dev/null 2>&1
+esp_vfat || mount "$ESP" 2>/dev/null || {
+  # image labels the ESP "EFI", kairos-install formats it as "ESP" [R48]
+  DEV=$(blkid -L EFI 2>/dev/null) || DEV=$(blkid -L ESP 2>/dev/null) || DEV=""
+  [ -n "$DEV" ] && mkdir -p "$ESP" 2>/dev/null && mount "$DEV" "$ESP" 2>/dev/null
+}
+mkdir -p "$LOGDIR" 2>/dev/null || exit 0
+
+# a KERNEL CRASH of an earlier boot: the panic/oops text the kernel wrote into the
+# firmware's NVRAM (EFI pstore) is archived by systemd-pstore.service (ordered before
+# this unit) under $PSTORE/<time>/<dump nr>/dmesg-efi_pstore-<time><part><nr> (+ its own
+# time-ordered dmesg.txt per directory). Copied to the stick at once — a panic loop never
+# reaches the late capture, and the panic text is what explains it. One crash can span
+# several <time> directories (the kernel writes Part1 = the END of the log first, the
+# older parts in the next seconds: one VM panic gave 5); so the directories new to this
+# copy, in time order, are grouped: a directory holding a Part1 starts the next crash,
+# and each crash becomes one crash-<first time>.txt in log order (oldest part first).
+# (If another OS boots first after the crash, IT archives the record: on a dual-boot
+# laptop, look in that OS's /var/lib/systemd/pstore too.)
+CIDS="$LOGDIR/pstore-copied.txt"     # every pstore directory already copied (per stick; not crash-*: that glob is the crash texts)
+crash_flush() {
+  [ -n "$CGROUP" ] || return 0
+  first=${CGROUP%% *}
+  {
+    printf 'kAIrOS: kernel crash %s (EFI pstore, archived by systemd-pstore, copied on attempt #%s %s)\n' "$first" "$N" "$NOW"
+    printf 'The kernel log up to the crash, oldest part first — the panic/oops is at the END.\n'
+    printf 'pstore directories: %s\n\n' "$CGROUP"
+    for cid in $(printf '%s\n' $CGROUP | sort -rn); do      # cid: copy_crashes' loop owns $id
+      dd="$PSTORE/$cid"
+      find "$dd" -type f -name dmesg.txt 2>/dev/null | sort | while read -r f; do printf -- '--- %s ---\n' "${f#"$PSTORE"/}"; cat "$f"; done
+      find "$dd" -type f ! -name dmesg.txt 2>/dev/null | sort -r | while read -r f; do
+        [ -e "$(dirname "$f")/dmesg.txt" ] && continue
+        printf -- '--- %s ---\n' "${f#"$PSTORE"/}"; cat "$f"
+      done
+    done
+  } > "$LOGDIR/crash-$first.txt" 2>/dev/null
+  printf '%s\n' $CGROUP >> "$CIDS" 2>/dev/null
+  printf '#%s  an EARLIER boot CRASHED (kernel panic/oops) — its kernel log: crash-%s.txt\n' "$N" "$first" >> "$LOGDIR/attempts.txt" 2>/dev/null
+  printf '%s\n' "$first" >> "$RUNF.crashes" 2>/dev/null
+  CGROUP=""
+}
+copy_crashes() {
+  CGROUP=""
+  for id in $(for d in "$PSTORE"/*/; do [ -d "$d" ] && basename "$d"; done | sort -n); do
+    grep -qx "$id" "$CIDS" 2>/dev/null && continue
+    [ -e "$LOGDIR/crash-$id.txt" ] && continue                # copied by an older version
+    if find "$PSTORE/$id" -type f ! -name dmesg.txt -exec head -n 1 {} + 2>/dev/null | grep -qE '#[0-9]+ Part1$'; then
+      crash_flush
+    fi
+    CGROUP="$CGROUP${CGROUP:+ }$id"
+  done
+  crash_flush
+}
+if [ "$CRASHONLY" = 1 ]; then
+  N=$(cat "$RUNF" 2>/dev/null); case "$N" in ''|*[!0-9]*) N='?' ;; esac
+  NOW=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo '?')
+  copy_crashes
+  exit 0
+fi
+
+ATT="$LOGDIR/attempts.txt"; INF="$LOGDIR/inflight.txt"
+N=$(sed -n 's/^#\([0-9][0-9]*\) .*/\1/p' "$ATT" 2>/dev/null | tail -n 1)
+case "$N" in ''|*[!0-9]*) N=0 ;; esac
+N=$((N + 1))
+NOW=$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo '?')
+{
+  # the previous attempt left its in-flight marker -> it died before the full log
+  [ -f "$INF" ] && printf '#%s  DID NOT COMPLETE — died before a log was written (panic/hang/loop?)\n' "$(cat "$INF" 2>/dev/null)"
+  printf '#%s  started %s  kernel %s  root %s  esp %s\n' "$N" "$NOW" "$(uname -r 2>/dev/null)" \
+    "$(findmnt -no SOURCE / 2>/dev/null)" "$(findmnt -no SOURCE "$ESP" 2>/dev/null | tail -n 1 | grep . || echo none)"
+} >> "$ATT" 2>/dev/null
+# keep the file small (FAT32 ESP): the last 40 lines
+tail -n 40 "$ATT" > "$ATT.tmp" 2>/dev/null && mv -f "$ATT.tmp" "$ATT" 2>/dev/null
+printf '%s\n' "$N" > "$INF" 2>/dev/null
+printf '%s\n' "$N" > "$RUNF" 2>/dev/null || true
+
+copy_crashes
+
+# where boot stood at this point (mounts, anything failed already, kernel errors)
+{
+  printf 'attempt #%s  %s  uptime %ss\n' "$N" "$NOW" "$(cut -d' ' -f1 /proc/uptime 2>/dev/null)"
+  printf 'kernel:  %s\n' "$(uname -a 2>/dev/null)"
+  printf 'cmdline: %s\n' "$(cat /proc/cmdline 2>/dev/null)"
+  echo "-- mounts --"
+  findmnt -rno TARGET,SOURCE,FSTYPE,OPTIONS -t ext4,vfat,btrfs,xfs 2>/dev/null
+  echo "-- failed so far --"
+  systemctl --failed --no-legend --no-pager 2>/dev/null
+  echo "-- dmesg errors so far --"
+  dmesg --level=emerg,alert,crit,err 2>/dev/null | tail -n 30
+} > "$LOGDIR/early.txt" 2>&1
+# only the EFI partition that holds the logs: a global sync waited for every dirty page
+# on the slow USB stick and held the boot 13 s (stick run 2026-10-07)
+sync -f "$LOGDIR" 2>/dev/null || sync
+exit 0

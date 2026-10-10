@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>vibe round-trip</title>
+<style>body{margin:0;background:#101018;color:#eee;font:13px monospace;padding:12px}</style></head><body>
+<pre id="out">F8: vibe.* round-trip…</pre>
+<script>
+// F8 — vibe.ask / store+load / hw.get / image from an UNMODIFIED generated app
+const BENCH = "{{BENCH}}", APPID = "{{APPID}}";
+const out = document.getElementById("out");
+(async () => {
+  const res = {};
+  const t = async (k, fn) => { try { const v = await fn(); res[k] = "ok"; out.textContent += "\n" + k + ": ok " + String(v).slice(0, 40); }
+                               catch (e) { res[k] = "ERR " + e.message; out.textContent += "\n" + k + ": ERR " + e.message; } };
+  await t("ask", () => vibe.ask("say hi in three words"));
+  await t("store", async () => { await vibe.store("k", { n: 42 }); const v = await vibe.load("k"); if (!v || v.n !== 42) throw new Error("load mismatch"); return JSON.stringify(v); });
+  await t("hw", async () => { const h = await vibe.hw.get(); if (!h || typeof h !== "object") throw new Error("no hw"); return Object.keys(h).join(","); });
+  await t("image", () => vibe.image("a test cube", 256, 256));
+  new Image().src = BENCH + "/mark?id=" + APPID + "&ev=vibe&res=" + encodeURIComponent(JSON.stringify(res)) + "&t=" + Date.now();
+})();
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  new Image().src = BENCH + "/mark?id=" + APPID + "&ev=paint&t=" + Date.now();
+}));
+</script></body></html>

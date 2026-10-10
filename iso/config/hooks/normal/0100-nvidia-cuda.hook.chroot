@@ -1,0 +1,50 @@
+#!/bin/sh
+# Install the NVIDIA driver + CUDA runtime that MATCH the engines (built against CUDA 13.x —
+# 13.4 on 2026-09-14 — which runs on any R580+ driver). Debian's packaged driver is too old,
+# so use NVIDIA's CUDA repo.
+# Build the kernel module via DKMS against the live image's kernel (not the build host's).
+set -e
+export DEBIAN_FRONTEND=noninteractive
+
+echo "[kairos-hook] adding NVIDIA CUDA repo"
+# the Debian 13 repo (this IS a trixie chroot; the engines are built from the same repo,
+# scripts/install-engines.sh). trixie's apt accepts its keyring as shipped (2026-09-14:
+# `apt-get update` clean in a debian:trixie container) — the [trusted=yes] rewrite that
+# sequoia's SHA1 refusal once needed is gone; the `|| true` keeps a chroot without network
+# from aborting the build, as before.
+curl -fsSL --speed-limit 2048 --speed-time 60 --retry 5 --retry-all-errors -o cuda-keyring.deb \
+     https://developer.download.nvidia.com/compute/cuda/repos/debian13/x86_64/cuda-keyring_1.1-1_all.deb
+dpkg -i cuda-keyring.deb || true
+rm -f cuda-keyring.deb
+apt-get update || true
+
+echo "[kairos-hook] installing cuda-drivers + matched runtime libs"
+# cuda-drivers = R580 open/proprietary kmod (supports Ada 4070 + Blackwell);
+# cuda runtime libs are bundled separately from /opt/vibeos/lib, but pull these as backup.
+# NOTE (2026-07-02, found on real 4070 silicon): `nvidia-smi` in the CUDA repo is a
+# TRANSITIONAL DUMMY, and --no-install-recommends drops the compute userspace.
+# libcuda1 (libcuda.so.1 — engines can't init CUDA without it), nvidia-modprobe
+# (/dev/nvidia* node creation) and nvidia-driver-cuda (real nvidia-smi binary)
+# must be requested explicitly.
+apt-get install -y --no-install-recommends cuda-drivers nvidia-driver-cuda libcuda1 nvidia-modprobe || \
+    apt-get install -y --no-install-recommends nvidia-driver nvidia-driver-cuda libcuda1 nvidia-modprobe || \
+    echo "[kairos-hook] WARNING: driver install incomplete — verify on target"
+
+echo "[kairos-hook] building NVIDIA kernel module for the live kernel via DKMS"
+KVER=$(ls -1 /lib/modules | sort -V | tail -1)
+echo "[kairos-hook] target kernel: $KVER"
+if command -v dkms >/dev/null 2>&1; then
+    for mod in $(dkms status 2>/dev/null | sed -n 's/^\(nvidia[^,/]*\)[,/].*/\1/p' | sort -u); do
+        echo "[kairos-hook] dkms install $mod -k $KVER"
+        dkms install "$mod" -k "$KVER" --force 2>&1 | tail -3 || true
+    done
+fi
+# load on boot
+echo "nvidia\nnvidia_uvm\nnvidia_modeset" > /etc/modules-load.d/nvidia.conf
+# the driver package enables nvidia-persistenced unconditionally: it FAILS on every
+# machine without an NVIDIA GPU (R63) and is the slowest unit of a GPU boot. Off here;
+# /usr/local/sbin/kairos-gpu-setup (nvidia-load.service, the appliance image) starts
+# it only once a device is bound to the driver [D11]
+systemctl disable nvidia-persistenced.service 2>/dev/null || true
+rm -f /etc/systemd/system/multi-user.target.wants/nvidia-persistenced.service
+echo "[kairos-hook] nvidia/cuda hook done"

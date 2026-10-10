@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>dom list</title>
+<style>html,body{margin:0;height:100%;background:#0b0c14;color:#dde;font:13px system-ui}
+#bar{position:sticky;top:0;padding:8px;background:#141626}input{width:60%;padding:6px;border-radius:6px;border:1px solid #445;background:#0b0c14;color:#fff}
+#list{padding:0 8px}.row{display:flex;gap:12px;padding:3px 0;border-bottom:1px solid #1b1d2c}.row b{width:60px;color:#8ad}
+#probe{position:fixed;left:40px;top:60px;width:64px;height:64px;background:#000;border:1px solid #333;z-index:5}</style>
+</head><body>
+<div id="bar"><input id="q" placeholder="filter 5000 rows…"></div><div id="list"></div><div id="probe"></div>
+<script>
+// A2 — 5 000-row non-virtualised DOM list, re-rendered on every keystroke (layout + memory load)
+const rows = [];
+for (let i = 0; i < 5000; i++) rows.push({ id: i, name: "item " + i.toString(36) + " " + (i * 7919 % 10007), tag: ["alpha", "beta", "gamma", "delta"][i % 4] });
+const list = document.getElementById("list");
+function render(f) {
+  const q = f.trim().toLowerCase();
+  let html = "";
+  for (const r of rows) if (!q || r.name.includes(q) || r.tag.includes(q))
+    html += `<div class="row"><b>#${r.id}</b><span>${r.name}</span><i>${r.tag}</i></div>`;
+  list.innerHTML = html;
+}
+render("");
+document.getElementById("q").addEventListener("input", (e) => render(e.target.value));
+</script>
+<script>
+const BENCH = "{{BENCH}}", APPID = "{{APPID}}";
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  new Image().src = BENCH + "/mark?id=" + APPID + "&ev=paint&t=" + Date.now();
+}));
+addEventListener("click", () => { probe.style.background = probe.style.background === "rgb(255, 255, 255)" ? "#000" : "#fff";
+  new Image().src = BENCH + "/mark?id=" + APPID + "&ev=click&t=" + Date.now(); });
+</script>
+</body></html>

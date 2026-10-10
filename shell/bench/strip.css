@@ -1,0 +1,5 @@
+/* strip windows (dock / menubar): the window IS the strip, transparent wallpaper tone
+   underneath (no compositor: a real window cannot be see-through) */
+html, body { background: #0a0a14; }
+#desktop { position: fixed; inset: 0; }
+#toasts { top: 4px; }

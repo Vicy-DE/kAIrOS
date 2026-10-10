@@ -1,0 +1,15 @@
+#!/bin/sh
+# initramfs-tools hook [R73]: ship the kAIrOS boot screen painter in the initrd. It is a
+# static binary (scripts/splash/build.sh), so copy_exec adds no libraries. Without the
+# painter installed the initrd is simply built without the boot screen — never a failed
+# update-initramfs (R63); the boot log then shows "no splash log".
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+. /usr/share/initramfs-tools/hook-functions
+if [ ! -x /usr/local/sbin/kairos-splash ]; then
+    echo "kairos-splash: /usr/local/sbin/kairos-splash not installed — initrd without the boot screen" >&2
+    exit 0
+fi
+copy_exec /usr/local/sbin/kairos-splash /sbin/kairos-splash
+exit 0

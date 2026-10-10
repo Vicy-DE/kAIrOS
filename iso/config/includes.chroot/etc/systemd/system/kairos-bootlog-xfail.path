@@ -1,0 +1,16 @@
+[Unit]
+Description=kAIrOS: capture a boot log when X keeps failing on tty1 [R51]
+# ~/.bash_profile counts startx attempts per boot in /run/kairos (paced: 3 s
+# between attempts 2-5, 30 s from the 6th — see getty@tty1.service.d/
+# kairos-xretry.conf) and touches x-failed at the 6th attempt; the kiosk user
+# cannot start units, this path unit can. kairos-bootlog removes the flag first
+# thing (PathExists= is level-triggered), so it fires once per flag.
+DefaultDependencies=no
+After=local-fs.target
+
+[Path]
+PathExists=/run/kairos/x-failed
+Unit=kairos-bootlog-failure@x11.service
+
+[Install]
+WantedBy=multi-user.target

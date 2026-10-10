@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Mock sd-cli: parses -o/-M flags, writes a tiny valid PNG (or fake video frames)."""
+import struct
+import sys
+import time
+import zlib
+
+
+def png_bytes(w=64, h=64, rgb=(124, 92, 255)):
+    raw = b"".join(b"\x00" + bytes(rgb) * w for _ in range(h))
+
+    def chunk(tag, data):
+        c = struct.pack(">I", len(data)) + tag + data
+        return c + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    return (b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw))
+            + chunk(b"IEND", b""))
+
+
+import os
+
+args = sys.argv[1:]
+arglog = os.environ.get("MOCK_SD_ARGLOG")
+if arglog:
+    with open(arglog, "a") as f:
+        f.write("\t".join(args) + "\n")
+out = args[args.index("-o") + 1] if "-o" in args else "out.png"
+prompt = args[args.index("-p") + 1] if "-p" in args else ""
+if "__mockfail__" in prompt:  # engine crash path: the kernel must report it AND go back to idle
+    print("mock sd-cli: simulated engine failure", file=sys.stderr)
+    sys.exit(3)
+is_video = "-M" in args and args[args.index("-M") + 1] == "vid_gen"
+time.sleep(2)  # simulate diffusion
+if is_video:
+    base = out.rsplit(".", 1)[0]
+    for i in range(1, 9):  # frame sequence -> kernel assembles with ffmpeg
+        with open(f"{base}_{i}.png", "wb") as f:
+            f.write(png_bytes(rgb=(124, 92, 255 - i * 20)))
+else:
+    with open(out, "wb") as f:
+        f.write(png_bytes())
+print("mock sd-cli: wrote", out)

@@ -1,0 +1,11 @@
+# edit backups (house rule: <file>.bak-<date><tag> before every change) — never in git
+*.bak
+*.bak-*
+*.bak[0-9]*
+
+# Python
+__pycache__/
+*.pyc
+
+# local engine build log
+/engines-build.log

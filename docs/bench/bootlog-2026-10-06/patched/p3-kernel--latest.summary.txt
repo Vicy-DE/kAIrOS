@@ -1,0 +1,27 @@
+==================== kAIrOS boot log (failure kairos.service) ====================
+############ SUMMARY / VERDICT ############
+VERDICT: FAIL — 3 check(s) failed, 2 warning(s) — first failure: trigger: kairos.service failed (result: exit-code) — RuntimeError: INJECTED-FAULT: simulated crash of the kAIrOS kernel (test) — Dependency failed for kairos-bootanim-gen.service - kAIrOS: dream next boot's animation at shutdown (if not already done).
+ FAIL trigger       kairos.service failed (result: exit-code) — RuntimeError: INJECTED-FAULT: simulated crash of the kAIrOS kernel (test) — Dependency failed for kairos-bootanim-gen.service - kAIrOS: dream next boot's animation at shutdown (if not already done).
+ PASS boot_history  attempt #12; early breadcrumb ran (root + EFI partition mounted)
+ WARN boot_target   graphical.target reached but system is degraded (see failed / activating units)
+ FAIL failed_units  kairos.service 
+ WARN boot_errors   27 systemd job failure(s) this boot — first: Dependency failed for kairos-bootanim-gen.service - kAIrOS: dream next boot's animation at shutdown (if not already done).
+ PASS crash         no kernel crash record (EFI pstore) from an earlier boot
+ PASS hung_units    nothing stuck in activating
+ PASS rootfs_grow   root grown on first boot (58G total, 7.1G free)
+ PASS gpu_driver    0000:00:05.0 0x1af4 driver=virtio-pci boot_vga=1; 
+ PASS firmware      no firmware load failures in dmesg
+ PASS modules       no module load failures in the journal
+ PASS xorg          X server up on :0 (attempts this boot: 1)
+ FAIL kernel_api    no answer on :1337 (kairos.service failed, restarts this boot: 12) — see KAIROS KERNEL LOG
+ PASS kiosk         1 kiosk Chromium instance(s) alive
+ PASS network       enp0s4 10.0.2.15/24; 
+ PASS esp           EFI partition mounted at /boot/efi via fstab
+boot attempts (early breadcrumb, newest last):
+   #12  started 2026-10-06 15:09:03  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+   #12  failure kairos.service log written 2026-10-06 15:09:05  verdict FAIL (trigger: kairos.service failed (result: exit-code) — RuntimeError: INJECTED-FAULT: simulated crash of the kAIrOS kernel (te
+   #12  failure kairos.service log written 2026-10-06 15:09:45  verdict FAIL (trigger: kairos.service failed (result: exit-code) — RuntimeError: INJECTED-FAULT: simulated crash of the kAIrOS kernel (te
+   #12  failure kairos.service log written 2026-10-06 15:10:34  verdict FAIL (trigger: kairos.service failed (result: exit-code) — RuntimeError: INJECTED-FAULT: simulated crash of the kAIrOS kernel (te
+   #12  failure kairos.service log written 2026-10-06 15:11:06  verdict FAIL (trigger: kairos.service failed (result: exit-code) — RuntimeError: INJECTED-FAULT: simulated crash of the kAIrOS kernel (te
+   #12  boot log written 2026-10-06 15:11:08  verdict FAIL (kernel_api: no answer on :1337 (kairos.service activating, restarts this boot: 8) — see KAIROS KERNEL LOG)
+###########################################

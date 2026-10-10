@@ -1,0 +1,580 @@
+#!/bin/sh
+# kairos-bootlog [R51] — dump human-readable boot diagnostics onto the stick's
+# FAT32 EFI partition, which mounts on ANY computer (Windows/Mac/Linux). If the
+# machine won't boot fully on real hardware, pull the stick, open the EFI
+# partition, and read KAIROS-LOGS/latest.txt: a SUMMARY / VERDICT block on top
+# answers "why did this run fail?" (PASS/FAIL/WARN per check), the evidence
+# follows. latest.json is the same verdict machine-readable (diff it across boots).
+# Invoked with a reason: boot (late, after multi-user — waits briefly for the
+# kernel + kiosk), shutdown (ExecStop), failure TRIGGER (kairos-bootlog-failure@
+# instance: OnFailure= of kairos / growroot / local-fs.target, or x11 from the
+# X-loop path unit), emergency (emergency/rescue.target).
+# Copies the PREVIOUS boot's journal too (a boot that died before this ran is
+# caught next time); kairos-bootlog-early leaves the per-attempt breadcrumb.
+# Output lines that carry captured data use printf, never echo: this is dash,
+# whose echo eats backslash escapes (the cmdline's initrd=\...\6.12 came out
+# mangled — D2).
+set -u
+ESP=${KAIROS_BOOTLOG_ESP:-/boot/efi}
+LOGDIR="$ESP/KAIROS-LOGS"
+REASON="${1:-boot}"
+TRIG="${2:-}"                                              # failure: the unit that failed
+RUNF=${KAIROS_BOOTLOG_RUN:-/run/kairos-bootlog-attempt}   # written by kairos-bootlog-early
+FAILC=${KAIROS_BOOTLOG_FAILCOUNT:-/run/kairos-bootlog-failures}   # per-trigger capture counters
+FAILCAP=${KAIROS_BOOTLOG_FAILCAP:-3}                      # failure captures per trigger per boot
+FAILPACE=${KAIROS_BOOTLOG_FAILPACE:-30}                   # seconds between two captures of one trigger
+
+# the X-loop trigger is consumed FIRST: PathExists= is level-triggered, so the
+# path unit would restart its handler for as long as the flag exists — even when
+# this capture is skipped below (D8/D10)
+rm -f /run/kairos/x-failed 2>/dev/null
+
+# stalled (kairos-bootlog-stall.timer, 5 min after power-on): only a boot that has NOT
+# reached multi-user.target is judged here — the late capture is After=multi-user and
+# never runs for it, so without this a hang leaves just the breadcrumb (VM fault test
+# 2026-10-06). A boot that got there is the late capture's to judge.
+if [ "$REASON" = stalled ] && systemctl -q is-active multi-user.target 2>/dev/null; then exit 0; fi
+
+# ensure the EFI partition is mounted (it normally is via fstab). v7.5: the ESP is an AUTOMOUNT
+# (fstab x-systemd.automount): /boot/efi is an autofs until the first access mounts the vfat on
+# top (systemd: device + fsck) and it is unmounted again when idle — mountpoint(1) is true for the
+# bare autofs, so the test is "a vfat is mounted there". Listing it triggers the automount; only
+# if that did not mount it (no such device within x-systemd.device-timeout, or the shutdown
+# transaction refusing a new mount job) it is mounted directly — mount(8) skips x-systemd options.
+esp_vfat() { findmnt -n -o FSTYPE --mountpoint "$ESP" 2>/dev/null | grep -qx vfat; }
+esp_vfat || ls "$ESP/" >/dev/null 2>&1
+ESP_HOW=fstab; DEV=""
+esp_vfat || mount "$ESP" 2>/dev/null || {
+  # fall back: find the EFI partition by label — the flashed image labels it EFI,
+  # kairos-install formats the installed one as ESP [R48]
+  ESP_HOW=label
+  DEV=$(blkid -L EFI 2>/dev/null) || DEV=$(blkid -L ESP 2>/dev/null) || DEV=""
+  [ -n "$DEV" ] && mkdir -p "$ESP" 2>/dev/null && mount "$DEV" "$ESP" 2>/dev/null || ESP_HOW=none
+}
+mkdir -p "$LOGDIR" 2>/dev/null || exit 0
+
+# a healthy boot needs a moment: the kernel loads models, the kiosk waits for it.
+# Bounded wait (2 min) so the verdict judges the finished boot, not a snapshot
+# mid-way. Only the late capture waits; the unit is Type=simple so this never
+# holds back the boot itself.
+if [ "$REASON" = boot ]; then
+  i=0
+  while [ $i -lt 40 ]; do
+    curl -fsS -m 2 http://127.0.0.1:1337/api/status >/dev/null 2>&1 &&
+      pgrep -f "chromium.*--user-data-dir=/tmp/kiosk-" >/dev/null 2>&1 && break
+    i=$((i + 1)); sleep 3
+  done
+fi
+
+# one writer at a time (the boot capture and a failure capture can coincide). A
+# writer that cannot get the lock does NOT go ahead unlocked: two captures
+# interleaving on the ESP truncated a log (D10) — it leaves, the holder's log
+# stands.
+if : >>/run/lock/kairos-bootlog.lock 2>/dev/null; then
+  exec 9>>/run/lock/kairos-bootlog.lock
+  flock -w 90 9 2>/dev/null || { printf 'kairos-bootlog: another capture holds the lock, skipping (%s %s)\n' "$REASON" "$TRIG" >&2; exit 0; }
+fi
+
+# failure captures are BOUNDED per boot and trigger (D10): a crash-looping unit
+# starts its handler every few seconds, and 86 captures in 4 min (~340 KB + sync
+# each, straight onto the FAT32 ESP) erased the boot history and fought each
+# other. The first FAILCAP failures of a trigger are captured; after that only a
+# trigger that has really ENDED in `failed` (start limit hit — the final state
+# the verdict must name) gets one more. The counter lives in /run: per boot.
+# The cap alone spent the budget on the least informative moment (N2): a kernel crash
+# loop restarting every 3 s took all three captures in the first 8 s of boot, three
+# near-identical snapshots of a machine that had not settled. So (a) captures of one
+# trigger are PACED — one within FAILPACE s of the previous one is skipped — and
+# (b) the budget counts only once multi-user.target is reached: before that ONE early
+# look is taken (N1 makes its verdict say "boot still in progress") and not counted,
+# so the FAILCAP captures describe the settled machine. A trigger that really ENDED
+# in `failed` is captured regardless of pacing and cap (its final state is the one
+# the verdict must name). All state lives in /run: per boot.
+if [ "$REASON" = failure ]; then
+  cf="$FAILC.$(printf '%s' "${TRIG:-unknown}" | tr -c 'A-Za-z0-9._@-' '_')"
+  ended=0; systemctl -q is-failed "$TRIG" 2>/dev/null && ended=1
+  now=$(date +%s 2>/dev/null); case "$now" in ''|*[!0-9]*) now=0 ;; esac
+  last=$(cat "$cf.last" 2>/dev/null); case "$last" in ''|*[!0-9]*) last=0 ;; esac
+  if [ "$ended" -eq 0 ] && [ $((now - last)) -lt "$FAILPACE" ]; then
+    printf 'kairos-bootlog: %s failed again %ss after its last capture — paced (%ss), skipped\n' "$TRIG" "$((now - last))" "$FAILPACE" >&2
+    exit 0
+  fi
+  if systemctl -q is-active multi-user.target 2>/dev/null; then
+    nf=$(cat "$cf" 2>/dev/null); case "$nf" in ''|*[!0-9]*) nf=0 ;; esac
+    nf=$((nf + 1)); printf '%s\n' "$nf" > "$cf" 2>/dev/null
+    if [ "$nf" -gt "$FAILCAP" ] && [ "$ended" -eq 0 ]; then
+      printf 'kairos-bootlog: %s failed %s times this boot — capture cap (%s) reached, not written to the ESP again until it ends in failed\n' "$TRIG" "$nf" "$FAILCAP" >&2
+      exit 0
+    fi
+  elif [ "$ended" -eq 0 ] && [ -e "$cf.early" ]; then
+    printf 'kairos-bootlog: %s failed before multi-user.target — the early look is already on the ESP, skipped (budget starts at multi-user)\n' "$TRIG" >&2
+    exit 0
+  else
+    : > "$cf.early" 2>/dev/null
+  fi
+  printf '%s\n' "$now" > "$cf.last" 2>/dev/null
+fi
+
+# the X / kiosk layer's files are resolved AFTER the wait above (D1): on a normal
+# boot they appear ~1 s after this unit starts, and resolving them first made a
+# healthy boot report "attempts: 0" / "no X log" and a broken X "never attempted"
+XLOG=/var/log/kairos/x.log; [ -r "$XLOG" ] || XLOG=/tmp/kairos-x.log
+XCNT=/run/kairos/x-attempts; [ -r "$XCNT" ] || XCNT=/tmp/kairos-x-attempts
+XATT=$(cat "$XCNT" 2>/dev/null); case "$XATT" in ''|*[!0-9]*) XATT=0 ;; esac
+
+# kernel crash records of an earlier boot (EFI pstore -> systemd-pstore): normally
+# kairos-bootlog-early copied them already; this is the fallback when it did not run
+# (one implementation: the early script's grouped copy, see there)
+sh "$(dirname "$0")/kairos-bootlog-early" --crashes-only 2>/dev/null
+CRASHES=$(sort -u "$RUNF.crashes" 2>/dev/null | tr '\n' ' ')
+
+# PID 1's own job failures this boot: a mount / device / dependency that failed leaves
+# its unit inactive, not failed — failed_units cannot see it, and it is exactly what
+# drops a boot to emergency mode (VM fault test 2026-10-06: a missing disk read
+# "failed_units PASS" with the cause only deep in the journal)
+JOBERR=$(journalctl -b 0 -q -o cat _PID=1 --no-pager 2>/dev/null \
+  | grep -E 'Dependency failed for|Timed out waiting for device|Failed to mount|Failed to start|Failed with result|start request repeated too quickly|Failed to activate|Failed to isolate' \
+  | grep -v 'kairos-bootlog')
+NJOB=$(printf '%s\n' "$JOBERR" | grep -c .)
+# the most telling one first: a device/mount that failed (what drops a boot to emergency),
+# then a unit's own failure, then dependency fallout (consequences, not causes)
+JOB1=$(printf '%s\n' "$JOBERR" | grep -m 1 -E 'Timed out waiting for device|Failed to mount')
+[ -n "$JOB1" ] || JOB1=$(printf '%s\n' "$JOBERR" | grep -m 1 -E 'Failed with result|Failed to start|start request repeated')
+[ -n "$JOB1" ] || JOB1=$(printf '%s\n' "$JOBERR" | head -n 1)
+JOB1=$(printf '%s' "$JOB1" | head -n 1 | cut -c1-180)
+
+STAMP=$(date +%Y%m%d-%H%M%S 2>/dev/null || echo boot)
+# the stamp has one-second resolution and the lock only SERIALIZES captures: a
+# capture that follows another within the same second overwrote it on the ESP
+# (the VM evidence has 07:48:58 and 07:48:59 twins; N2's pacing separates captures
+# of ONE trigger only — kairos.service, x11, boot and the early look are four).
+# Under the lock, take a name nobody holds: -2, -3, … (FAT-safe, still sorts and
+# rotates as boot-*.txt, keeps .txt and .json paired)
+BASESTAMP=$STAMP; n=1
+while [ -e "$LOGDIR/boot-$STAMP.txt" ] || [ -e "$LOGDIR/boot-$STAMP.json" ]; do
+  n=$((n + 1)); STAMP="$BASESTAMP-$n"
+done
+OUT="$LOGDIR/boot-$STAMP.txt"
+ATT=$(cat "$RUNF" 2>/dev/null); case "$ATT" in ''|*[!0-9]*) ATT=0 ;; esac
+DMI=""
+for f in sys_vendor product_name board_name bios_version; do
+  DMI="$DMI$(cat /sys/class/dmi/id/$f 2>/dev/null) "
+done
+ROOTDF=$(df -h / 2>/dev/null | awk 'NR==2{print $2" total, "$4" free"}')
+
+# ---------- the checks: each answers one "why did this run fail?" question ----------
+NFAIL=0; NWARN=0; SUM=""; JCHK=""; FIRSTFAIL=""
+jstr() { printf '%s' "$1" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+check() {  # check NAME PASS|WARN|FAIL "detail" -> summary line + json entry
+  case "$2" in
+    FAIL) NFAIL=$((NFAIL + 1)); [ -n "$FIRSTFAIL" ] || FIRSTFAIL="$1: $3" ;;
+    WARN) NWARN=$((NWARN + 1)) ;;
+  esac
+  SUM="$SUM$(printf ' %-4s %-13s %s' "$2" "$1" "$3")
+"
+  JCHK="$JCHK${JCHK:+,}\"$1\":{\"status\":\"$2\",\"detail\":\"$(jstr "$3")\"}"
+}
+
+# a failure capture names its trigger first: the headline answers "what failed?"
+if [ "$REASON" = failure ]; then
+  case "$TRIG" in
+    x11) check trigger FAIL "X kept failing on tty1 ($XATT start attempt(s) this boot) — see X LOG / Xorg.0.log" ;;
+    *)   # the unit's own last error line (a Python exception, "FATAL: …") is the cause
+         LASTERR=$(journalctl -b 0 -u "$TRIG" -q -o cat --no-pager 2>/dev/null \
+                   | grep -E '(Error|Exception|FATAL|fatal|error:)' | tail -n 1 | cut -c1-160)
+         # a target (local-fs.target) fails through its dependencies: the first device/mount
+         # failure is its cause; a service's own job lines are about that service only
+         case "$TRIG" in *.target) TJOB=$JOB1 ;; *) TJOB=$(printf '%s\n' "$JOBERR" | grep -F -m 1 "$TRIG" | cut -c1-180) ;; esac
+         check trigger FAIL "$TRIG failed (result: $(systemctl show -p Result --value "$TRIG" 2>/dev/null)${MONITOR_EXIT_STATUS:+, exit $MONITOR_EXIT_STATUS})${LASTERR:+ — $LASTERR}${TJOB:+ — $TJOB}" ;;
+  esac
+fi
+
+# how far did boot get? (a boot loop / early death shows in the breadcrumb file)
+INCOMPLETE=$(tail -n 8 "$LOGDIR/attempts.txt" 2>/dev/null | grep -c 'DID NOT COMPLETE')
+if [ "${INCOMPLETE:-0}" -gt 0 ]; then
+  check boot_history WARN "$INCOMPLETE of the last boots died before writing a log (loop/panic/hang?) — see attempts below"
+elif [ "$ATT" -gt 0 ]; then
+  check boot_history PASS "attempt #$ATT; early breadcrumb ran (root + EFI partition mounted)"
+else
+  check boot_history WARN "early breadcrumb did not run this boot (kairos-bootlog-early not enabled/reached)"
+fi
+
+SYS=$(systemctl is-system-running 2>/dev/null); SYS=${SYS:-unknown}
+TGT=""
+for t in graphical multi-user basic sysinit; do
+  systemctl -q is-active "$t.target" 2>/dev/null && { TGT=$t.target; break; }
+done
+if [ "$REASON" = emergency ] || [ "$SYS" = maintenance ]; then
+  # emergency/rescue: name the cause, not its consequences (no X, no kernel :1337 …)
+  check boot_target FAIL "dropped to EMERGENCY mode (system: $SYS)${JOB1:+ — $JOB1}"
+elif [ "$REASON" = stalled ]; then
+  check boot_target FAIL "boot STALLED: multi-user.target not reached after $(cut -d. -f1 /proc/uptime 2>/dev/null) s (system: $SYS${TGT:+, $TGT reached}) — running jobs: $(systemctl list-jobs --no-legend --no-pager 2>/dev/null | awk '$4=="running" && $2 !~ /^kairos-bootlog/ {print $2}' | head -n 4 | tr '\n' ' ')"
+elif [ "$REASON" = shutdown ]; then
+  # the end of a run: its boot was judged by the boot capture; what matters here is what
+  # failed or restarted DURING the run (the checks below), not that things are stopping
+  check boot_target PASS "shutdown capture (system: $SYS) — end-of-run state"
+else
+case "$SYS" in
+  starting|initializing)
+    # a failure capture in the first seconds of boot is a snapshot of a boot still in
+    # progress, not of a boot that stopped: the target is judged only once systemd has
+    # settled (running/degraded/maintenance) — the first OnFailure capture of a kernel
+    # crash loop headlined "FAIL boot stopped at basic.target" 3 s into a boot that
+    # reached graphical.target seconds later (N1)
+    check boot_target WARN "boot still in progress (system: $SYS${TGT:+, $TGT reached so far}) — this capture is preliminary" ;;
+  *)
+    case "$TGT" in
+      graphical.target|multi-user.target)
+        # the target reached is only half the story: "degraded" means units failed
+        # on the way (named by failed_units) — the top line must not say PASS (D13)
+        case "$SYS" in
+          running) check boot_target PASS "$TGT reached (system: $SYS)" ;;
+          *)       check boot_target WARN "$TGT reached but system is $SYS (see failed / activating units)" ;;
+        esac ;;
+      "") check boot_target FAIL "no boot target reached (system: $SYS) — see journal" ;;
+      *)  check boot_target FAIL "boot stopped at $TGT (system: $SYS) — see failed units / journal" ;;
+    esac ;;
+esac
+fi
+
+FAILED=$(systemctl --failed --no-legend --no-pager 2>/dev/null | awk '$1=="●"{print $2;next}{print $1}' | tr '\n' ' ')
+if [ -n "$FAILED" ]; then check failed_units FAIL "$FAILED"; else check failed_units PASS "no failed units [R63]"; fi
+if [ "$NJOB" -gt 0 ]; then check boot_errors WARN "$NJOB systemd job failure(s) this boot — first: $JOB1"
+else check boot_errors PASS "no systemd job failures this boot"; fi
+if [ -n "$CRASHES" ]; then
+  C1=$(printf '%s' "$CRASHES" | cut -d' ' -f1)
+  check crash FAIL "an EARLIER boot CRASHED (kernel panic/oops) — panic text in: $(for c in $CRASHES; do printf 'crash-%s.txt ' "$c"; done)— $(grep -m 1 -E 'Kernel panic|BUG:|Oops|general protection|RIP:' "$LOGDIR/crash-$C1.txt" 2>/dev/null | cut -c1-140)"
+else
+  check crash PASS "no kernel crash record (EFI pstore) from an earlier boot"
+fi
+HUNG=$(systemctl list-units --state=activating --no-legend --no-pager 2>/dev/null \
+       | awk '$1=="●"{print $2;next}{print $1}' | grep -v '^kairos-bootlog' | tr '\n' ' ')
+if [ -n "$HUNG" ]; then check hung_units WARN "still activating (hung?): $HUNG"; else check hung_units PASS "nothing stuck in activating"; fi
+
+if [ -e /var/lib/kairos-resized ]; then
+  check rootfs_grow PASS "root grown on first boot ($ROOTDF)"
+elif [ "$(systemctl is-enabled kairos-growroot.service 2>/dev/null)" = enabled ]; then
+  check rootfs_grow FAIL "kairos-growroot enabled but never completed ($ROOTDF)"
+else
+  check rootfs_grow PASS "n/a — growroot not enabled (installed system); root $ROOTDF"
+fi
+
+# a GPU present in PCI without a kernel driver bound = the driver problem
+GPUS=""; GPU_BAD=""; GPU_WARN=""
+for dev in /sys/bus/pci/devices/*; do
+  cls=$(cat "$dev/class" 2>/dev/null); case "$cls" in 0x03*) ;; *) continue ;; esac
+  ven=$(cat "$dev/vendor" 2>/dev/null); slot=${dev##*/}
+  drv=$( [ -e "$dev/driver" ] && basename "$(readlink "$dev/driver")" )
+  bv=$(cat "$dev/boot_vga" 2>/dev/null)
+  case "$ven" in 0x10de) vn=NVIDIA ;; 0x1002) vn=AMD ;; 0x8086) vn=Intel ;; *) vn=$ven ;; esac
+  GPUS="$GPUS$slot $vn driver=${drv:-NONE}${bv:+ boot_vga=$bv}; "
+  if [ -z "$drv" ]; then
+    if [ "$bv" = 1 ]; then GPU_BAD="$GPU_BAD$vn($slot) "; else GPU_WARN="$GPU_WARN$vn($slot) "; fi
+  fi
+done
+if [ -z "$GPUS" ]; then check gpu_driver WARN "no GPU on the PCI bus (VM / headless?)"
+elif [ -n "$GPU_BAD" ]; then check gpu_driver FAIL "boot GPU has NO kernel driver: $GPU_BAD— $GPUS"
+elif [ -n "$GPU_WARN" ]; then check gpu_driver WARN "GPU without driver (compute lost, display ok): $GPU_WARN— $GPUS"
+else check gpu_driver PASS "$GPUS"; fi
+
+FW=$(dmesg 2>/dev/null | grep -i firmware | grep -iE 'fail|error|not found|timed out|no such file' | head -n 4 | tr '\n' ';')
+if [ -n "$FW" ]; then check firmware WARN "firmware load problems: $FW"; else check firmware PASS "no firmware load failures in dmesg"; fi
+# real load failures only: "module verification failed: signature and/or required
+# key missing - tainting kernel" is the standard notice for every out-of-tree /
+# DKMS module — the product's own NVIDIA driver prints it on every healthy boot
+# and still loads, so it must not cost the verdict its PASS (D3)
+MODF=$(journalctl -b 0 -q -o cat --no-pager 2>/dev/null \
+       | grep -iE 'modprobe.*(FATAL|failed|error)|Failed to (insert|find) module|disagrees about version|Unknown symbol' \
+       | grep -viE 'module verification failed|tainting kernel' \
+       | head -n 4 | cut -c1-160 | tr '\n' ';')
+if [ -n "$MODF" ]; then check modules WARN "module load failures: $MODF"; else check modules PASS "no module load failures in the journal"; fi
+
+# the X / kiosk layer: attempts are counted by ~/.bash_profile, output in x.log
+# (XATT is read above, with the other X-layer files)
+# .xinitrc's first breadcrumb ("xinitrc: displays: …") proves the X session really started:
+# X can hold its socket while stuck initializing — the hybrid laptop's X sat in a failed
+# second-GPU probe and this check said PASS while the screen stayed black (2026-10-06)
+# (".xinitrc: displays:" = the display setup finished; the last breadcrumb says where it stopped)
+XSESS=$(grep -c '^xinitrc: displays:' "$XLOG" 2>/dev/null); case "$XSESS" in ''|*[!0-9]*) XSESS=0 ;; esac
+XLAST=$(grep '^xinitrc: ' "$XLOG" 2>/dev/null | tail -n 1 | cut -c1-120)
+if [ "$XATT" -gt 0 ] && [ "$XSESS" -eq 0 ] && { [ -S /tmp/.X11-unix/X0 ] || pgrep -x Xorg >/dev/null 2>&1 || [ "$REASON" = shutdown ]; }; then
+  case "$REASON" in boot|shutdown|stalled) st=FAIL ;; *) st=WARN ;; esac
+  check xorg $st "X server started but its session never got past the display setup (last breadcrumb: ${XLAST:-none — .xinitrc never ran}) — X stuck? see Xorg.0.log (EE) lines"
+elif [ -S /tmp/.X11-unix/X0 ] || pgrep -x Xorg >/dev/null 2>&1; then
+  check xorg PASS "X server up on :0 (attempts this boot: $XATT)"
+elif [ "$REASON" = shutdown ]; then
+  # X stops before/while the shutdown capture runs: judge the run's start attempts, not
+  # "now" — every clean reboot headlined "FAIL xorg: X failed to start" (2026-10-06)
+  if [ "$XATT" -ge 6 ]; then check xorg FAIL "X kept failing during this run ($XATT start attempts) — see X LOG"
+  elif [ "$XATT" -ge 2 ]; then check xorg WARN "X was restarted $((XATT - 1)) time(s) during this run — see X LOG"
+  elif [ "$XATT" -eq 1 ]; then check xorg PASS "X ran this boot (1 start), stopped for shutdown"
+  else check xorg WARN "X never started this boot (tty1 autologin -> startx did not run)"; fi
+elif [ "$XATT" -gt 0 ]; then
+  check xorg FAIL "X failed to start ($XATT attempt(s) this boot) — see X LOG / Xorg.0.log below"
+else
+  case "$REASON" in boot) st=FAIL ;; *) st=WARN ;; esac
+  check xorg $st "X never attempted (tty1 autologin -> startx did not run) — check getty@tty1 in the journal"
+fi
+
+KST=$(curl -fsS -m 3 http://127.0.0.1:1337/api/status 2>/dev/null | head -c 200)
+KACT=$(systemctl is-active kairos 2>/dev/null); KACT=${KACT:-unknown}
+KRST=$(systemctl show -p NRestarts --value kairos 2>/dev/null); case "$KRST" in ''|*[!0-9]*) KRST=0 ;; esac
+if [ -z "$KST" ] && [ "$REASON" = shutdown ] && [ "$KRST" -eq 0 ]; then
+  check kernel_api PASS "kairos.service $KACT (stopping for shutdown, no restarts during the run)"
+elif [ -z "$KST" ]; then
+  check kernel_api FAIL "no answer on :1337 (kairos.service $KACT, restarts this boot: $KRST) — see KAIROS KERNEL LOG"
+elif [ "$KRST" -gt 0 ]; then
+  check kernel_api WARN "answering on :1337 but restarted $KRST time(s) this boot (crash loop?) — see KAIROS KERNEL LOG"
+else
+  check kernel_api PASS "answering on :1337 (kairos.service $KACT)"
+fi
+
+NK=$(pgrep -fa "chromium.*--user-data-dir=/tmp/kiosk-" 2>/dev/null | grep -oE 'kiosk-[0-9]+' | sort -u | wc -l)
+if [ "$NK" -gt 0 ]; then
+  check kiosk PASS "$NK kiosk Chromium instance(s) alive"
+elif [ "$REASON" = shutdown ]; then
+  check kiosk PASS "n/a at shutdown (the kiosk stops first)"
+else
+  case "$REASON" in boot) st=FAIL ;; *) st=WARN ;; esac
+  check kiosk $st "no kiosk Chromium running — see X LOG (.xinitrc output)"
+fi
+
+NET=$(ip -brief addr 2>/dev/null | awk '$1!="lo" && ($2=="UP"||$2=="UNKNOWN") && $3!="" {printf "%s %s; ", $1, $3}')
+if [ -n "$NET" ]; then check network PASS "$NET"
+elif [ "$REASON" = shutdown ]; then check network PASS "n/a at shutdown (NetworkManager stopping)"
+else check network WARN "no interface UP with an address (WiFi not joined? offline use is fine)"; fi
+
+case "$ESP_HOW" in
+  fstab) check esp PASS "EFI partition mounted at $ESP via fstab" ;;
+  label) check esp WARN "fstab mount of $ESP failed — mounted by label ($DEV); check the fstab UUID" ;;
+  *)     check esp FAIL "EFI partition not found/mounted — this log is on the root fs, not the stick" ;;
+esac
+
+if [ $NFAIL -gt 0 ]; then VERDICT=FAIL; WHY="$NFAIL check(s) failed, $NWARN warning(s)"
+elif [ $NWARN -gt 0 ]; then VERDICT=WARN; WHY="boot OK with $NWARN warning(s)"
+else VERDICT=PASS; WHY="all checks passed"; fi
+
+# ---------- write the log: verdict first, then evidence, small to large ----------
+{
+  printf '==================== kAIrOS boot log (%s) ====================\n' "$REASON${TRIG:+ $TRIG}"
+  echo "############ SUMMARY / VERDICT ############"
+  printf 'VERDICT: %s — %s%s\n' "$VERDICT" "$WHY" "${FIRSTFAIL:+ — first failure: $FIRSTFAIL}"
+  printf '%s' "$SUM"
+  echo "boot attempts (early breadcrumb, newest last):"
+  [ -r "$LOGDIR/attempts.txt" ] && tail -n 6 "$LOGDIR/attempts.txt" | sed 's/^/   /' || echo "   (none)"
+  echo "###########################################"
+  [ -n "$TRIG" ] && printf 'trigger:   %s (%s)\n' "$TRIG" "$(systemctl show -p ActiveState,SubState,Result,NRestarts,ExecMainStatus --value "$TRIG" 2>/dev/null | tr '\n' ' ')${MONITOR_SERVICE_RESULT:+ monitor: $MONITOR_SERVICE_RESULT exit=${MONITOR_EXIT_CODE:-?}/${MONITOR_EXIT_STATUS:-?}}"
+  printf 'date:      %s\n' "$(date 2>/dev/null)"
+  printf 'uptime:    %s\n' "$(uptime 2>/dev/null)"
+  printf 'hardware:  %s\n' "$DMI"
+  printf 'kernel:    %s\n' "$(uname -a)"
+  printf 'cmdline:   %s\n' "$(cat /proc/cmdline 2>/dev/null)"
+  printf 'root:      %s  (%s)\n' "$(findmnt -no SOURCE,FSTYPE,OPTIONS / 2>/dev/null)" "$ROOTDF"
+  printf 'esp:       %s (%s)\n' "$(findmnt -no SOURCE,FSTYPE "$ESP" 2>/dev/null | tail -n 1)" "$ESP_HOW"   # the vfat over the autofs
+  echo
+  echo "---------- failed units ----------"
+  systemctl list-units --state=failed --no-legend --no-pager 2>/dev/null || echo "(none / systemctl n/a)"
+  echo "---------- activating (hung?) units ----------"
+  systemctl list-units --state=activating --no-legend --no-pager 2>/dev/null
+  echo "---------- pending jobs (a stalled boot waits on the 'running' ones) ----------"
+  systemctl list-jobs --no-pager 2>/dev/null | head -n 30
+  echo "---------- systemd job failures this boot (PID 1) ----------"
+  printf '%s\n' "${JOBERR:-(none)}" | head -n 20
+  echo
+  if [ -n "$CRASHES" ]; then
+    echo "==================== KERNEL CRASH of an earlier boot (EFI pstore; full text in crash-<id>.txt) ===================="
+    for c in $CRASHES; do printf -- '---------- crash-%s.txt ----------\n' "$c"; tail -n 80 "$LOGDIR/crash-$c.txt" 2>/dev/null; done
+    echo
+  fi
+  echo "---------- boot timing ----------"
+  systemd-analyze time 2>/dev/null
+  systemd-analyze blame --no-pager 2>/dev/null | head -n 30
+  systemd-analyze critical-chain --no-pager 2>/dev/null | head -n 40
+  echo
+  echo "---------- kAIrOS service ----------"
+  systemctl status kairos --no-pager -n 20 2>/dev/null
+  printf 'restarts this boot: %s   /api/status: %s\n' "$KRST" "${KST:-(no answer)}"
+  echo
+  echo "---------- GPU / drivers ----------"
+  printf '%s\n' "$GPUS"
+  lspci -nnk -d ::0300 2>/dev/null; lspci -nnk -d ::0302 2>/dev/null; lspci -nnk -d ::0380 2>/dev/null
+  for d in /sys/bus/pci/devices/*/boot_vga; do
+    [ -r "$d" ] && printf 'boot_vga %s: %s\n' "$(dirname "$d")" "$(cat "$d")"
+  done
+  echo "-- gpu modules loaded --"
+  lsmod 2>/dev/null | grep -E "^(nvidia|amdgpu|i915|xe|nouveau|radeon|drm) " || echo "(no gpu modules loaded)"
+  echo "-- modprobe config (blacklists/options) --"
+  grep -rHE '^(blacklist|options|install)' /etc/modprobe.d/ 2>/dev/null
+  echo "-- module load failures (journal) --"
+  printf '%s\n' "${MODF:-(none)}" | tr ';' '\n'
+  systemctl status systemd-modules-load nvidia-load nvidia-persistenced --no-pager -n 8 2>/dev/null
+  command -v nvidia-smi >/dev/null && nvidia-smi 2>&1 | head -n 15
+  echo
+  echo "---------- firmware (dmesg) ----------"
+  dmesg 2>/dev/null | grep -i firmware | tail -n 40
+  echo
+  echo "---------- X / kiosk ----------"
+  printf 'X attempts this boot: %s   X socket: %s   kiosks: %s\n' "$XATT" "$([ -S /tmp/.X11-unix/X0 ] && echo yes || echo no)" "$NK"
+  pgrep -a Xorg 2>/dev/null; pgrep -af "chromium.*--user-data-dir=/tmp/kiosk-" 2>/dev/null | cut -c1-200 | head -n 4
+  echo
+  echo "---------- network / WiFi ----------"
+  ip -brief addr 2>/dev/null
+  ip route 2>/dev/null | head -n 5
+  nmcli -t -f DEVICE,TYPE,STATE,IP4-CONNECTIVITY,CONNECTION dev status 2>/dev/null
+  # [R78] what the owner's WiFi joins did: NetworkManager's own connectivity verdict (full |
+  # portal | limited | none) + the check it uses, the radio switches, every WiFi profile WITH its
+  # SSID (the profile name is not the SSID), the kernel's WiFi/Bluetooth log lines. No secrets.
+  printf 'NetworkManager connectivity: %s   radio WIFI-HW:WIFI:WWAN-HW:WWAN = %s\n' \
+    "$(nmcli -t networking connectivity 2>/dev/null)" "$(nmcli -t -f WIFI-HW,WIFI,WWAN-HW,WWAN radio 2>/dev/null)"
+  printf 'connectivity check (NetworkManager/conf.d): %s\n' \
+    "$(grep -h '^uri=' /usr/lib/NetworkManager/conf.d/*.conf /etc/NetworkManager/conf.d/*.conf 2>/dev/null | tr '\n' ' ')"
+  echo "-- WiFi profiles (name:type:autoconnect:device:last used) + SSID / visible networks / regulatory domain --"
+  nmcli -t -f NAME,TYPE,AUTOCONNECT,DEVICE,TIMESTAMP-REAL con show 2>/dev/null
+  for u in $(nmcli -t -f UUID,TYPE con show 2>/dev/null | awk -F: '$2 == "802-11-wireless" {print $1}'); do
+    printf '  profile %s -> ssid %s (key-mgmt %s)\n' "$(nmcli -g connection.id con show uuid "$u" 2>/dev/null)" \
+      "$(nmcli -g 802-11-wireless.ssid con show uuid "$u" 2>/dev/null)" \
+      "$(nmcli -g 802-11-wireless-security.key-mgmt con show uuid "$u" 2>/dev/null)"
+  done
+  nmcli -f IN-USE,SSID,CHAN,SIGNAL,SECURITY dev wifi list --rescan no 2>/dev/null | head -n 15
+  iw reg get 2>/dev/null | head -n 4
+  rfkill list 2>/dev/null
+  echo "-- the kernel's WiFi / Bluetooth / airplane log lines (this boot) --"
+  journalctl -b -u kairos --no-pager -o cat 2>/dev/null | grep -E '\[kernel\] (wifi|bluetooth|airplane|bt-agent)' | tail -n 40
+  echo
+  echo "---------- Bluetooth ----------"
+  # [R78] the pairing proof: paired devices with their trust flag (trusted = bluez reconnects them
+  # after a reboot), the rfkill state systemd-rfkill restores at boot, the sound output in use.
+  # bluetoothctl waits for ever without bluetoothd: every call is bounded.
+  timeout 5 bluetoothctl show 2>/dev/null | grep -E 'Controller|Powered|PowerState|Pairable|Discovering'
+  echo "-- paired devices (bluetoothctl devices Paired) + Name/Icon/Paired/Trusted/Connected/Battery --"
+  for m in $(timeout 5 bluetoothctl devices Paired 2>/dev/null | awk '$1 == "Device" {print $2}'); do
+    printf '%s %s\n' "$m" "$(timeout 5 bluetoothctl info "$m" 2>/dev/null \
+      | grep -E '^[[:space:]]*(Name|Icon|Paired|Bonded|Trusted|Connected|Battery Percentage):' | sed 's/^[[:space:]]*//' | tr '\n' ';')"
+  done
+  echo "-- rfkill state kept by systemd-rfkill (/var/lib/systemd/rfkill, restored at boot) --"
+  for f in /var/lib/systemd/rfkill/*; do [ -f "$f" ] && printf '%s = %s\n' "${f##*/}" "$(cat "$f" 2>/dev/null)"; done
+  KU=$(id -u kairos 2>/dev/null)
+  printf 'default sink (pipewire of user kairos): %s\n' \
+    "$(PULSE_SERVER=unix:/run/user/$KU/pulse/native timeout 5 pactl get-default-sink 2>/dev/null)"
+  PULSE_SERVER=unix:/run/user/$KU/pulse/native timeout 5 pactl list short sinks 2>/dev/null | head -n 8
+  echo
+  echo "---------- displays (DRM connectors) ----------"
+  for s in /sys/class/drm/*/status; do
+    [ -r "$s" ] || continue; c=$(dirname "$s")
+    printf '%s: %s enabled=%s edid=%sB modes: %s\n' "$(basename "$c")" "$(cat "$s")" "$(cat "$c/enabled" 2>/dev/null)" "$(wc -c < "$c/edid" 2>/dev/null)" "$(head -n 3 "$c/modes" 2>/dev/null | tr '\n' ' ')"
+  done
+  echo
+  echo "---------- disks / partitions / memory ----------"
+  lsblk -f -o NAME,FSTYPE,LABEL,UUID,SIZE,MOUNTPOINTS 2>/dev/null || lsblk -f 2>/dev/null
+  df -h / "$ESP" /opt/vibeos 2>/dev/null
+  echo "-- fstab --"; cat /etc/fstab 2>/dev/null
+  free -m 2>/dev/null
+  echo
+  echo "==================== all PCI devices (kernel driver in use) ===================="
+  lspci -nnk 2>/dev/null || echo "(lspci n/a)"
+  echo
+  # x.log holds THIS boot only (.bash_profile rotates it to x.log.1 on the first
+  # attempt of a boot); the previous boot's is shown when this boot never got to X
+  printf '==================== X LOG (%s: startx / Xorg / .xinitrc output, THIS boot) ====================\n' "$XLOG"
+  if [ "$XATT" -gt 0 ] && [ -r "$XLOG" ]; then tail -n 150 "$XLOG"
+  else
+    echo "(no X attempt this boot — startx never ran: getty@tty1 / autologin did not reach .bash_profile?)"
+    [ -r "$XLOG.1" ] && { printf -- '---------- PREVIOUS boot X log (%s.1) ----------\n' "$XLOG"; tail -n 60 "$XLOG.1"; }
+  fi
+  for x in /var/log/Xorg.0.log /home/kairos/.local/share/xorg/Xorg.0.log; do
+    [ -r "$x" ] || continue
+    printf -- '---------- %s (EE/WW) ----------\n' "$x"; grep -E '\(EE\)|\(WW\)' "$x" 2>/dev/null | tail -n 40
+    printf -- '---------- %s (tail) ----------\n' "$x"; tail -n 40 "$x"
+  done
+  [ -r /home/kairos/.xsession-errors ] && { echo "---------- .xsession-errors ----------"; tail -n 40 /home/kairos/.xsession-errors; }
+  # which X config asked for which driver (a Device section for an absent card = "No
+  # devices detected" / "no screens found" — VM fault test 2026-10-06)
+  for c in /etc/X11/xorg.conf /etc/X11/xorg.conf.d/*.conf; do
+    [ -r "$c" ] && { printf -- '---------- X config %s ----------\n' "$c"; head -n 40 "$c"; }
+  done
+  echo
+  # the boot screen painter (scripts/splash/kairos-splash, started in the initramfs): its run
+  # log stays in /run until it exits, then it is appended to /var/log/kairos/splash.log [R73]
+  echo "==================== BOOT SCREEN LOG (/run/kairos-splash.log this boot; /var/log/kairos/splash.log archive) [R73] ===================="
+  printf 'painter: %s\n' "$(/usr/local/sbin/kairos-splash-ctl status 2>/dev/null | head -n 1)"
+  [ -r /run/kairos-splash/state ] && printf 'state:   %s\n' "$(cat /run/kairos-splash/state 2>/dev/null)"
+  if [ -r /run/kairos-splash.log ]; then tail -n 30 /run/kairos-splash.log
+  elif [ -r /var/log/kairos/splash.log ]; then tail -n 30 /var/log/kairos/splash.log
+  else echo "(no splash log — the painter never started this boot: not in the initrd, no quiet, or kairos.splash=0?)"; fi
+  echo
+  echo "==================== KAIROS KERNEL LOG (journalctl -u kairos, this boot) ===================="
+  journalctl -b 0 -u kairos --no-pager 2>/dev/null | tail -n 200
+  echo
+  # the engines' own output (kernel/server.py open_engine_log): model load, GPU placement,
+  # CUDA errors of the LLM; aria2's errors for add-on downloads
+  echo "==================== LLM ENGINE LOG (/var/log/kairos/llama-server.log, tail) ===================="
+  tail -n 80 /var/log/kairos/llama-server.log 2>/dev/null || echo "(no llama-server log — the LLM has not been started yet)"
+  echo
+  echo "==================== PREWARM LOG (/var/log/kairos/prewarm.log: read-ahead on a USB stick) ===================="
+  tail -n 8 /var/log/kairos/prewarm.log 2>/dev/null || echo "(no prewarm log)"
+  echo
+  echo "==================== DOWNLOADS LOG (/var/log/kairos/downloads.log, tail) ===================="
+  tail -n 20 /var/log/kairos/downloads.log 2>/dev/null || echo "(no add-on download yet)"
+  echo
+  echo "==================== dmesg (errors/warnings) ===================="
+  dmesg --level=emerg,alert,crit,err,warn 2>/dev/null | tail -n 150
+  echo
+  echo "==================== dmesg (full) ===================="
+  dmesg 2>/dev/null | tail -n 4000 || echo "(dmesg n/a)"
+  echo
+  echo "==================== journal — THIS boot ===================="
+  journalctl -b 0 --no-pager 2>/dev/null | tail -n 1200
+  echo
+  echo "==================== journal — PREVIOUS boot (if any) ===================="
+  journalctl -b -1 --no-pager 2>/dev/null | tail -n 600 || echo "(no previous boot journal)"
+} > "$OUT" 2>&1
+
+# the same verdict machine-readable: diff latest.json across boots
+JOUT="$LOGDIR/boot-$STAMP.json"
+printf '{"schema":1,"reason":"%s","trigger":"%s","date":"%s","attempt":%d,"verdict":"%s","fail":%d,"warn":%d,"kernel":"%s","hardware":"%s","checks":{%s}}\n' \
+  "$(jstr "$REASON")" "$(jstr "$TRIG")" "$(jstr "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null)")" "$ATT" "$VERDICT" "$NFAIL" "$NWARN" \
+  "$(jstr "$(uname -r 2>/dev/null)")" "$(jstr "$DMI")" "$JCHK" > "$JOUT" 2>/dev/null
+
+# close the attempt in the breadcrumb: boot/shutdown = completed; failure/emergency
+# keep inflight.txt so the NEXT early breadcrumb marks this attempt incomplete.
+# Bounded HERE too (last 40 lines): -early trims once per boot, and a crash loop's
+# captures alone had grown the file past the history it exists for (D10)
+if [ "$ATT" -gt 0 ]; then
+  printf '#%s  %s log written %s  verdict %s%s\n' "$ATT" "$REASON${TRIG:+ $TRIG}" "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null)" "$VERDICT" "${FIRSTFAIL:+ ($FIRSTFAIL)}" \
+    | cut -c1-200 >> "$LOGDIR/attempts.txt" 2>/dev/null
+  tail -n 40 "$LOGDIR/attempts.txt" > "$LOGDIR/attempts.txt.tmp" 2>/dev/null && mv -f "$LOGDIR/attempts.txt.tmp" "$LOGDIR/attempts.txt" 2>/dev/null
+fi
+case "$REASON" in boot|shutdown) rm -f "$LOGDIR/inflight.txt" 2>/dev/null ;; esac
+
+# a stable filename that always points at the newest log — the one to open first
+cp -f "$OUT" "$LOGDIR/latest.txt" 2>/dev/null
+cp -f "$JOUT" "$LOGDIR/latest.json" 2>/dev/null
+# keep only the 16 most recent captures so the small ESP never fills (~4 MB; 8 was
+# too few: one crash loop's bounded captures alone rotated the previous boots out —
+# VM fault test 2026-10-06). crash-*.txt are kept (one per crash, a few KB each).
+ls -1t "$LOGDIR"/boot-*.txt 2>/dev/null | tail -n +17 | while read -r f; do rm -f "$f"; done
+ls -1t "$LOGDIR"/boot-*.json 2>/dev/null | tail -n +17 | while read -r f; do rm -f "$f"; done
+cat > "$LOGDIR/README.txt" <<'R'
+kAIrOS boot logs — open latest.txt first (newest capture; boot/shutdown/failure/
+emergency/stalled). Its SUMMARY / VERDICT block on top says which check failed first
+(trigger, boot target, failed units, systemd job failures, kernel crash, root grow, GPU
+driver, firmware, modules, X, kernel :1337, kiosk, network, EFI mount); the evidence
+follows (timing, pending jobs, lspci -nnk drivers, X log, kernel log, LLM engine log,
+dmesg, this + previous boot journal). latest.json = same verdict as JSON.
+boot-*.txt: the last 16 captures (each boot + shutdown + every failure/emergency).
+attempts.txt: one line per boot ATTEMPT written as soon as the root fs is up —
+"DID NOT COMPLETE" lines mean the machine died/looped before a log could be written.
+crash-*.txt: the kernel's own panic/oops text of a boot that crashed (saved by the
+firmware, copied here on the next boot).
+If attempts.txt never grows, the failure is BEFORE Linux userspace: firmware,
+systemd-boot, kernel or initramfs (root partition not found).
+More on the KAIROS_ROOT partition (ext4, Linux): the full journal of every boot
+(journalctl -D <mount>/var/log/journal --list-boots) and /var/log/kairos/
+(x.log, llama-server.log, prewarm.log, downloads.log, splash.log).
+If the machine won't boot: plug this stick into any computer, open this EFI
+partition, and send latest.txt (+ latest.json, attempts.txt, crash-*.txt) for debugging.
+R
+# only the EFI partition that holds the logs: a global sync waited for every dirty page
+# on the slow USB stick and held the boot 13 s (stick run 2026-10-07)
+sync -f "$LOGDIR" 2>/dev/null || sync
+exit 0

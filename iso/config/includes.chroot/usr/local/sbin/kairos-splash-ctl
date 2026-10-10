@@ -1,0 +1,44 @@
+#!/bin/sh
+# kairos-splash-ctl [R73] — the userspace side of the kAIrOS boot screen painter
+# (/usr/local/sbin/kairos-splash, started from the initramfs, see scripts/splash/).
+#   userspace   kairos-splash.service: systemd is up -> milestone + the expected boot time
+#   milestone N write milestone N (root | userspace | x) for the progress bar
+#   handover    what .xinitrc does once the kiosk is up: the flag file (any user can write
+#               /run/kairos) + SIGUSR1 (root); the painter exits WITHOUT touching the VT mode
+#   stop | fail stop the painter and restore the text console (failure path, root)
+#   archive     append the painter's run log to /var/log/kairos/splash.log if it is still
+#               running at shutdown (it archives itself when it exits)
+#   status      pid, state, the log tail
+# Every path exits 0 [R63].
+RUN=${KAIROS_SPLASH_RUN:-/run}
+D=$RUN/kairos-splash
+USERD=$RUN/kairos
+LOG=$RUN/kairos-splash.log
+PIDF=$RUN/kairos-splash.pid
+EXPECTED=${KAIROS_SPLASH_EXPECTED_FILE:-/opt/vibeos/cache/boottime/expected}
+BIN=${KAIROS_SPLASH_BIN:-/usr/local/sbin/kairos-splash}
+ARCHIVE=${KAIROS_SPLASH_ARCHIVE:-/var/log/kairos/splash.log}
+alive() { pid=$(cat "$PIDF" 2>/dev/null) && [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; }
+case "${1:-status}" in
+  userspace)
+    mkdir -p "$D" 2>/dev/null
+    [ -s "$D/expected" ] || { [ -r "$EXPECTED" ] && cp "$EXPECTED" "$D/expected" 2>/dev/null; }
+    echo userspace > "$D/milestone" 2>/dev/null ;;
+  milestone)
+    [ -n "${2:-}" ] && { mkdir -p "$D" 2>/dev/null; echo "$2" > "$D/milestone" 2>/dev/null; } ;;
+  handover)
+    mkdir -p "$USERD" 2>/dev/null; : > "$USERD/splash-handover" 2>/dev/null
+    pkill -USR1 -x kairos-splash 2>/dev/null ;;
+  stop|fail)
+    [ -x "$BIN" ] && "$BIN" --stop 2>/dev/null ;;
+  archive)
+    if alive && [ -s "$LOG" ]; then
+      mkdir -p "$(dirname "$ARCHIVE")" 2>/dev/null
+      { echo "(archived at shutdown by kairos-splash-ctl: the painter never handed over)"; cat "$LOG"; } >> "$ARCHIVE" 2>/dev/null
+    fi ;;
+  status)
+    if alive; then echo "painter running (pid $pid): $(cat "$D/state" 2>/dev/null)"; else echo "painter not running"; fi
+    [ -r "$LOG" ] && tail -n 20 "$LOG" ;;
+  *) echo "usage: kairos-splash-ctl userspace|milestone NAME|handover|stop|archive|status" >&2 ;;
+esac
+exit 0

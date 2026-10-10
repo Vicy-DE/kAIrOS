@@ -1,0 +1,7 @@
+# Compiler toolchains for the cross-language LLM benchmark (2026-09-30) — Debian trixie = the appliance userland.
+FROM debian:trixie
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      g++ openjdk-21-jdk-headless golang-go rustc python3 python3-pyflakes ca-certificates time \
+    && rm -rf /var/lib/apt/lists/*
+RUN useradd -m -u 65534 -o sandbox || true
+RUN g++ --version | head -1 && javac -version && go version && rustc --version && python3 --version && python3 -m pyflakes --version

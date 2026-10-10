@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>kairos-dock</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#0a0a14}</style>
+<link rel="stylesheet" href="/shell/shell.css">
+<link rel="stylesheet" href="/shell/bench/strip.css">
+</head>
+<body>
+<!-- bench candidates 2/3a: the dock + the taskbar as one always-on-top strip window per
+     monitor (the same markup and CSS as index.html); chips come from the WM driver's
+     window list, so pygame windows get one too [R61] -->
+<div id="desktop">
+  <div id="taskbar"></div>
+  <div id="dock">
+    <button class="dock-app" data-menu="1">⊞<span>Apps</span></button>
+    <button class="dock-app" data-builtin="applauncher">🚀<span>App Launcher</span></button>
+    <button class="dock-app" data-launch="✨">✨<span>Summon</span></button>
+    <span class="dock-sep"></span>
+    <button class="dock-app" data-app="notes">📝<span>Notes</span></button>
+    <button class="dock-app" data-app="news">📰<span>News</span></button>
+    <button class="dock-app" data-app="browser">🌐<span>Browser</span></button>
+    <span class="dock-sep"></span>
+    <button class="dock-app" data-builtin="imagine">🖼️<span>Imagine</span></button>
+    <button class="dock-app" data-builtin="motion">🎬<span>Motion</span></button>
+    <button class="dock-app" data-builtin="arcade">🕹️<span>Arcade</span></button>
+    <button class="dock-app" data-builtin="melody">🎵<span>Music</span></button>
+    <span class="dock-sep"></span>
+    <button class="dock-app" data-app="files">📁<span>Files</span></button>
+    <button class="dock-app" data-app="settings">⚙️<span>Settings</span></button>
+  </div>
+  <div id="toasts"></div>
+</div>
+<script src="/shell/bench/strip.js"></script>
+<script src="/shell/bench/dock.js"></script>
+</body>
+</html>

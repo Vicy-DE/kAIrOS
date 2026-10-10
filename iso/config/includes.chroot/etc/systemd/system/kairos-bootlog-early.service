@@ -1,0 +1,29 @@
+[Unit]
+Description=kAIrOS early boot breadcrumb -> EFI partition (attempt counter) [R51]
+# As soon as root + /boot/efi are mounted and before the rest of boot: proves the
+# firmware/kernel/initramfs/root stage passed and counts the attempt, so a boot
+# LOOP is visible on the stick even if no boot ever completes. Must never fail
+# or slow the boot: no default deps, ExecStart=- , 30 s cap, a few KB written.
+DefaultDependencies=no
+# /boot/efi is a nofail mount (a bad ESP must not stop the boot), so it is no
+# longer ordered before local-fs.target: wait for its (possibly failed) mount
+# job too, so this never races fsck/mount on the ESP. A missing unit is ignored.
+# v7.5: the ESP is an automount (fstab x-systemd.automount): nothing mounts it at boot until
+# this script lists it (boot-efi.mount then waits for the device, up to its 45 s device timeout,
+# and runs fsck) — or something else touched it first, whose mount job this waits for.
+After=local-fs.target boot-efi.mount
+# a kernel crash of an earlier boot is archived from the firmware's NVRAM by
+# systemd-pstore first, so this breadcrumb can copy its panic text onto the stick
+After=systemd-pstore.service
+Before=basic.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=-/usr/local/sbin/kairos-bootlog-early
+# covers the ESP's device timeout (45 s) + fsck.vfat on a busy stick (13-18 s measured)
+TimeoutStartSec=90
+
+[Install]
+WantedBy=sysinit.target

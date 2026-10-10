@@ -1,0 +1,1143 @@
+{
+ "candidate": "baseline",
+ "env": "host",
+ "run": 2,
+ "started": "2026-09-10 14:53:23",
+ "M1": {
+  "ready_ms": 1784.8930358886719,
+  "dock_painted_ms": 1805.7160377502441,
+  "cold": false,
+  "probe": "40x24 patch on the second dock button (\ud83d\ude80 emoji): >=3 pixels with max(R,G,B)>150"
+ },
+ "M2": {
+  "opens": [
+   {
+    "app": "bench-a1-0",
+    "label": "cold",
+    "t_req": 1789044811.4814498,
+    "t_win": 1789044811.491932,
+    "t_map": 1789044811.489,
+    "t_paint": 1789044811.516203,
+    "open_ms": 34.75308418273926,
+    "win_ms": 10.482072830200195,
+    "geom": [
+     90,
+     70,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 128,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    }
+   },
+   {
+    "app": "bench-a1-1",
+    "label": "warm",
+    "t_req": 1789044816.5612617,
+    "t_win": 1789044816.5699399,
+    "t_map": 1789044816.568,
+    "t_paint": 1789044816.6144557,
+    "open_ms": 53.19404602050781,
+    "win_ms": 8.678197860717773,
+    "geom": [
+     126,
+     102,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 131,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    }
+   },
+   {
+    "app": "bench-a2-1",
+    "label": "warm",
+    "t_req": 1789044816.8715663,
+    "t_win": 1789044816.879373,
+    "t_map": 1789044816.878,
+    "t_paint": 1789044817.1058006,
+    "open_ms": 234.23433303833008,
+    "win_ms": 7.8067779541015625,
+    "geom": [
+     162,
+     134,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 130,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    }
+   },
+   {
+    "app": "bench-a3-1",
+    "label": "warm",
+    "t_req": 1789044817.1795146,
+    "t_win": 1789044817.1881247,
+    "t_map": 1789044817.186,
+    "t_paint": 1789044817.2002332,
+    "open_ms": 20.71857452392578,
+    "win_ms": 8.610010147094727,
+    "geom": [
+     198,
+     166,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 131,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    }
+   },
+   {
+    "app": "bench-a1-2",
+    "label": "warm",
+    "t_req": 1789044839.532365,
+    "t_win": 1789044839.5404596,
+    "t_map": 1789044839.538,
+    "t_paint": 1789044839.5519264,
+    "open_ms": 19.561290740966797,
+    "win_ms": 8.094549179077148,
+    "geom": [
+     234,
+     198,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 131,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    }
+   },
+   {
+    "app": "bench-a2-2",
+    "label": "warm",
+    "t_req": 1789044839.8415902,
+    "t_win": 1789044839.8515108,
+    "t_map": 1789044839.848,
+    "t_paint": 1789044840.0087926,
+    "open_ms": 167.20247268676758,
+    "win_ms": 9.920597076416016,
+    "geom": [
+     270,
+     70,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 130,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    }
+   },
+   {
+    "app": "bench-a3-2",
+    "label": "warm",
+    "t_req": 1789044844.4333484,
+    "t_win": 1789044844.4412417,
+    "t_map": 1789044844.44,
+    "t_paint": 1789044844.4550781,
+    "open_ms": 21.729707717895508,
+    "win_ms": 7.89332389831543,
+    "geom": [
+     306,
+     102,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 129,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    }
+   },
+   {
+    "app": "bench-a1-3",
+    "label": "warm",
+    "t_req": 1789044844.7413497,
+    "t_win": 1789044844.7493572,
+    "t_map": 1789044844.748,
+    "t_paint": 1789044844.7830698,
+    "open_ms": 41.72015190124512,
+    "win_ms": 8.007526397705078,
+    "geom": [
+     90,
+     134,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 129,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    }
+   },
+   {
+    "app": "bench-a2-3",
+    "label": "warm",
+    "t_req": 1789044845.0495102,
+    "t_win": 1789044845.0575054,
+    "t_map": 1789044845.056,
+    "t_paint": 1789044845.1124291,
+    "open_ms": 62.918901443481445,
+    "win_ms": 7.995128631591797,
+    "geom": [
+     126,
+     166,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 131,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    }
+   },
+   {
+    "app": "bench-a3-3",
+    "label": "warm",
+    "t_req": 1789044845.3591526,
+    "t_win": 1789044845.367003,
+    "t_map": 1789044845.366,
+    "t_paint": 1789044845.4080079,
+    "open_ms": 48.85530471801758,
+    "win_ms": 7.850408554077148,
+    "geom": [
+     162,
+     198,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 130,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    }
+   },
+   {
+    "app": "bench-a1-4",
+    "label": "warm",
+    "t_req": 1789044845.6693075,
+    "t_win": 1789044845.6775804,
+    "t_map": 1789044845.677,
+    "t_paint": 1789044845.7232673,
+    "open_ms": 53.95984649658203,
+    "win_ms": 8.272886276245117,
+    "geom": [
+     198,
+     70,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 130,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    }
+   },
+   {
+    "app": "bench-vibe",
+    "label": "F8",
+    "t_req": 1789044910.502597,
+    "t_win": 1789044910.5103276,
+    "t_map": 1789044910.51,
+    "t_paint": 1789044910.588668,
+    "open_ms": 86.07101440429688,
+    "win_ms": 7.7304840087890625,
+    "geom": [
+     234,
+     102,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 130,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    }
+   },
+   {
+    "app": "bench-f9",
+    "label": "F9",
+    "t_req": 1789044914.3140194,
+    "t_win": 1789044914.3215022,
+    "t_map": 1789044914.321,
+    "t_paint": 1789044914.3910298,
+    "open_ms": 77.0103931427002,
+    "win_ms": 7.482767105102539,
+    "geom": [
+     270,
+     134,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 128,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    }
+   },
+   {
+    "app": "bench-hang",
+    "label": "F11",
+    "t_req": 1789044914.625085,
+    "t_win": 1789044914.6340497,
+    "t_map": 1789044914.633,
+    "t_paint": 1789044914.7080977,
+    "open_ms": 83.01258087158203,
+    "win_ms": 8.96453857421875,
+    "geom": [
+     426,
+     302,
+     400,
+     300
+    ],
+    "flash": {
+     "samples": 131,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    }
+   }
+  ]
+ },
+ "M2b": [],
+ "M3": {
+  "0": {
+   "pss_mib": 860.017578125,
+   "rss_mib": 3018.39453125,
+   "procs": 27,
+   "per_kind_mib": {
+    "chromium:browser": 221.212890625,
+    "chromium:zygote": 48.130859375,
+    "chromium:utility": 84.22265625,
+    "chromium:renderer": 309.9140625,
+    "chromium:gpu-process": 126.5751953125,
+    "docker": 26.5400390625,
+    "xserver": 43.421875
+   },
+   "samples": [
+    843.310546875,
+    860.017578125,
+    860.84375
+   ]
+  },
+  "1": {
+   "pss_mib": 919.560546875,
+   "rss_mib": 3212.9375,
+   "procs": 28,
+   "per_kind_mib": {
+    "chromium:browser": 224.234375,
+    "chromium:zygote": 47.5341796875,
+    "chromium:utility": 86.7294921875,
+    "chromium:renderer": 358.115234375,
+    "chromium:gpu-process": 132.9833984375,
+    "docker": 26.541015625,
+    "xserver": 43.4228515625
+   },
+   "samples": [
+    901.427734375,
+    919.560546875,
+    936.61328125
+   ]
+  },
+  "3": {
+   "pss_mib": 988.5224609375,
+   "rss_mib": 3287.11328125,
+   "procs": 28,
+   "per_kind_mib": {
+    "chromium:browser": 229.6904296875,
+    "chromium:zygote": 47.521484375,
+    "chromium:utility": 87.28515625,
+    "chromium:renderer": 419.193359375,
+    "chromium:gpu-process": 134.8642578125,
+    "docker": 26.5419921875,
+    "xserver": 43.42578125
+   },
+   "samples": [
+    984.546875,
+    988.5224609375,
+    990.8115234375
+   ]
+  },
+  "5": {
+   "pss_mib": 1066.2041015625,
+   "rss_mib": 3216.8984375,
+   "procs": 26,
+   "per_kind_mib": {
+    "chromium:browser": 217.93359375,
+    "chromium:zygote": 48.7490234375,
+    "chromium:utility": 85.03515625,
+    "chromium:renderer": 492.8984375,
+    "chromium:gpu-process": 151.5537109375,
+    "docker": 26.6083984375,
+    "xserver": 43.42578125
+   },
+   "samples": [
+    1065.1669921875,
+    1066.2041015625,
+    1122.2705078125
+   ]
+  },
+  "10": {
+   "pss_mib": 1394.4404296875,
+   "rss_mib": 3567.8671875,
+   "procs": 26,
+   "per_kind_mib": {
+    "chromium:browser": 218.6884765625,
+    "chromium:zygote": 48.751953125,
+    "chromium:utility": 85.1474609375,
+    "chromium:renderer": 803.044921875,
+    "chromium:gpu-process": 168.7685546875,
+    "docker": 26.609375,
+    "xserver": 43.4296875
+   },
+   "samples": [
+    1394.4306640625,
+    1394.4404296875,
+    1394.64453125
+   ]
+  },
+  "after_close": {
+   "pss_mib": 1262.787109375,
+   "rss_mib": 3448.9296875,
+   "procs": 26,
+   "per_kind_mib": {
+    "chromium:browser": 210.3896484375,
+    "chromium:zygote": 48.76171875,
+    "chromium:utility": 84.03515625,
+    "chromium:renderer": 694.666015625,
+    "chromium:gpu-process": 154.904296875,
+    "docker": 26.607421875,
+    "xserver": 43.4228515625
+   },
+   "samples": [
+    1237.62109375,
+    1262.787109375,
+    1264.0986328125
+   ]
+  }
+ },
+ "M3b": {
+  "chromium:browser": 2,
+  "chromium:zygote": 6,
+  "chromium:utility": 4,
+  "chromium:renderer": 10,
+  "chromium:gpu-process": 2,
+  "docker": 1,
+  "xserver": 1,
+  "one_browser_process": false
+ },
+ "M4": {},
+ "M5": {
+  "a1_visible": {
+   "seconds": 20.000262759996986,
+   "system_busy_pct": 24.5,
+   "system_idle_pct": 75.5,
+   "stack_cpu_pct_one_core": 219.0471221589421,
+   "stack_cpu_pct_all_cores": 13.690445134933881
+  },
+  "a1_minimized": {
+   "seconds": 20.000321912004438,
+   "system_busy_pct": 11.8,
+   "system_idle_pct": 88.2,
+   "stack_cpu_pct_one_core": 21.44965475493219,
+   "stack_cpu_pct_all_cores": 1.340603422183262
+  }
+ },
+ "M6": {
+  "ops": 300,
+  "seconds": 0.12403653399815084,
+  "ops_per_s": 2418.6422365242197,
+  "fails": 0,
+  "per_op": {
+   "move": {
+    "n": 100,
+    "p50": 0.3939119997085072,
+    "p95": 0.8481469994876534,
+    "min": 0.3154700025334023,
+    "max": 1.2769600070896558,
+    "mean": 0.4634217000420904
+   },
+   "resize": {
+    "n": 100,
+    "p50": 0.40611549775348976,
+    "p95": 0.6577009989996441,
+    "min": 0.3071449973504059,
+    "max": 1.0549040016485378,
+    "mean": 0.43803880013001617
+   },
+   "raise": {
+    "n": 100,
+    "p50": 0.2744384983088821,
+    "p95": 0.5622419994324446,
+    "min": 0.20752900309162214,
+    "max": 2.0550570043269545,
+    "mean": 0.33293691973085515
+   }
+  },
+  "all": {
+   "n": 300,
+   "p50": 0.3695720006362535,
+   "p95": 0.6930969975655898,
+   "min": 0.20752900309162214,
+   "max": 2.0550570043269545,
+   "mean": 0.4114658066343206
+  }
+ },
+ "M7": {
+  "3apps": {
+   "drags": [
+    {
+     "frames": 42,
+     "interval_ms": {
+      "n": 41,
+      "p50": 16.665786002704408,
+      "p95": 25.009352997585665,
+      "min": 2.841359004378319,
+      "max": 28.205114998854697,
+      "mean": 16.401728365830113
+     },
+     "stalls_gt32ms": 0,
+     "moved_px": 600,
+     "probe_hz": 10456.95863853375,
+     "samples": 7032,
+     "duration_s": 0.5
+    },
+    {
+     "frames": 39,
+     "interval_ms": {
+      "n": 38,
+      "p50": 16.68167499883566,
+      "p95": 27.260527000180446,
+      "min": 0.7407669982057996,
+      "max": 77.97803999710595,
+      "mean": 17.62624599991556
+     },
+     "stalls_gt32ms": 1,
+     "moved_px": 600,
+     "probe_hz": 10295.651394596198,
+     "samples": 6896,
+     "duration_s": 0.5
+    },
+    {
+     "frames": 39,
+     "interval_ms": {
+      "n": 38,
+      "p50": 16.673715497745434,
+      "p95": 19.81187400087947,
+      "min": 5.508991998794954,
+      "max": 69.46620799863013,
+      "mean": 17.582891184199404
+     },
+     "stalls_gt32ms": 1,
+     "moved_px": 600,
+     "probe_hz": 10832.898993408578,
+     "samples": 7238,
+     "duration_s": 0.5
+    },
+    {
+     "frames": 42,
+     "interval_ms": {
+      "n": 41,
+      "p50": 16.66337099595694,
+      "p95": 25.00972400594037,
+      "min": 0.8753180009080097,
+      "max": 27.142505001393147,
+      "mean": 16.253838853672057
+     },
+     "stalls_gt32ms": 0,
+     "moved_px": 600,
+     "probe_hz": 10526.593902889317,
+     "samples": 7015,
+     "duration_s": 0.5
+    },
+    {
+     "frames": 41,
+     "interval_ms": {
+      "n": 40,
+      "p50": 16.673705496941693,
+      "p95": 24.994273997435812,
+      "min": 4.451451997738332,
+      "max": 25.164364000374917,
+      "mean": 16.609376475025783
+     },
+     "stalls_gt32ms": 0,
+     "moved_px": 600,
+     "probe_hz": 11126.24548416187,
+     "samples": 7392,
+     "duration_s": 0.5
+    }
+   ],
+   "frames_median": 41,
+   "stalls_median": 0,
+   "interval_p95_median": 25.009352997585665,
+   "moved_px": [
+    600,
+    600,
+    600,
+    600,
+    600
+   ]
+  },
+  "10apps": {
+   "drags": [
+    {
+     "frames": 30,
+     "interval_ms": {
+      "n": 29,
+      "p50": 24.975919994176365,
+      "p95": 33.356056999764405,
+      "min": 2.7947510025114752,
+      "max": 38.49158899538452,
+      "mean": 23.006824586351787
+     },
+     "stalls_gt32ms": 3,
+     "moved_px": 600,
+     "probe_hz": 10027.00978166559,
+     "samples": 6690,
+     "duration_s": 0.5
+    },
+    {
+     "frames": 26,
+     "interval_ms": {
+      "n": 25,
+      "p50": 25.0137109978823,
+      "p95": 44.46052199637052,
+      "min": 8.34280600247439,
+      "max": 49.99477199453395,
+      "mean": 25.962479039735626
+     },
+     "stalls_gt32ms": 7,
+     "moved_px": 600,
+     "probe_hz": 10145.41021282543,
+     "samples": 6585,
+     "duration_s": 0.5
+    },
+    {
+     "frames": 26,
+     "interval_ms": {
+      "n": 25,
+      "p50": 25.03218600031687,
+      "p95": 41.05519799486501,
+      "min": 11.783936999563593,
+      "max": 41.633109001850244,
+      "mean": 27.134892759786453
+     },
+     "stalls_gt32ms": 9,
+     "moved_px": 600,
+     "probe_hz": 10304.076101393828,
+     "samples": 6990,
+     "duration_s": 0.5
+    },
+    {
+     "frames": 28,
+     "interval_ms": {
+      "n": 27,
+      "p50": 24.98038900375832,
+      "p95": 41.01462200196693,
+      "min": 15.647889995307196,
+      "max": 49.93627099611331,
+      "mean": 25.014436555567144
+     },
+     "stalls_gt32ms": 4,
+     "moved_px": 600,
+     "probe_hz": 9582.614550250819,
+     "samples": 6472,
+     "duration_s": 0.5
+    },
+    {
+     "frames": 26,
+     "interval_ms": {
+      "n": 25,
+      "p50": 25.001338006404694,
+      "p95": 41.71246899932157,
+      "min": 8.293874998344108,
+      "max": 52.91397499968298,
+      "mean": 26.03860151983099
+     },
+     "stalls_gt32ms": 8,
+     "moved_px": 600,
+     "probe_hz": 9593.449164685453,
+     "samples": 6245,
+     "duration_s": 0.5
+    }
+   ],
+   "frames_median": 26,
+   "stalls_median": 7,
+   "interval_p95_median": 41.05519799486501,
+   "moved_px": [
+    600,
+    600,
+    600,
+    600,
+    600
+   ]
+  }
+ },
+ "M8": {
+  "input_to_photon_ms": {
+   "n": 50,
+   "p50": 22.706708001351217,
+   "p95": 24.200578998716082,
+   "min": 14.004303004185203,
+   "max": 31.900182002573274,
+   "mean": 22.485644800035516
+  },
+  "misses": 0,
+  "clicks": 50,
+  "probe": "8x8 centre of the app's 64x64 #probe patch, polled as fast as XGetImage returns"
+ },
+ "M9": {
+  "M9a": {
+   "shell_js": {
+    "task_ms_per_op": 0.21101999999999996,
+    "metrics_delta": {
+     "TaskDuration": 0.06330599999999999,
+     "ScriptDuration": 0.0,
+     "LayoutDuration": 0.013012,
+     "RecalcStyleDuration": 0.013166999999999998,
+     "JSHeapUsedSize": 1133456
+    },
+    "note": "CDP Performance.getMetrics TaskDuration \u2014 NOT like-for-like with Python CPU"
+   }
+  },
+  "M9b": {
+   "3apps": {},
+   "10apps": {}
+  }
+ },
+ "F": {
+  "F3a_minimize_restore_x2": {
+   "pass": true
+  },
+  "F3": {
+   "pass": true,
+   "evidence": {
+    "chip": "EVAL \"clicked\"",
+    "restored": true,
+    "active": true,
+    "minimized_listed": true
+   }
+  },
+  "F4": {
+   "pass": true,
+   "evidence": {
+    "sticky_note_yellow_px": 9572,
+    "minimized_by_button": true,
+    "maximized_geom": {
+     "x": 0,
+     "y": 30,
+     "w": 1280,
+     "h": 770,
+     "mapped": true,
+     "screen": 0
+    },
+    "maximized_by_button": true,
+    "restored_geom": {
+     "x": 126,
+     "y": 102,
+     "w": 720,
+     "h": 520,
+     "mapped": true,
+     "screen": 0
+    },
+    "restored_by_button": true
+   },
+   "note": "close (\u2715) verified separately via the close op at the end of the run"
+  },
+  "F2": {
+   "pass": false,
+   "evidence": {
+    "pid": 2120912,
+    "x_window": "0x1c00009",
+    "frame_delta": [
+     2,
+     17
+    ],
+    "in_shell_window_list": false
+   },
+   "visible": true
+  },
+  "F5": {
+   "pass": false,
+   "evidence": {
+    "minimized_listed": null
+   }
+  },
+  "F1": {
+   "pass": false,
+   "evidence": {
+    "reply": "UNSUPPORTED",
+    "before": {
+     "x": 126,
+     "y": 102,
+     "w": 720,
+     "h": 520,
+     "mapped": true,
+     "screen": 0
+    }
+   }
+  },
+  "F6": {
+   "pass": true,
+   "evidence": {
+    "result": "EVAL \"opened:1 {\\\"type\\\":\\\"app\\\",\\\"prompt\\\":\\\"bench app vibe (vibe-test.html)\\\",\\\"app_id\\\":\\\"bench-vibe\\\"}\""
+   },
+   "note": "DOM overlay inside the desktop page; z-index 55 over DOM windows"
+  },
+  "F7": {
+   "pass": true,
+   "evidence": {
+    "result": "EVAL [\"http://127.0.0.1:1337/web/bench-town-news\", true]"
+   }
+  },
+  "F8": {
+   "pass": true,
+   "evidence": {
+    "ask": "ok",
+    "store": "ok",
+    "hw": "ok",
+    "image": "ok"
+   }
+  },
+  "F9": {
+   "pass": true,
+   "evidence": {
+    "blocked": "1",
+    "detail": "{\"origin\":\"null\",\"rel\":\"blocked: Failed to fetch\",\"abs\":\"blocked: Failed to fetch\"}"
+   }
+  },
+  "F11": {
+   "pass": false,
+   "evidence": {
+    "hang_beacon": true,
+    "a1_frames_changed_2s": 0,
+    "again_0.5s": 0,
+    "close_hung_app": true
+   }
+  },
+  "F10": {
+   "pass": false,
+   "evidence": {
+    "decorated_windows": [
+     {
+      "title": "kairos-game: stub (pygame)",
+      "frame_minus_client": [
+       2,
+       17
+      ]
+     }
+    ],
+    "override_windows_after_rightclick": [
+     [
+      8388652,
+      404,
+      396,
+      "",
+      2116955
+     ]
+    ],
+    "wm_menus": [],
+    "browser_context_menu": [
+     [
+      8388652,
+      404,
+      396,
+      "",
+      2116955
+     ]
+    ],
+    "screenshots": 6
+   },
+   "browser_context_menu": true,
+   "note": "structural check + saved frames; Chromium's own context menu is reported, not gated"
+  },
+  "F12": {
+   "pass": null,
+   "evidence": "host: NVIDIA is vfio-bound \u2014 not measurable"
+  },
+  "close_all": {
+   "closed": 10,
+   "of": 10
+  }
+ },
+ "notes": [],
+ "screenshots": [
+  "shot-baseline-host-r2-ready.jpg",
+  "shot-baseline-host-r2-3apps.jpg",
+  "shot-baseline-host-r2-10apps.jpg",
+  "shot-baseline-host-r2-pygame.jpg",
+  "shot-baseline-host-r2-f11.jpg",
+  "shot-baseline-host-r2-f10-rightclick.jpg"
+ ],
+ "M2b_white_ms": [
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0
+ ],
+ "M2b_white_bar_ms": [
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0
+ ],
+ "driver_log_tail": [
+  [
+   "pids",
+   "PIDS 2116955 2116967 2116900",
+   3.7710000469814986e-05
+  ],
+  [
+   "raise bench-a1-1",
+   "OK 1789044860778 [\"167\", true]",
+   0.0005721609995816834
+  ],
+  [
+   "raise bench-a1-2",
+   "OK 1789044860779 [\"168\", true]",
+   0.0005504299988388084
+  ],
+  [
+   "raise bench-a1-3",
+   "OK 1789044860779 [\"169\", true]",
+   0.00041203099681297317
+  ],
+  [
+   "raise bench-a1-4",
+   "OK 1789044860779 [\"170\", true]",
+   0.0003430119977565482
+  ],
+  [
+   "minimize bench-a1-1",
+   "OK 1789044882810 [true, 1]",
+   0.0012322170005063526
+  ],
+  [
+   "minimize bench-a1-2",
+   "OK 1789044882811 [true, 2]",
+   0.0007345850026467815
+  ],
+  [
+   "minimize bench-a1-3",
+   "OK 1789044882811 [true, 3]",
+   0.000614270000369288
+  ],
+  [
+   "minimize bench-a1-4",
+   "OK 1789044882812 [true, 4]",
+   0.000723664001270663
+  ],
+  [
+   "restore bench-a1-1",
+   "OK 1789044904839 [\"171\", true]",
+   0.0008364050008822232
+  ],
+  [
+   "restore bench-a1-2",
+   "OK 1789044904841 [\"172\", true]",
+   0.0016484759980812669
+  ],
+  [
+   "restore bench-a1-3",
+   "OK 1789044904841 [\"173\", true]",
+   0.0003508869995130226
+  ],
+  [
+   "restore bench-a1-4",
+   "OK 1789044904842 [\"174\", true]",
+   0.00034138900082325563
+  ],
+  [
+   "windows",
+   "WINDOWS [{\"id\": \"win2\", \"title\": \"bench a1 1\", \"app\": \"bench-a1-1\", \"kind\": \"app\", \"minimized\": false, \"active\": false}, {\"id\": \"win3\", \"title\": \"bench a2 1\", \"app\": \"bench-a2-1\", \"kind\": \"app\", \"minimized\": false, \"active\": false}, {\"id\": \"win4\", \"title\": \"bench a3 1\", \"app\": \"bench-a3-1\", \"kind\": \"app\", \"minimized\": false, \"active\": false}, {\"id\": \"win5\", \"title\": \"bench a1 2\", \"app\": \"bench-a1-2\", \"kind\": \"app\", \"minimized\": false, \"active\": false}, {\"id\": \"win6\", \"title\": \"bench a2 2\", \"app\": \"bench-a2-2\", \"kind\": \"app\", \"minimized\": false, \"active\": false}, {\"id\": \"win7\", \"title\": \"bench a3 2\", \"app\": \"bench-a3-2\", \"kind\": \"app\", \"minimized\": false, \"active\": false}, {\"id\": \"win8\", \"title\": \"bench a1 3\", \"app\": \"bench-a1-3\", \"kind\": \"app\", \"minimized\": false, \"active\": false}, {\"id\": \"win9\", \"title\": \"bench a2 3\", \"app\": \"bench-a2-3\", \"kind\": \"app\", \"minimized\": false, \"active\": false}, {\"id\": \"win10\", \"title\": \"bench a3 3\", \"app\": \"bench-a3-3\", \"kind\": \"app\", \"minimized\": false, \"active\": false}, {\"id\": \"win11\", \"title\": \"bench a1 4\", \"app\": \"bench-a1-4\", \"kind\": \"app\", \"minimized\": false, \"active\": true}]",
+   0.0009846829998423345
+  ],
+  [
+   "geom bench-a1-1",
+   "GEOM 126 102 720 520 1 0",
+   0.0006734700000379235
+  ],
+  [
+   "toscreen bench-a1-1 1",
+   "UNSUPPORTED",
+   2.19409994315356e-05
+  ],
+  [
+   "eval (async () => { const i = document.querySelector('#ds-input'); i.value = 'vibe'; i.dispatchEvent(new Event('input')); await new Promise(r => setTimeout(r, 900)); const it = document.querySelector('#ds-results .ds-item'); if (!it) return 'noresult'; const n0 = windows.size; runAction(it._action); await new Promise(r => setTimeout(r, 800)); return 'opened:' + (windows.size - n0) + ' ' + JSON.stringify(it._action); })()",
+   "EVAL \"opened:1 {\\\"type\\\":\\\"app\\\",\\\"prompt\\\":\\\"bench app vibe (vibe-test.html)\\\",\\\"app_id\\\":\\\"bench-vibe\\\"}\"",
+   1.70230428299692
+  ],
+  [
+   "close bench-vibe",
+   "OK 1789044907999 [true]",
+   0.001733083998260554
+  ],
+  [
+   "eval (async () => { const w = await openPage('bench-town-news'); await new Promise(r => setTimeout(r, 2500)); return [w.iframe.src, w.isPage]; })()",
+   "EVAL [\"http://127.0.0.1:1337/web/bench-town-news\", true]",
+   2.5028407010031515
+  ],
+  [
+   "open bench-vibe 234 102 720 520",
+   "WIN bench-vibe 1789044910510 win14 {'t': 1789044910510, 'x': 234, 'y': 102, 'w': 720, 'h': 520, 'id': 'win14'}",
+   0.007724458002485335
+  ],
+  [
+   "close bench-vibe",
+   "OK 1789044914313 [true]",
+   0.001619681999727618
+  ],
+  [
+   "open bench-f9 270 134 720 520",
+   "WIN bench-f9 1789044914321 win15 {'t': 1789044914321, 'x': 270, 'y': 134, 'w': 720, 'h': 520, 'id': 'win15'}",
+   0.007473979996575508
+  ],
+  [
+   "close bench-f9",
+   "OK 1789044914624 [true]",
+   0.0019462330019450746
+  ],
+  [
+   "geom bench-a1-1",
+   "GEOM 126 102 720 520 1 0",
+   0.000643824998405762
+  ],
+  [
+   "raise bench-a1-1",
+   "OK 1789044914625 [\"183\", true]",
+   0.0003464780020294711
+  ],
+  [
+   "open bench-hang 426 302 400 300",
+   "WIN bench-hang 1789044914633 win16 {'t': 1789044914633, 'x': 426, 'y': 302, 'w': 400, 'h': 300, 'id': 'win16'}",
+   0.008958838996477425
+  ],
+  [
+   "close bench-hang",
+   "OK 1789044919284 [true]",
+   0.0025230729952454567
+  ],
+  [
+   "pids",
+   "PIDS 2116955 2116967 2116900",
+   0.00010332300007576123
+  ],
+  [
+   "close bench-a1-1",
+   "OK 1789044920140 [true]",
+   0.0018834860020433553
+  ],
+  [
+   "close bench-a2-1",
+   "OK 1789044920141 [true]",
+   0.0009421840004506521
+  ],
+  [
+   "close bench-a3-1",
+   "OK 1789044920142 [true]",
+   0.0008086939997156151
+  ],
+  [
+   "close bench-a1-2",
+   "OK 1789044920143 [true]",
+   0.0007496229954995215
+  ],
+  [
+   "close bench-a2-2",
+   "OK 1789044920144 [true]",
+   0.00078715400013607
+  ],
+  [
+   "close bench-a3-2",
+   "OK 1789044920144 [true]",
+   0.000751307001337409
+  ],
+  [
+   "close bench-a1-3",
+   "OK 1789044920145 [true]",
+   0.0007501950021833181
+  ],
+  [
+   "close bench-a2-3",
+   "OK 1789044920146 [true]",
+   0.0007683980002184398
+  ],
+  [
+   "close bench-a3-3",
+   "OK 1789044920147 [true]",
+   0.0008507620004820637
+  ],
+  [
+   "close bench-a1-4",
+   "OK 1789044920148 [true]",
+   0.0008206959973904304
+  ],
+  [
+   "pids",
+   "PIDS 2116955 2116967 2116900",
+   8.656200225232169e-05
+  ],
+  [
+   "stop",
+   "BYE",
+   1.1642219709974597
+  ]
+ ],
+ "finished": "2026-09-10 14:55:26"
+}

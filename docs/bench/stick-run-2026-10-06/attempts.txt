@@ -1,0 +1,3 @@
+#1  started 2026-10-06 18:28:27  kernel 6.12.90+deb13.1-amd64  root /dev/sda2  esp /dev/sda1
+#1  boot log written 2026-10-06 18:32:01  verdict FAIL (kiosk: no kiosk Chromium running — see X LOG (.xinitrc output))
+#1  shutdown log written 2026-10-06 18:33:17  verdict WARN

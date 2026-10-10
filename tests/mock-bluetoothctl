@@ -1,0 +1,317 @@
+#!/usr/bin/env python3
+"""Mock bluetoothctl [R55, R78] — a small STATEFUL bluez for kernel/hw.py's tests.
+
+State: JSON in $MOCK_BT_STATE (default $VIBEOS_DIR/mock-bt.json), created from WORLD on first use;
+a test writes its own world there. Two modes, like the real tool:
+  * one-shot (`bluetoothctl show | devices [Paired|Connected] | info MAC | power on|off |
+    connect|disconnect|remove|trust MAC`): one answer, exit code 0/1;
+  * interactive (no arguments, stdin = the pty kernel/hw.py's agent opens): `agent X`,
+    `default-agent`, `power on`, `scan on|off` (prints [NEW]/[CHG] events for the devices in
+    range — cached devices that are out of range print nothing), `pair MAC` (per device
+    "pairing": justworks | confirm (a "Confirm passkey … (yes/no):" prompt answered on stdin) |
+    display (a keyboard: "[agent] Passkey: NNNNNN", typed by the "user" after `type_after` s) |
+    fail), `trust MAC`, `connect MAC`.
+A wlan/bluetooth rfkill block in $VIBEOS_SYSFS powers the controller off ("off-blocked"), the
+world's "bluetoothd": false answers "Waiting to connect to bluetoothd...". Every call is appended
+to $MOCK_BT_LOG (if set)."""
+import fcntl
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+STATE = Path(os.environ.get("MOCK_BT_STATE") or Path(os.environ.get("VIBEOS_DIR", "/tmp/kairos-test")) / "mock-bt.json")
+SYSFS = Path(os.environ.get("VIBEOS_SYSFS", "/sys"))
+WORLD = {
+    "bluetoothd": True,
+    "controller": {"mac": "AA:BB:CC:DD:EE:FF", "name": "testrig", "powered": True},
+    "devices": [
+        {"mac": "11:22:33:44:55:66", "name": "Mock Headphones", "icon": "audio-headphones", "paired": True,
+         "trusted": True, "connected": True, "battery": 80, "in_range": True, "rssi": -50},
+        {"mac": "77:88:99:AA:BB:CC", "name": "Mock Speaker", "icon": "audio-card", "paired": False,
+         "trusted": False, "connected": False, "in_range": False, "known": True},
+    ],
+}
+
+
+def out(text="", end="\n"):
+    sys.stdout.write(text + end)
+    sys.stdout.flush()
+
+
+def blocked():
+    for d in sorted(SYSFS.glob("class/rfkill/rfkill*")):
+        try:
+            if (d / "type").read_text().strip() == "bluetooth" and "1" in ((d / "soft").read_text().strip(),
+                                                                         (d / "hard").read_text().strip()):
+                return True
+        except OSError:
+            pass
+    return False
+
+
+class World:
+    def __enter__(self):
+        STATE.parent.mkdir(parents=True, exist_ok=True)
+        self.lk = open(STATE.with_suffix(".lock"), "w")
+        fcntl.flock(self.lk, fcntl.LOCK_EX)
+        try:
+            self.w = json.loads(STATE.read_text())
+        except (OSError, ValueError):
+            self.w = json.loads(json.dumps(WORLD))
+        return self.w
+
+    def __exit__(self, *a):
+        STATE.write_text(json.dumps(self.w, indent=1))
+        fcntl.flock(self.lk, fcntl.LOCK_UN)
+        self.lk.close()
+
+
+def dev(w, mac):
+    return next((d for d in w["devices"] if d["mac"].upper() == (mac or "").upper()), None)
+
+
+def powered(w):
+    return bool(w.get("controller")) and w["controller"].get("powered", True) and not blocked()
+
+
+def show(w):
+    c = w.get("controller")
+    if not c:
+        out("No default controller available")
+        return 1
+    out(f"Controller {c['mac']} (public)\n\tManufacturer: 0x0002 (2)\n\tName: {c['name']}\n\tAlias: {c['name']}"
+        f"\n\tPowered: {'yes' if powered(w) else 'no'}"
+        f"\n\tPowerState: {'on' if powered(w) else ('off-blocked' if blocked() else 'off')}"
+        f"\n\tDiscoverable: no\n\tPairable: yes\n\tDiscovering: no")
+    return 0
+
+
+def info(w, mac):
+    d = dev(w, mac)
+    if d is None or not (d.get("known") or d.get("paired") or d.get("seen")):
+        out(f"Device {mac} not available")
+        return 1
+    alias = d.get("name") or d["mac"].replace(":", "-")
+    lines = [f"Device {d['mac']} (public)"]
+    if d.get("name"):
+        lines.append(f"\tName: {d['name']}")
+    lines += [f"\tAlias: {alias}", f"\tIcon: {d.get('icon', '')}" if d.get("icon") else "\tClass: 0x00000000",
+              f"\tPaired: {'yes' if d.get('paired') else 'no'}", f"\tBonded: {'yes' if d.get('paired') else 'no'}",
+              f"\tTrusted: {'yes' if d.get('trusted') else 'no'}", "\tBlocked: no",
+              f"\tConnected: {'yes' if d.get('connected') else 'no'}", "\tLegacyPairing: no"]
+    if d.get("in_range") and d.get("rssi") is not None:
+        r = d["rssi"]
+        lines.append(f"\tRSSI: 0x{r & 0xffffffff:08x} ({r})")
+    if d.get("battery") is not None and d.get("connected"):
+        lines.append(f"\tBattery Percentage: 0x{d['battery']:02x} ({d['battery']})")
+    out("\n".join(lines))
+    return 0
+
+
+def oneshot(args):
+    with World() as w:
+        if not w.get("bluetoothd", True):
+            out("Waiting to connect to bluetoothd...")
+            return 1
+        cmd = args[0] if args else ""
+        if cmd == "show":
+            return show(w)
+        if cmd == "devices":
+            flt = args[1] if len(args) > 1 else None
+            for d in w["devices"]:
+                if not (d.get("known") or d.get("paired") or d.get("seen")):
+                    continue
+                if flt == "Paired" and not d.get("paired"):
+                    continue
+                if flt == "Connected" and not d.get("connected"):
+                    continue
+                if flt == "Trusted" and not d.get("trusted"):
+                    continue
+                out(f"Device {d['mac']} {d.get('name') or d['mac'].replace(':', '-')}")
+            return 0
+        if cmd == "info":
+            return info(w, args[1] if len(args) > 1 else "")
+        if cmd == "power":
+            on = (args[1:] or ["on"])[0] == "on"
+            if on and blocked():
+                out("Failed to set power on: org.bluez.Error.Blocked")
+                return 1
+            if not w.get("controller"):
+                out("No default controller available")
+                return 1
+            w["controller"]["powered"] = on
+            out(f"Changing power {'on' if on else 'off'} succeeded")
+            return 0
+        if cmd in ("connect", "disconnect", "remove", "trust", "untrust", "pair"):
+            return device_cmd(w, cmd, args[1] if len(args) > 1 else "", oneshot=True)
+        if cmd == "scan":
+            out("Discovery started")
+            return 0
+        out(f"Invalid command in menu main: {cmd}")
+        return 1
+
+
+def device_cmd(w, cmd, mac, oneshot=False):
+    d = dev(w, mac)
+    if d is None or not (d.get("known") or d.get("paired") or d.get("seen")):
+        out(f"Device {mac} not available")
+        return 1
+    if cmd == "connect":
+        out(f"Attempting to connect to {d['mac']}")
+        if not powered(w) or not d.get("in_range"):
+            out("Failed to connect: org.bluez.Error.Failed br-connection-page-timeout")
+            return 1
+        if not d.get("paired") and d.get("needs_pairing", True):
+            out("Failed to connect: org.bluez.Error.Failed br-connection-create-socket")
+            return 1
+        d["connected"] = True
+        out(f"[CHG] Device {d['mac']} Connected: yes")
+        out("Connection successful")
+        return 0
+    if cmd == "disconnect":
+        out(f"Attempting to disconnect from {d['mac']}")
+        d["connected"] = False
+        out(f"[CHG] Device {d['mac']} Connected: no")
+        out("Successful disconnected")
+        return 0
+    if cmd == "remove":
+        d.update(paired=False, trusted=False, connected=False, known=bool(d.get("in_range")))
+        out(f"[DEL] Device {d['mac']} {d.get('name') or ''}".rstrip())
+        out("Device has been removed")
+        return 0
+    if cmd in ("trust", "untrust"):
+        d["trusted"] = cmd == "trust"
+        out(f"[CHG] Device {d['mac']} Trusted: {'yes' if d['trusted'] else 'no'}")
+        out(f"Changing {d['mac']} {'trust' if d['trusted'] else 'untrust'} succeeded")
+        return 0
+    if cmd == "pair":
+        out(f"Attempting to pair with {d['mac']}")
+        return 0 if oneshot else None
+    return 1
+
+
+def interactive():
+    """the pty conversation hw.py's _BtAgent has with bluetoothctl"""
+    with World() as w:
+        if not w.get("bluetoothd", True):
+            out("Waiting to connect to bluetoothd...")
+        else:
+            if w.get("controller"):
+                out(f"[NEW] Controller {w['controller']['mac']} {w['controller']['name']} [default]")
+            for d in w["devices"]:
+                if d.get("known") or d.get("paired") or d.get("seen"):
+                    out(f"[NEW] Device {d['mac']} {d.get('name') or d['mac'].replace(':', '-')}")
+    out("[bluetooth]# ", end="")
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            return 0
+        cmd = line.strip().split()
+        if not cmd:
+            out("[bluetooth]# ", end="")
+            continue
+        if cmd[0] in ("quit", "exit"):
+            return 0
+        with World() as w:
+            later = run(w, cmd)
+        if later:                       # pairing waits (an answer, the user typing) happen unlocked
+            later()
+        out("[bluetooth]# ", end="")
+
+
+def run(w, cmd):
+    c, a = cmd[0], cmd[1:]
+    if c == "agent":
+        out("Agent registered")
+    elif c == "default-agent":
+        out("Default agent request successful")
+    elif c == "power":
+        on = (a or ["on"])[0] == "on"
+        if on and blocked():
+            out("Failed to set power on: org.bluez.Error.Blocked")
+        else:
+            w["controller"]["powered"] = on
+            out(f"Changing power {'on' if on else 'off'} succeeded")
+    elif c == "scan":
+        if (a or ["on"])[0] == "on":
+            if not powered(w):
+                out("Failed to start discovery: org.bluez.Error.NotReady")
+                return
+            out("Discovery started")
+            out(f"[CHG] Controller {w['controller']['mac']} Discovering: yes")
+            for d in w["devices"]:
+                if not d.get("in_range"):
+                    continue
+                r = d.get("rssi", -70)
+                if d.get("known") or d.get("paired") or d.get("seen"):
+                    out(f"[CHG] Device {d['mac']} RSSI: 0x{r & 0xffffffff:08x} ({r})")
+                else:
+                    out(f"[NEW] Device {d['mac']} {d.get('name') or d['mac'].replace(':', '-')}")
+                    d["seen"] = True
+        else:
+            out("Discovery stopped")
+            out(f"[CHG] Controller {w['controller']['mac']} Discovering: no")
+    elif c == "pair":
+        mac = a[0] if a else ""
+        d = dev(w, mac)
+        if d is None or not (d.get("known") or d.get("paired") or d.get("seen")):
+            out(f"Device {mac} not available")
+            return
+        out(f"Attempting to pair with {d['mac']}")
+        if not d.get("in_range"):
+            time.sleep(0.2)
+            out("Failed to pair: org.bluez.Error.ConnectionAttemptFailed")
+            return
+        mode, mac = d.get("pairing", "justworks"), d["mac"]
+        if mode == "fail":
+            out("Failed to pair: org.bluez.Error.AuthenticationFailed")
+            return None
+        if mode == "confirm":
+            out(f"[CHG] Device {mac} Connected: yes")
+            out(f"[agent] Confirm passkey {d.get('passkey', '123456')} (yes/no): ", end="")
+        if mode == "display":
+            out(f"[CHG] Device {mac} Connected: yes")
+            out(f"[agent] Passkey: {d.get('passkey', '482913')}")
+        wait = d.get("type_after")
+
+        def finish():
+            if mode == "confirm" and sys.stdin.readline().strip() != "yes":
+                out("Failed to pair: org.bluez.Error.AuthenticationRejected")
+                return
+            if mode == "display":
+                if wait is None:
+                    time.sleep(3)
+                    out("Failed to pair: org.bluez.Error.AuthenticationTimeout")
+                    return
+                time.sleep(float(wait))
+            with World() as w2:
+                d2 = dev(w2, mac)
+                d2.update(paired=True, connected=True, known=True)
+            out(f"[CHG] Device {mac} Bonded: yes")
+            out(f"[CHG] Device {mac} Paired: yes")
+            out("Pairing successful")
+        return finish
+    elif c in ("trust", "untrust", "connect", "disconnect", "remove"):
+        device_cmd(w, c, a[0] if a else "")
+    elif c == "info":
+        info(w, a[0] if a else "")
+    elif c == "show":
+        show(w)
+    else:
+        out(f"Invalid command in menu main: {c}")
+
+
+def main():
+    if os.environ.get("MOCK_BT_LOG"):
+        with open(os.environ["MOCK_BT_LOG"], "a") as f:
+            f.write("\t".join(sys.argv[1:]) + "\n")
+    args = [x for x in sys.argv[1:] if x != "--timeout" and not x.isdigit()]
+    if not args:
+        return interactive()
+    return oneshot(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,24 @@
+==================== kAIrOS boot log (boot) ====================
+############ SUMMARY / VERDICT ############
+VERDICT: WARN — boot OK with 1 warning(s)
+ WARN boot_history  2 of the last boots died before writing a log (loop/panic/hang?) — see attempts below
+ PASS boot_target   graphical.target reached (system: running)
+ PASS failed_units  no failed units [R63]
+ PASS hung_units    nothing stuck in activating
+ PASS rootfs_grow   root grown on first boot (58G total, 7.1G free)
+ PASS gpu_driver    0000:00:05.0 0x1af4 driver=virtio-pci boot_vga=1; 
+ PASS firmware      no firmware load failures in dmesg
+ PASS modules       no module load failures in the journal
+ PASS xorg          X server up on :0 (attempts this boot: 1)
+ PASS kernel_api    answering on :1337 (kairos.service active)
+ PASS kiosk         1 kiosk Chromium instance(s) alive
+ PASS network       enp0s4 10.0.2.15/24; 
+ PASS esp           EFI partition mounted at /boot/efi via fstab
+boot attempts (early breadcrumb, newest last):
+   #7  started 2026-10-06 14:48:29  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+   #7  boot log written 2026-10-06 14:48:36  verdict WARN
+   #7  shutdown log written 2026-10-06 14:51:09  verdict FAIL (xorg: X failed to start (1 attempt(s) this boot) — see X LOG / Xorg.0.log below)
+   #8  started 2026-10-06 14:51:18  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+   #8  DID NOT COMPLETE — died before a log was written (panic/hang/loop?)
+   #9  started 2026-10-06 14:55:33  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+###########################################

@@ -1,0 +1,522 @@
+[
+ {
+  "name": "krea_old_sfw1",
+  "model": "krea_old",
+  "rc": 0,
+  "wall_s": 37.4,
+  "peak_vram_mib": 7395,
+  "cond_s": "2.84",
+  "sampling_s": "26.88",
+  "decode_s": "4.85"
+ },
+ {
+  "name": "krea_old_sfw2",
+  "model": "krea_old",
+  "rc": 0,
+  "wall_s": 48.5,
+  "peak_vram_mib": 7395,
+  "cond_s": "2.75",
+  "sampling_s": "39.02",
+  "decode_s": "4.59"
+ },
+ {
+  "name": "krea_old_sfw3",
+  "model": "krea_old",
+  "rc": 0,
+  "wall_s": 35.0,
+  "peak_vram_mib": 7397,
+  "cond_s": "1.80",
+  "sampling_s": "26.39",
+  "decode_s": "4.62"
+ },
+ {
+  "name": "krea_old_sfw4",
+  "model": "krea_old",
+  "rc": 0,
+  "wall_s": 34.9,
+  "peak_vram_mib": 7360,
+  "cond_s": "1.78",
+  "sampling_s": "25.79",
+  "decode_s": "5.15"
+ },
+ {
+  "name": "krea_old_sfw5",
+  "model": "krea_old",
+  "rc": 0,
+  "wall_s": 33.7,
+  "peak_vram_mib": 7421,
+  "cond_s": "1.59",
+  "sampling_s": "25.49",
+  "decode_s": "4.57"
+ },
+ {
+  "name": "krea_new_sfw1",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 54.7,
+  "peak_vram_mib": 7365,
+  "cond_s": "2.52",
+  "sampling_s": "40.63",
+  "decode_s": "9.11"
+ },
+ {
+  "name": "krea_new_sfw2",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 56.0,
+  "peak_vram_mib": 7461,
+  "cond_s": "2.43",
+  "sampling_s": "40.58",
+  "decode_s": "9.76"
+ },
+ {
+  "name": "krea_new_sfw3",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 55.8,
+  "peak_vram_mib": 7357,
+  "cond_s": "3.12",
+  "sampling_s": "40.58",
+  "decode_s": "9.71"
+ },
+ {
+  "name": "krea_new_sfw4",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 54.4,
+  "peak_vram_mib": 7353,
+  "cond_s": "2.40",
+  "sampling_s": "40.42",
+  "decode_s": "9.14"
+ },
+ {
+  "name": "krea_new_sfw5",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 55.4,
+  "peak_vram_mib": 7363,
+  "cond_s": "2.96",
+  "sampling_s": "40.61",
+  "decode_s": "9.32"
+ },
+ {
+  "name": "krea_new_a1",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 54.3,
+  "peak_vram_mib": 7336,
+  "cond_s": "2.39",
+  "sampling_s": "39.71",
+  "decode_s": "9.72"
+ },
+ {
+  "name": "krea_new_a2",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 54.4,
+  "peak_vram_mib": 7331,
+  "cond_s": "3.07",
+  "sampling_s": "39.58",
+  "decode_s": "8.75"
+ },
+ {
+  "name": "krea_new_a3",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 53.3,
+  "peak_vram_mib": 7431,
+  "cond_s": "2.40",
+  "sampling_s": "39.32",
+  "decode_s": "9.15"
+ },
+ {
+  "name": "krea_new_a4",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 55.0,
+  "peak_vram_mib": 7331,
+  "cond_s": "2.44",
+  "sampling_s": "40.28",
+  "decode_s": "9.15"
+ },
+ {
+  "name": "krea_new_a5",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 55.2,
+  "peak_vram_mib": 7329,
+  "cond_s": "2.48",
+  "sampling_s": "41.15",
+  "decode_s": "9.15"
+ },
+ {
+  "name": "zimage_a1",
+  "model": "zimage",
+  "rc": 0,
+  "wall_s": 29.1,
+  "peak_vram_mib": 4645,
+  "cond_s": "3.40",
+  "sampling_s": "19.47",
+  "decode_s": "4.67"
+ },
+ {
+  "name": "zimage_a2",
+  "model": "zimage",
+  "rc": 0,
+  "wall_s": 26.7,
+  "peak_vram_mib": 4641,
+  "cond_s": "1.40",
+  "sampling_s": "18.52",
+  "decode_s": "5.32"
+ },
+ {
+  "name": "zimage_a3",
+  "model": "zimage",
+  "rc": 0,
+  "wall_s": 26.8,
+  "peak_vram_mib": 4648,
+  "cond_s": "2.16",
+  "sampling_s": "18.06",
+  "decode_s": "5.32"
+ },
+ {
+  "name": "zimage_a4",
+  "model": "zimage",
+  "rc": 0,
+  "wall_s": 26.0,
+  "peak_vram_mib": 4645,
+  "cond_s": "1.41",
+  "sampling_s": "18.02",
+  "decode_s": "4.62"
+ },
+ {
+  "name": "zimage_a5",
+  "model": "zimage",
+  "rc": 0,
+  "wall_s": 25.7,
+  "peak_vram_mib": 4645,
+  "cond_s": "1.39",
+  "sampling_s": "17.94",
+  "decode_s": "4.62"
+ },
+ {
+  "name": "chroma_a1",
+  "model": "chroma",
+  "rc": 0,
+  "wall_s": 242.2,
+  "peak_vram_mib": 6501,
+  "cond_s": "18.95",
+  "sampling_s": "217.93",
+  "decode_s": "4.57"
+ },
+ {
+  "name": "chroma_a2",
+  "model": "chroma",
+  "rc": 0,
+  "wall_s": 249.4,
+  "peak_vram_mib": 6500,
+  "cond_s": "18.59",
+  "sampling_s": "225.49",
+  "decode_s": "4.55"
+ },
+ {
+  "name": "chroma_a3",
+  "model": "chroma",
+  "rc": 0,
+  "wall_s": 244.2,
+  "peak_vram_mib": 6487,
+  "cond_s": "19.26",
+  "sampling_s": "218.97",
+  "decode_s": "5.20"
+ },
+ {
+  "name": "chroma_a4",
+  "model": "chroma",
+  "rc": 0,
+  "wall_s": 244.8,
+  "peak_vram_mib": 6484,
+  "cond_s": "18.69",
+  "sampling_s": "219.86",
+  "decode_s": "4.63"
+ },
+ {
+  "name": "chroma_a5",
+  "model": "chroma",
+  "rc": 0,
+  "wall_s": 244.5,
+  "peak_vram_mib": 6493,
+  "cond_s": "18.68",
+  "sampling_s": "219.94",
+  "decode_s": "4.55"
+ },
+ {
+  "name": "zimage_s1",
+  "model": "zimage",
+  "rc": 0,
+  "wall_s": 27.0,
+  "peak_vram_mib": 4647,
+  "cond_s": "1.40",
+  "sampling_s": "19.14",
+  "decode_s": "5.23"
+ },
+ {
+  "name": "zimage_s2",
+  "model": "zimage",
+  "rc": 0,
+  "wall_s": 26.6,
+  "peak_vram_mib": 4645,
+  "cond_s": "1.40",
+  "sampling_s": "18.74",
+  "decode_s": "5.26"
+ },
+ {
+  "name": "zimage_s3",
+  "model": "zimage",
+  "rc": 0,
+  "wall_s": 26.7,
+  "peak_vram_mib": 4649,
+  "cond_s": "1.44",
+  "sampling_s": "19.56",
+  "decode_s": "4.57"
+ },
+ {
+  "name": "krea_new_s1",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 57.1,
+  "peak_vram_mib": 7359,
+  "cond_s": "2.47",
+  "sampling_s": "42.87",
+  "decode_s": "8.67"
+ },
+ {
+  "name": "krea_new_s2",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 52.6,
+  "peak_vram_mib": 7445,
+  "cond_s": "2.51",
+  "sampling_s": "39.01",
+  "decode_s": "8.56"
+ },
+ {
+  "name": "krea_new_s3",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 52.9,
+  "peak_vram_mib": 7363,
+  "cond_s": "2.46",
+  "sampling_s": "39.33",
+  "decode_s": "8.57"
+ },
+ {
+  "name": "zimage-seed7_a1",
+  "model": "zimage",
+  "rc": 0,
+  "wall_s": 34.1,
+  "peak_vram_mib": 4644,
+  "cond_s": "5.02",
+  "sampling_s": "22.77",
+  "decode_s": "4.55"
+ },
+ {
+  "name": "zimage-seed7_a2",
+  "model": "zimage",
+  "rc": 0,
+  "wall_s": 24.9,
+  "peak_vram_mib": 4640,
+  "cond_s": "1.40",
+  "sampling_s": "17.76",
+  "decode_s": "4.55"
+ },
+ {
+  "name": "zimage-seed7_a3",
+  "model": "zimage",
+  "rc": 0,
+  "wall_s": 24.9,
+  "peak_vram_mib": 4640,
+  "cond_s": "1.42",
+  "sampling_s": "17.76",
+  "decode_s": "4.55"
+ },
+ {
+  "name": "zimage-seed7_a4",
+  "model": "zimage",
+  "rc": 0,
+  "wall_s": 25.3,
+  "peak_vram_mib": 4640,
+  "cond_s": "1.42",
+  "sampling_s": "18.12",
+  "decode_s": "4.55"
+ },
+ {
+  "name": "zimage-seed7_a5",
+  "model": "zimage",
+  "rc": 0,
+  "wall_s": 24.9,
+  "peak_vram_mib": 4640,
+  "cond_s": "1.42",
+  "sampling_s": "17.76",
+  "decode_s": "4.55"
+ },
+ {
+  "name": "krea_new_t1",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 55.2,
+  "peak_vram_mib": 7422,
+  "cond_s": "2.40",
+  "sampling_s": "41.06",
+  "decode_s": "8.64"
+ },
+ {
+  "name": "krea_new_t2",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 53.1,
+  "peak_vram_mib": 7326,
+  "cond_s": "2.42",
+  "sampling_s": "39.53",
+  "decode_s": "8.58"
+ },
+ {
+  "name": "krea_new_t3",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 55.5,
+  "peak_vram_mib": 7426,
+  "cond_s": "2.44",
+  "sampling_s": "41.47",
+  "decode_s": "8.60"
+ },
+ {
+  "name": "krea_new_t4",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 56.5,
+  "peak_vram_mib": 7320,
+  "cond_s": "2.44",
+  "sampling_s": "42.96",
+  "decode_s": "8.60"
+ },
+ {
+  "name": "krea_new_q4_t1",
+  "model": "krea_new_q4",
+  "rc": 0,
+  "wall_s": 54.4,
+  "peak_vram_mib": 7322,
+  "cond_s": "2.04",
+  "sampling_s": "41.60",
+  "decode_s": "8.56"
+ },
+ {
+  "name": "krea_new_q4_t2",
+  "model": "krea_new_q4",
+  "rc": 0,
+  "wall_s": 52.2,
+  "peak_vram_mib": 7324,
+  "cond_s": "1.84",
+  "sampling_s": "39.50",
+  "decode_s": "8.61"
+ },
+ {
+  "name": "krea_new_q4_t3",
+  "model": "krea_new_q4",
+  "rc": 0,
+  "wall_s": 55.1,
+  "peak_vram_mib": 7326,
+  "cond_s": "2.63",
+  "sampling_s": "41.70",
+  "decode_s": "8.55"
+ },
+ {
+  "name": "krea_new_q4_t4",
+  "model": "krea_new_q4",
+  "rc": 0,
+  "wall_s": 54.8,
+  "peak_vram_mib": 7318,
+  "cond_s": "2.02",
+  "sampling_s": "41.17",
+  "decode_s": "9.27"
+ },
+ {
+  "name": "qwen_q2_encq4_t1",
+  "model": "qwen_q2_encq4",
+  "rc": 0,
+  "wall_s": 360.8,
+  "peak_vram_mib": 7480,
+  "cond_s": "6.07",
+  "sampling_s": "343.20",
+  "decode_s": "8.82"
+ },
+ {
+  "name": "qwen_q2_encq4_t2",
+  "model": "qwen_q2_encq4",
+  "rc": 0,
+  "wall_s": 355.6,
+  "peak_vram_mib": 7480,
+  "cond_s": "2.41",
+  "sampling_s": "341.71",
+  "decode_s": "8.66"
+ },
+ {
+  "name": "qwen_q2_encq4_t4",
+  "model": "qwen_q2_encq4",
+  "rc": 0,
+  "wall_s": 359.5,
+  "peak_vram_mib": 7480,
+  "cond_s": "5.93",
+  "sampling_s": "341.84",
+  "decode_s": "9.31"
+ },
+ {
+  "name": "qwen_q2_encq8_t1",
+  "model": "qwen_q2_encq8",
+  "rc": 0,
+  "wall_s": 368.9,
+  "peak_vram_mib": 7486,
+  "cond_s": "9.50",
+  "sampling_s": "345.87",
+  "decode_s": "8.85"
+ },
+ {
+  "name": "qwen_q2_encq8_t2",
+  "model": "qwen_q2_encq8",
+  "rc": 0,
+  "wall_s": 376.6,
+  "peak_vram_mib": 7488,
+  "cond_s": "12.38",
+  "sampling_s": "351.90",
+  "decode_s": "8.74"
+ },
+ {
+  "name": "qwen_q2_encq8_t4",
+  "model": "qwen_q2_encq8",
+  "rc": 0,
+  "wall_s": 368.7,
+  "peak_vram_mib": 7486,
+  "cond_s": "9.67",
+  "sampling_s": "345.33",
+  "decode_s": "9.06"
+ },
+ {
+  "name": "next_krea_new_t1",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 55.3,
+  "peak_vram_mib": 7043,
+  "cond_s": "3.90",
+  "sampling_s": "38.41",
+  "decode_s": "8.49"
+ },
+ {
+  "name": "next_krea_new_t4",
+  "model": "krea_new",
+  "rc": 0,
+  "wall_s": 54.1,
+  "peak_vram_mib": 7039,
+  "cond_s": "3.46",
+  "sampling_s": "38.76",
+  "decode_s": "8.42"
+ }
+]

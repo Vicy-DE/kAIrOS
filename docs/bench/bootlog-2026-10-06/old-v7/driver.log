@@ -1,0 +1,26 @@
+[16:38:23] === T1 kernel crash-loop
+[16:38:23] one-shot inject-kernel.conf + reboot
+[16:38:36] guest up
+[16:43:36] collected t1-kernel: README.txt attempts.txt boot-20261006-143451.json boot-20261006-143451.txt boot-20261006-143822.json boot-20261006-143822.txt boot-20261006-143831.json boot-20261006-143831.txt boot-20261006-143909.json boot-20261006-143909.txt boot-20261006-144000.json boot-20261006-144000.txt boot-20261006-144030.json boot-20261006-144030.txt boot-20261006-144032.json boot-20261006-144032.txt boot-20261006-144231.json boot-20261006-144231.txt early.txt latest.json latest.txt 
+[16:43:36] === T2 X fails
+[16:43:36] one-shot inject-x.conf + reboot
+[16:43:49] guest up
+[16:47:10] collected t2-x: README.txt attempts.txt boot-20261006-143909.json boot-20261006-143909.txt boot-20261006-144000.json boot-20261006-144000.txt boot-20261006-144030.json boot-20261006-144030.txt boot-20261006-144032.json boot-20261006-144032.txt boot-20261006-144231.json boot-20261006-144231.txt boot-20261006-144335.json boot-20261006-144335.txt boot-20261006-144359.json boot-20261006-144359.txt boot-20261006-144548.json boot-20261006-144548.txt early.txt latest.json latest.txt 
+[16:47:10] === T4 panic mid-boot
+[16:47:10] one-shot inject-panic.conf + reboot
+[16:48:22] power cycle (docker kill + start; OVMF vars kept)
+[16:48:38] guest up
+[16:51:09] collected t4-panic: README.txt attempts.txt boot-20261006-144030.json boot-20261006-144030.txt boot-20261006-144032.json boot-20261006-144032.txt boot-20261006-144231.json boot-20261006-144231.txt boot-20261006-144335.json boot-20261006-144335.txt boot-20261006-144359.json boot-20261006-144359.txt boot-20261006-144548.json boot-20261006-144548.txt boot-20261006-144708.json boot-20261006-144708.txt boot-20261006-144835.json boot-20261006-144835.txt early.txt latest.json latest.txt 
+[16:51:09] === T5 stalled boot
+[16:51:09] one-shot inject-stall.conf + reboot
+[16:51:22] guest up
+[16:55:23] collected t5-stall-during: README.txt attempts.txt boot-20261006-144032.json boot-20261006-144032.txt boot-20261006-144231.json boot-20261006-144231.txt boot-20261006-144335.json boot-20261006-144335.txt boot-20261006-144359.json boot-20261006-144359.txt boot-20261006-144548.json boot-20261006-144548.txt boot-20261006-144708.json boot-20261006-144708.txt boot-20261006-144835.json boot-20261006-144835.txt boot-20261006-145108.json boot-20261006-145108.txt early.txt inflight.txt latest.json latest.txt 
+[16:55:23] power cycle (docker kill + start; OVMF vars kept)
+[16:55:39] guest up
+[16:58:11] collected t5-stall-after: README.txt attempts.txt boot-20261006-144231.json boot-20261006-144231.txt boot-20261006-144335.json boot-20261006-144335.txt boot-20261006-144359.json boot-20261006-144359.txt boot-20261006-144548.json boot-20261006-144548.txt boot-20261006-144708.json boot-20261006-144708.txt boot-20261006-144835.json boot-20261006-144835.txt boot-20261006-145108.json boot-20261006-145108.txt boot-20261006-145538.json boot-20261006-145538.txt early.txt latest.json latest.txt 
+[16:58:11] === T6 root partition not found
+[16:58:11] one-shot inject-rootfail.conf + reboot
+[17:00:03] power cycle (docker kill + start; OVMF vars kept)
+[17:00:19] guest up
+[17:02:50] collected t6-rootfail-after: README.txt attempts.txt boot-20261006-144359.json boot-20261006-144359.txt boot-20261006-144548.json boot-20261006-144548.txt boot-20261006-144708.json boot-20261006-144708.txt boot-20261006-144835.json boot-20261006-144835.txt boot-20261006-145108.json boot-20261006-145108.txt boot-20261006-145538.json boot-20261006-145538.txt boot-20261006-145811.json boot-20261006-145811.txt boot-20261006-150017.json boot-20261006-150017.txt early.txt latest.json latest.txt 
+[17:02:50] === done

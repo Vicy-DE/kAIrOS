@@ -1,0 +1,3 @@
+/* bench desk page: dock + menubar + taskbar are separate always-on-top windows
+   (dock.html / menubar.html) — the shell's own copies stay in the DOM but off screen */
+#dock, #menubar, #taskbar { display: none !important; }

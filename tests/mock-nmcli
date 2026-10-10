@@ -1,0 +1,561 @@
+#!/usr/bin/env python3
+"""Mock nmcli [R38, R78] — a small STATEFUL NetworkManager for kernel/hw.py's tests.
+
+State: JSON in $MOCK_NMCLI_STATE (default $VIBEOS_DIR/mock-nmcli.json), created from WORLD on
+first use; a test writes its own world there. Honours the global options hw.py uses (-t, -e
+yes|no, -f FIELDS, -g FIELDS, -s, --wait N) and nmcli's terse escaping (':' and '\\' inside a
+value become '\\:' and '\\\\'), so SSIDs with colons / backslashes round-trip. Modelled
+NetworkManager behaviour — what R78 has to cope with:
+  * profiles {name, uuid, ssid, key_mgmt, psk, autoconnect, timestamp}: `dev wifi connect` makes
+    one named after the SSID ("X 1", "X 2" when the name is taken) and KEEPS it when the join
+    fails — the kernel has to delete it;
+  * a join checks the AP's password; wrong or missing -> "Secrets were required, but not
+    provided." rc 4; afterwards autoconnect brings the previous network back (unless the world
+    says "no_autoreconnect": the kernel's own restore is tested then);
+  * OWE-TM (Freifunk): no password, and once joined the in-use BSS is the hidden OWE twin that
+    shows its own SSID; 802.1X cannot be joined with a password; an AP's "connectivity" (portal,
+    limited) is the device's IP4-CONNECTIVITY;
+  * "nm_running": false -> "Error: NetworkManager is not running." rc 8; "supplicant_starting"
+    -> the device is "unavailable" while the radio is enabled; radio off or a wlan rfkill block
+    in $VIBEOS_SYSFS -> "unavailable" + WIFI disabled; "old_nmcli" -> no IP4-CONNECTIVITY/CON-UUID
+    fields (the kernel's fallback); "validate_psk" -> 8..63 characters like the real one.
+Every call is appended to $MOCK_NMCLI_LOG (if set), one tab-separated argv per line."""
+import fcntl
+import json
+import os
+import sys
+import time
+import uuid as uuidlib
+from pathlib import Path
+
+STATE = Path(os.environ.get("MOCK_NMCLI_STATE")
+             or Path(os.environ.get("VIBEOS_DIR", "/tmp/kairos-test")) / "mock-nmcli.json")
+SYSFS = Path(os.environ.get("VIBEOS_SYSFS", "/sys"))
+WORLD = {
+    "nm_running": True, "radio": True, "supplicant_starting": False,
+    "devices": [
+        {"device": "wlan0", "type": "wifi", "path": "/org/freedesktop/NetworkManager/Devices/3",
+         "active": "0b3f5a3e-0000-4000-8000-000000000001", "ip": "192.168.1.23/24"},
+        {"device": "eth0", "type": "ethernet", "path": "/org/freedesktop/NetworkManager/Devices/2",
+         "state": "unavailable"},
+    ],
+    "aps": [
+        {"ssid": "OpenAP", "bssid": "AA:BB:CC:DD:EE:01", "chan": 6, "freq": 2437, "signal": 87,
+         "security": "WPA2", "psk": "pw"},
+        {"ssid": "Neighbors5G", "bssid": "AA:BB:CC:DD:EE:02", "chan": 36, "freq": 5180, "signal": 62,
+         "security": "WPA2", "psk": "neighbors-secret"},
+        {"ssid": "CoffeeShop", "bssid": "AA:BB:CC:DD:EE:03", "chan": 11, "freq": 2462, "signal": 41,
+         "security": ""},
+    ],
+    "profiles": [
+        {"name": "OpenAP", "uuid": "0b3f5a3e-0000-4000-8000-000000000001", "ssid": "OpenAP",
+         "key_mgmt": "wpa-psk", "psk": "pw", "autoconnect": True, "timestamp": 1759800000},
+        {"name": "Wired connection 1", "uuid": "0b3f5a3e-0000-4000-8000-0000000000e1", "type": "802-3-ethernet",
+         "autoconnect": True, "timestamp": 1759700000},
+    ],
+}
+FIELDS = {
+    "dev status": ["DEVICE", "TYPE", "STATE", "IP4-CONNECTIVITY", "IP6-CONNECTIVITY", "DBUS-PATH",
+                   "CONNECTION", "CON-UUID", "CON-PATH"],
+    "wifi list": ["NAME", "SSID", "SSID-HEX", "BSSID", "MODE", "CHAN", "FREQ", "RATE", "BANDWIDTH", "SIGNAL",
+                  "BARS", "SECURITY", "WPA-FLAGS", "RSN-FLAGS", "DEVICE", "ACTIVE", "IN-USE", "DBUS-PATH"],
+    "con show": ["NAME", "UUID", "TYPE", "TIMESTAMP", "TIMESTAMP-REAL", "AUTOCONNECT", "AUTOCONNECT-PRIORITY",
+                 "READONLY", "DBUS-PATH", "ACTIVE", "DEVICE", "STATE", "ACTIVE-PATH", "SLAVE", "FILENAME"],
+    "radio": ["WIFI-HW", "WIFI", "WWAN-HW", "WWAN"],
+}
+DEFAULTS = {"dev status": "DEVICE,TYPE,STATE,CONNECTION",
+            "wifi list": "IN-USE,BSSID,SSID,MODE,CHAN,RATE,SIGNAL,BARS,SECURITY",
+            "con show": "NAME,UUID,TYPE,DEVICE", "radio": "WIFI-HW,WIFI,WWAN-HW,WWAN"}
+OPT = {"terse": False, "escape": True, "fields": None, "secrets": False}
+
+
+def out(text=""):
+    sys.stdout.write(text + "\n")
+
+
+def die(msg, rc):
+    sys.stdout.write(msg + "\n")
+    sys.stdout.flush()
+    raise SystemExit(rc)
+
+
+def esc(v):
+    v = "" if v is None else str(v)
+    return v.replace("\\", "\\\\").replace(":", "\\:") if OPT["escape"] else v
+
+
+def table(kind, rows):
+    """rows: [{FIELD: value}] -> printed in the -f order (terse: escaped, ':'-joined)"""
+    names = (OPT["fields"] or DEFAULTS[kind]).split(",")
+    if OPT["fields"] and OPT["fields"] != "all":
+        bad = [n for n in names if n not in FIELDS[kind] or (W.get("old_nmcli") and n in ("IP4-CONNECTIVITY", "CON-UUID", "DBUS-PATH"))]
+        if bad:
+            allowed = [f for f in FIELDS[kind] if not (W.get("old_nmcli") and f in ("IP4-CONNECTIVITY", "CON-UUID", "DBUS-PATH"))]
+            die(f"Error: invalid field '{bad[0]}'; allowed fields: {','.join(allowed)}.", 2)
+    elif OPT["fields"] == "all":
+        names = FIELDS[kind]
+    if OPT["terse"]:
+        for r in rows:
+            out(":".join(esc(r.get(n, "")) for n in names))
+        return
+    widths = [max([len(n)] + [len(str(r.get(n, "") or "--")) for r in rows]) for n in names]
+    out("  ".join(n.ljust(w) for n, w in zip(names, widths)))
+    for r in rows:
+        out("  ".join(str(r.get(n, "") or "--").ljust(w) for n, w in zip(names, widths)))
+
+
+# ------------------------------------------------------------------ the world
+def rfkill_wlan_blocked():
+    for d in sorted(SYSFS.glob("class/rfkill/rfkill*")):
+        try:
+            if (d / "type").read_text().strip() == "wlan" and "1" in ((d / "soft").read_text().strip(), (d / "hard").read_text().strip()):
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def radio_on():
+    return W.get("radio", True) and not rfkill_wlan_blocked()
+
+
+def wifi_devs():
+    return [d for d in W["devices"] if d["type"] == "wifi"]
+
+
+def profile(uuid=None, name=None):
+    return next((p for p in W["profiles"] if (uuid and p["uuid"] == uuid) or (name and p["name"] == name)), None)
+
+
+def dev_state(d):
+    if d["type"] != "wifi":
+        return d.get("state", "disconnected")
+    if not radio_on() or W.get("supplicant_starting"):
+        return "unavailable"
+    return "connected" if d.get("active") and profile(d["active"]) else "disconnected"
+
+
+def visible_aps():
+    if not radio_on() or W.get("supplicant_starting"):
+        return []
+    return [a for a in W["aps"] if not (a.get("after_rescan") and not W.get("scanned"))]
+
+
+def ap_for(ssid):
+    """the strongest visible, non-hidden BSS of this SSID"""
+    c = [a for a in visible_aps() if a.get("ssid") == ssid and not a.get("hidden")]
+    return max(c, key=lambda a: a.get("signal", 0)) if c else None
+
+
+def active_ap(d):
+    p = profile(d.get("active")) if d.get("active") else None
+    if not p or dev_state(d) != "connected":
+        return None
+    ap = ap_for(p["ssid"])
+    if ap and ap.get("owe_twin"):           # OWE transition mode: associated with the hidden twin
+        twin = next((a for a in visible_aps() if a.get("real_ssid") == ap["owe_twin"]), None)
+        return twin or ap
+    return ap
+
+
+def conn_of(d):
+    if dev_state(d) != "connected":
+        return d.get("connectivity", "none") if d["type"] != "wifi" else "none"
+    p = profile(d.get("active"))
+    ap = ap_for(p["ssid"]) if p else None
+    return (ap or {}).get("connectivity", W.get("check", "full"))
+
+
+def key_mgmt_for(sec):
+    s = (sec or "").upper()
+    if not s or s == "--":
+        return "none"
+    if "OWE" in s and "WPA" not in s:
+        return "owe"
+    if "802.1X" in s:
+        return "wpa-eap"
+    return "sae" if s == "WPA3" else "wpa-psk"
+
+
+def deactivate(d):
+    d["active"] = None
+
+
+def creds_ok(prof, ap):
+    need = key_mgmt_for(ap.get("security"))
+    if need == "wpa-eap":
+        return False
+    if need in ("wpa-psk", "sae"):
+        return prof.get("key_mgmt") in ("wpa-psk", "sae") and prof.get("psk") == ap.get("psk")
+    return True
+
+
+def autoconnect():
+    """NetworkManager's policy: a disconnected WiFi device (not disconnected by the user) joins the
+    most recently used autoconnect profile in range whose join is not blocked"""
+    if W.get("no_autoreconnect"):
+        return
+    for d in wifi_devs():
+        if dev_state(d) != "disconnected" or d.get("manual_disconnect"):
+            continue
+        cands = sorted((p for p in W["profiles"] if p.get("ssid") and p.get("autoconnect", True)
+                        and not p.get("ac_blocked") and ap_for(p["ssid"])), key=lambda p: -p.get("timestamp", 0))
+        for p in cands:
+            if creds_ok(p, ap_for(p["ssid"])):
+                d["active"] = p["uuid"]
+                p["timestamp"] = int(time.time())
+                break
+
+
+def activate(prof, d):
+    """(rc, message): the join itself; a failed join blocks this profile's autoconnect and lets
+    NetworkManager's autoconnect pick another (usually the network the device was on)"""
+    if dev_state(d) == "unavailable":
+        return 4, (f"Error: Connection activation failed: No suitable device found for this connection "
+                   f"(device {d['device']} not available because device is not available).")
+    ap = ap_for(prof["ssid"])
+    if ap is None:
+        return 4, "Error: Connection activation failed: The Wi-Fi network could not be found."
+    deactivate(d)
+    if creds_ok(prof, ap):
+        d["active"], d["manual_disconnect"] = prof["uuid"], False
+        prof["timestamp"], prof["ac_blocked"] = int(time.time()), False
+        return 0, ""
+    prof["ac_blocked"] = True
+    autoconnect()
+    if key_mgmt_for(ap.get("security")) == "wpa-eap":
+        return 4, "Error: Connection activation failed: 802-1x settings are missing (no secrets)."
+    return 4, "Error: Connection activation failed: Secrets were required, but not provided."
+
+
+# ------------------------------------------------------------------ commands
+def c_dev(args):
+    sub = args[0] if args else "status"
+    if sub in ("status", "s", "st"):
+        rows = []
+        for d in W["devices"]:
+            st = dev_state(d)
+            p = profile(d.get("active")) if st == "connected" else None
+            rows.append({"DEVICE": d["device"], "TYPE": d["type"], "STATE": st, "IP4-CONNECTIVITY": conn_of(d),
+                         "IP6-CONNECTIVITY": "none", "DBUS-PATH": d.get("path", ""),
+                         "CONNECTION": p["name"] if p else "", "CON-UUID": p["uuid"] if p else "",
+                         "CON-PATH": "/org/freedesktop/NetworkManager/ActiveConnection/1" if p else ""})
+        table("dev status", rows)
+        return 0
+    if sub == "wifi":
+        return c_wifi(args[1:])
+    if sub == "show":
+        name = args[1] if len(args) > 1 else wifi_devs()[0]["device"]
+        d = next((x for x in W["devices"] if x["device"] == name), None)
+        if d is None:
+            die(f"Error: Device '{name}' not found.", 10)
+        want = (OPT["fields"] or "GENERAL.DEVICE,IP4.ADDRESS").split(",")
+        for f in want:
+            if f.startswith("IP4.ADDRESS"):
+                if dev_state(d) == "connected" and d.get("ip"):
+                    out(f"IP4.ADDRESS[1]:{esc(d['ip'])}" if OPT["terse"] else f"IP4.ADDRESS[1]:  {d['ip']}")
+            elif f == "GENERAL.DEVICE":
+                out(f"GENERAL.DEVICE:{esc(d['device'])}")
+            elif f == "GENERAL.STATE":
+                out(f"GENERAL.STATE:{esc(dev_state(d))}")
+        return 0
+    if sub == "disconnect":
+        names = args[1:]
+        for name in names:
+            d = next((x for x in W["devices"] if x["device"] == name), None)
+            if d is None:
+                die(f"Error: Device '{name}' not found.", 10)
+            if dev_state(d) != "connected":
+                die(f"Error: Device '{name}' ({d.get('path')}) disconnecting failed: This device is not active", 4)
+            deactivate(d)
+            d["manual_disconnect"] = True
+            out(f"Device '{name}' successfully disconnected.")
+        return 0
+    die(f"Error: argument '{sub}' not understood.", 2)
+
+
+def c_wifi(args):
+    sub = args[0] if args else "list"
+    rest = args[1:]
+    kw = {}
+    i = 0
+    while i < len(rest):
+        if rest[i] in ("--rescan", "ifname", "password", "hidden", "bssid", "name"):
+            kw[rest[i]] = rest[i + 1] if i + 1 < len(rest) else ""
+            i += 2
+        else:
+            kw.setdefault("_pos", []).append(rest[i])
+            i += 1
+    if "ifname" in kw and not any(d["device"] == kw["ifname"] for d in wifi_devs()):
+        die(f"Error: Device '{kw['ifname']}' not found.", 10)
+    if sub in ("list", "l"):
+        if kw.get("--rescan") == "yes":
+            W["scanned"] = True
+        d = wifi_devs()[0] if wifi_devs() else None
+        cur = active_ap(d) if d else None
+        rows = []
+        for a in visible_aps():
+            in_use = cur is a
+            ssid = a.get("real_ssid", "") if a.get("hidden") and in_use else ("" if a.get("hidden") else a["ssid"])
+            rows.append({"IN-USE": "*" if in_use else " ", "BSSID": a["bssid"], "SSID": ssid, "NAME": "",
+                         "MODE": "Infra", "CHAN": a["chan"], "FREQ": f"{a['freq']} MHz", "RATE": "130 Mbit/s",
+                         "SIGNAL": a["signal"], "BARS": "▂▄▆_", "SECURITY": a.get("security", ""),
+                         "DEVICE": d["device"] if d else "", "ACTIVE": "yes" if in_use else "no"})
+        table("wifi list", rows)
+        return 0
+    if sub in ("rescan", "r"):
+        W["scanned"] = True
+        return 0
+    if sub in ("connect", "c"):
+        ssid = (kw.get("_pos") or [""])[0]
+        d = next((x for x in wifi_devs() if x["device"] == kw.get("ifname")), None) or wifi_devs()[0]
+        if dev_state(d) == "unavailable":
+            die("Error: Connection activation failed: No suitable device found for this connection "
+                f"(device {d['device']} not available because device is not available).", 4)
+        ap = ap_for(ssid)
+        if ap is None:
+            die(f"Error: No network with SSID '{ssid}' found.", 10)
+        km = key_mgmt_for(ap.get("security"))
+        if km == "wpa-eap":
+            die("Error: Failed to add/activate new connection: 802-1x.identity: property is missing", 4)
+        pw = kw.get("password")
+        if pw is not None and W.get("validate_psk") and km in ("wpa-psk", "sae") and not 8 <= len(pw) <= 63:
+            die("Error: Failed to add/activate new connection: 802-11-wireless-security.psk: property is invalid.", 4)
+        names = {p["name"] for p in W["profiles"]}
+        name, n = ssid, 1
+        while name in names:
+            name, n = f"{ssid} {n}", n + 1
+        prof = {"name": name, "uuid": str(uuidlib.uuid4()), "ssid": ssid, "key_mgmt": km,
+                "psk": pw or "", "autoconnect": True, "timestamp": 0}
+        W["profiles"].append(prof)
+        rc, msg = activate(prof, d)
+        if rc != 0:
+            die(msg, rc)
+        out(f"Device '{d['device']}' successfully activated with '{prof['uuid']}'.")
+        return 0
+    die(f"Error: argument '{sub}' not understood.", 2)
+
+
+def find_profiles(args):
+    """`uuid X uuid Y id Z NAME` -> (profiles, missing)"""
+    found, missing, i = [], [], 0
+    while i < len(args):
+        if args[i] in ("uuid", "id", "path") and i + 1 < len(args):
+            key, val = args[i], args[i + 1]
+            i += 2
+        else:
+            key, val = "any", args[i]
+            i += 1
+        p = profile(uuid=val) if key in ("uuid", "any") else None
+        p = p or (profile(name=val) if key in ("id", "any") else None)
+        (found if p else missing).append(p or val)
+    return found, missing
+
+
+def prop(p, name):
+    d = next((x for x in W["devices"] if x.get("active") == p["uuid"] and dev_state(x) == "connected"), None)
+    return {"connection.id": p["name"], "connection.uuid": p["uuid"],
+            "connection.type": p.get("type", "802-11-wireless"),
+            "connection.autoconnect": "yes" if p.get("autoconnect", True) else "no",
+            "connection.timestamp": p.get("timestamp", 0),
+            "connection.interface-name": d["device"] if d else "",
+            "802-11-wireless.ssid": p.get("ssid", ""),
+            "802-11-wireless-security.key-mgmt": p.get("key_mgmt", "") if p.get("key_mgmt") not in (None, "none") else "",
+            "802-11-wireless-security.psk": (p.get("psk", "") if OPT["secrets"] else "<hidden>") if p.get("psk") else "",
+            }.get(name, "")
+
+
+def c_con(args):
+    sub = args[0] if args else "show"
+    rest = args[1:]
+    if sub in ("show", "s") and not rest:
+        rows = []
+        for p in W["profiles"]:
+            d = next((x for x in W["devices"] if x.get("active") == p["uuid"] and dev_state(x) == "connected"), None)
+            rows.append({"NAME": p["name"], "UUID": p["uuid"], "TYPE": p.get("type", "802-11-wireless"),
+                         "TIMESTAMP": p.get("timestamp", 0), "AUTOCONNECT": "yes" if p.get("autoconnect", True) else "no",
+                         "ACTIVE": "yes" if d else "no", "DEVICE": d["device"] if d else "",
+                         "STATE": "activated" if d else ""})
+        table("con show", rows)
+        return 0
+    if sub in ("show", "s"):
+        found, missing = find_profiles(rest)
+        want = (OPT["fields"] or "connection.id,connection.uuid,connection.type,802-11-wireless.ssid").split(",")
+        blocks = []
+        for p in found:
+            lines = []
+            for f in want:
+                v = prop(p, f)
+                lines.append(esc(v) if OPT.get("values_only") else f"{f}:{esc(v)}")
+            blocks.append("\n".join(lines))
+        if blocks:
+            out("\n\n".join(blocks))
+        if missing:
+            die(f"Error: {missing[0]} - no such connection profile.", 10)
+        return 0
+    if sub in ("modify", "mod", "m"):
+        found, missing = find_profiles(rest[:2])
+        if missing or not found:
+            die(f"Error: unknown connection '{rest[1] if len(rest) > 1 else ''}'.", 10)
+        p, kv = found[0], rest[2:]
+        for k, v in zip(kv[::2], kv[1::2]):
+            if k in ("802-11-wireless-security.psk", "wifi-sec.psk"):
+                if W.get("validate_psk") and not 8 <= len(v) <= 63:
+                    die(f"Error: Failed to modify connection '{p['name']}': 802-11-wireless-security.psk: property is invalid", 4)
+                p["psk"] = v
+                p["key_mgmt"] = p.get("key_mgmt") if p.get("key_mgmt") in ("wpa-psk", "sae") else "wpa-psk"
+            elif k in ("connection.autoconnect", "autoconnect"):
+                p["autoconnect"] = v in ("yes", "true", "1")
+            elif k in ("802-11-wireless.ssid", "wifi.ssid"):
+                p["ssid"] = v
+        p["ac_blocked"] = False                 # new secrets unblock the profile's autoconnect
+        autoconnect()
+        return 0
+    if sub in ("up", "u"):
+        sel, more = (rest[:2], rest[2:]) if rest[:1] in (["uuid"], ["id"]) else (rest[:1], rest[1:])
+        found, missing = find_profiles(sel)
+        if missing or not found:
+            die(f"Error: unknown connection '{sel[-1] if sel else ''}'.", 10)
+        ifn = more[more.index("ifname") + 1] if "ifname" in more and more.index("ifname") + 1 < len(more) else None
+        d = next((x for x in wifi_devs() if x["device"] == ifn), None) or (wifi_devs() or [None])[0]
+        if d is None:
+            die("Error: Connection activation failed: No suitable device found for this connection.", 4)
+        rc, msg = activate(found[0], d)
+        if rc != 0:
+            die(msg, rc)
+        out("Connection successfully activated (D-Bus active path: /org/freedesktop/NetworkManager/ActiveConnection/7)")
+        return 0
+    if sub in ("down", "d"):
+        found, missing = find_profiles(rest)
+        if missing:
+            die(f"Error: '{missing[0]}' is not an active connection.", 10)
+        for p in found:
+            for d in W["devices"]:
+                if d.get("active") == p["uuid"]:
+                    deactivate(d)
+            out(f"Connection '{p['name']}' successfully deactivated (D-Bus active path: /org/freedesktop/NetworkManager/ActiveConnection/7)")
+        return 0
+    if sub in ("delete", "del"):
+        found, missing = find_profiles(rest)
+        for p in found:
+            for d in W["devices"]:
+                if d.get("active") == p["uuid"]:
+                    deactivate(d)
+            W["profiles"] = [x for x in W["profiles"] if x["uuid"] != p["uuid"]]
+            out(f"Connection '{p['name']}' ({p['uuid']}) successfully deleted.")
+        if missing:
+            die(f"Error: unknown connection '{missing[0]}'.", 10)
+        return 0
+    die(f"Error: argument '{sub}' not understood.", 2)
+
+
+def c_radio(args):
+    if len(args) >= 2 and args[0] in ("wifi", "all", "wwan"):
+        if args[1] not in ("on", "off"):
+            die(f"Error: '{args[1]}' is not valid argument for 'switch'.", 2)
+        if args[0] in ("wifi", "all"):
+            W["radio"] = args[1] == "on"
+            if W["radio"]:
+                autoconnect()
+        return 0
+    if args[:1] == ["wifi"]:
+        out("enabled" if radio_on() else "disabled")
+        return 0
+    hw_ok = "enabled" if not any(_hard()) else "disabled"
+    table("radio", [{"WIFI-HW": hw_ok, "WIFI": "enabled" if radio_on() else "disabled",
+                     "WWAN-HW": "missing", "WWAN": "enabled"}])
+    return 0
+
+
+def _hard():
+    for d in sorted(SYSFS.glob("class/rfkill/rfkill*")):
+        try:
+            if (d / "type").read_text().strip() == "wlan":
+                yield (d / "hard").read_text().strip() == "1"
+        except OSError:
+            pass
+
+
+def c_networking(args):
+    if args[:1] in (["connectivity"], ["c"]):
+        if W.get("global_connectivity"):
+            out(W["global_connectivity"])
+            return 0
+        order = ["none", "limited", "portal", "full"]
+        best = "none"
+        for d in W["devices"]:
+            c = conn_of(d)
+            if c in order and order.index(c) > order.index(best):
+                best = c
+        out(best)
+        return 0
+    if args[:1] in (["on"], ["off"]):
+        return 0
+    out("enabled")
+    return 0
+
+
+def main():
+    global W
+    argv = sys.argv[1:]
+    if os.environ.get("MOCK_NMCLI_LOG"):
+        with open(os.environ["MOCK_NMCLI_LOG"], "a") as f:
+            f.write("\t".join(argv) + "\n")
+    i = 0
+    while i < len(argv) and argv[i].startswith("-"):
+        a = argv[i]
+        if a in ("-t", "--terse"):
+            OPT["terse"] = True
+        elif a in ("-e", "--escape"):
+            OPT["escape"] = argv[i + 1] == "yes"
+            i += 1
+        elif a in ("-f", "--fields"):
+            OPT["fields"] = argv[i + 1]
+            i += 1
+        elif a in ("-g", "--get-values"):
+            OPT["fields"], OPT["terse"], OPT["values_only"] = argv[i + 1], True, True
+            i += 1
+        elif a in ("-s", "--show-secrets"):
+            OPT["secrets"] = True
+        elif a in ("-w", "--wait"):
+            i += 1
+        elif a in ("-p", "--pretty", "-a", "--ask"):
+            pass
+        elif a in ("-v", "--version"):
+            out("nmcli tool, version 1.52.1 (kAIrOS mock)")
+            return 0
+        else:
+            die(f"Error: Option '{a}' is unknown, try 'nmcli -help'.", 2)
+        i += 1
+    cmd = argv[i:]
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    with open(STATE.with_suffix(".lock"), "w") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        try:
+            W = json.loads(STATE.read_text())
+        except (OSError, ValueError):
+            W = json.loads(json.dumps(WORLD))
+        if not W.get("nm_running", True):
+            die("Error: NetworkManager is not running.", 8)
+        obj = cmd[0] if cmd else "general"
+        try:
+            if obj in ("dev", "device", "d"):
+                rc = c_dev(cmd[1:])
+            elif obj in ("con", "connection", "c"):
+                rc = c_con(cmd[1:])
+            elif obj in ("radio", "r"):
+                rc = c_radio(cmd[1:])
+            elif obj in ("networking", "n"):
+                rc = c_networking(cmd[1:])
+            elif obj in ("general", "g"):
+                out("connected")
+                rc = 0
+            else:
+                die(f"Error: argument '{obj}' not understood. Try passing --help instead.", 2)
+        finally:
+            STATE.write_text(json.dumps(W, indent=1))
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())

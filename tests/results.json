@@ -1,0 +1,1058 @@
+{
+ "at": "2026-10-10 11:38:26",
+ "base": "http://127.0.0.1:1338",
+ "tests": {
+  "unit_prompts_style_mandate": {
+   "reqs": [
+    "R13"
+   ],
+   "status": "pass",
+   "detail": "6 UI prompts carry the mandate; 5 media prompts are free of it"
+  },
+  "unit_validate_html": {
+   "reqs": [
+    "R12"
+   ],
+   "status": "pass",
+   "detail": "5 defect classes detected, clean doc passes"
+  },
+  "unit_jsfix_await_rewrite": {
+   "reqs": [
+    "R12"
+   ],
+   "status": "pass",
+   "detail": "sync-fn async insertion + TLA wrap with window re-exports, idempotent, module scripts untouched; prompt()/confirm() flagged in code only (15 FP forms pass, 13 TP forms caught)"
+  },
+  "http_app_dialog_check_code_only": {
+   "reqs": [
+    "R12",
+    "R45",
+    "R5"
+   ],
+   "status": "pass",
+   "detail": "prompt() app \u2192 one D5 repair round \u2192 clean; placeholder-only image app \u2192 delivered as generated, no repair round"
+  },
+  "unit_bridge_shims_theme_static": {
+   "reqs": [
+    "R12",
+    "R13",
+    "R66"
+   ],
+   "status": "pass",
+   "detail": "theme (zero specificity) + storage shims + aliases/guard in BRIDGE_SRC; sandbox unchanged"
+  },
+  "unit_image_dims_and_seed_script": {
+   "reqs": [
+    "R12",
+    "R58"
+   ],
+   "status": "pass",
+   "detail": "junk dims ignored, real dims kept; seed escaped; validate_html flags fetch('/api/\u2026')"
+  },
+  "unit_strip_thinking_blocks": {
+   "reqs": [
+    "R5",
+    "R12"
+   ],
+   "status": "pass",
+   "detail": "think blocks stripped on html+python, stump/survivor flagged, plain output untouched"
+  },
+  "unit_chat_template_kwargs_manifest": {
+   "reqs": [
+    "R3",
+    "R5"
+   ],
+   "status": "pass",
+   "detail": "field absent -> unchanged body; present -> passed through for llm and python_llm"
+  },
+  "unit_vfs_android_partitions": {
+   "reqs": [
+    "R16",
+    "R17"
+   ],
+   "status": "pass",
+   "detail": "write/read/delete OK; /system read-only; traversal blocked; format wipes"
+  },
+  "unit_no_cloud_ai": {
+   "reqs": [
+    "R2"
+   ],
+   "status": "pass",
+   "detail": "kernel talks only to local engines (DDG used for search facts, not generation)"
+  },
+  "unit_identity": {
+   "reqs": [
+    "R19"
+   ],
+   "status": "pass",
+   "detail": "kAIrOS by mAIer present in README + shell; \u22648 letters; AI+OS contained"
+  },
+  "unit_slim_base_builder": {
+   "reqs": [
+    "R8",
+    "R3"
+   ],
+   "status": "pass",
+   "detail": "minbase builder present; 4 tier manifests complete (integration build = manual)"
+  },
+  "http_status_tier": {
+   "reqs": [
+    "R3"
+   ],
+   "status": "pass",
+   "detail": "tier=8gb llm=Gemma 4 26B-A4B-it (UD-IQ4_XS, MoE, experts partly in RAM) engine=cuda"
+  },
+  "http_app_generate": {
+   "reqs": [
+    "R1",
+    "R5"
+   ],
+   "status": "pass",
+   "detail": "v1 generated, 659 bytes"
+  },
+  "http_app_reopen_is_instant_cached": {
+   "reqs": [
+    "R24",
+    "R35"
+   ],
+   "status": "pass",
+   "detail": "reopen served v1 from disk in 0.00s, no evolution"
+  },
+  "http_app_host_page_same_sandbox_same_bridge": {
+   "reqs": [
+    "R66",
+    "R5"
+   ],
+   "status": "pass",
+   "detail": "host page 31949 bytes, sandbox intact, bridge identical (96 call sites), 404 for unknown"
+  },
+  "http_app_evolves_on_improve_only": {
+   "reqs": [
+    "R24",
+    "R25",
+    "R35"
+   ],
+   "status": "pass",
+   "detail": "\u2728 improve evolved to v2; v1 in history; prompt persisted"
+  },
+  "http_sse_client_disconnect_safe": {
+   "reqs": [
+    "R62"
+   ],
+   "status": "pass",
+   "detail": "client disconnect mid-SSE: no kernel crash, app still generated + saved"
+  },
+  "http_app_icon_and_menu": {
+   "reqs": [
+    "R60"
+   ],
+   "status": "pass",
+   "detail": "app listed in /api/apps with a real generated PNG icon"
+  },
+  "http_app_forge_generates_resources": {
+   "reqs": [
+    "R36",
+    "R69"
+   ],
+   "status": "pass",
+   "detail": "dev cycle forged app + 1 image, 1 track (sung, en), 1 clip"
+  },
+  "http_image_with_random_seed": {
+   "reqs": [
+    "R4",
+    "R22"
+   ],
+   "status": "pass",
+   "detail": "2 Krea-2 images generated, seeds differ (1986372647 vs 639469797); engine crash -> error + idle"
+  },
+  "http_video": {
+   "reqs": [
+    "R6"
+   ],
+   "status": "pass",
+   "detail": "mp4 produced and served: /files/videos/9d039dc15148.mp4"
+  },
+  "unit_finish_video_drops_intermediate": {
+   "reqs": [
+    "R6"
+   ],
+   "status": "pass",
+   "detail": "avi + frame intermediates transcoded to mp4 and removed; empty job -> clean error"
+  },
+  "unit_video_argv_converges": {
+   "reqs": [
+    "R6"
+   ],
+   "status": "pass",
+   "detail": "4 tiers + 3 variants: 33 frames, GPU VAE 128x128 px (8x8 latent) tiles, no --vae-on-cpu; identical argv on cuda and vulkan"
+  },
+  "http_game_forge": {
+   "reqs": [
+    "R7",
+    "R11"
+   ],
+   "status": "pass",
+   "detail": "game launched (running=True, attempt 1); crash-retry loop exercised structurally"
+  },
+  "http_fs_api": {
+   "reqs": [
+    "R16",
+    "R17"
+   ],
+   "status": "pass",
+   "detail": "partitions listed; CRUD on /data; /system 403; format wipes"
+  },
+  "http_settings_api": {
+   "reqs": [
+    "R15"
+   ],
+   "status": "pass",
+   "detail": "set/get works; stored on /data (factory reset resets it)"
+  },
+  "http_api_docs": {
+   "reqs": [
+    "R14"
+   ],
+   "status": "pass",
+   "detail": "19022 bytes of self-documentation served"
+  },
+  "http_search_offline_mode": {
+   "reqs": [
+    "R9",
+    "R10",
+    "R20"
+   ],
+   "status": "pass",
+   "detail": "offline search returned 4 encyclopedia results"
+  },
+  "http_browser_imaginary_web": {
+   "reqs": [
+    "R21",
+    "R57"
+   ],
+   "status": "pass",
+   "detail": "page AI-generated with real /web/ prompt-links; revisit served from cache"
+  },
+  "http_virtual_web_loading_flow": {
+   "reqs": [
+    "R57"
+   ],
+   "status": "pass",
+   "detail": "loading\u2192refresh\u2192site flow works; links/forms/imgs rewritten; sub-page spawns"
+  },
+  "http_genimg_picture_tool": {
+   "reqs": [
+    "R58"
+   ],
+   "status": "pass",
+   "detail": "/genimg/ rendered a real PNG (177 B) and cached it"
+  },
+  "http_browser_images": {
+   "reqs": [
+    "R21",
+    "R29",
+    "R37",
+    "R58"
+   ],
+   "status": "pass",
+   "detail": "4 imgs \u2192 on-demand /genimg/; first one rendered as real PNG"
+  },
+  "http_desktop_search_always_finds": {
+   "reqs": [
+    "R23"
+   ],
+   "status": "pass",
+   "detail": "never empty; create-actions present; 5 distinct sparks in 6 calls"
+  },
+  "http_first_boot_setup": {
+   "reqs": [
+    "R18"
+   ],
+   "status": "pass",
+   "detail": "vram=0MB recommended=8gb tiers listed"
+  },
+  "http_music": {
+   "reqs": [
+    "R31"
+   ],
+   "status": "pass",
+   "detail": "ace-lm -> request0.json -> ace-synth (turbo DiT, wav) served: /files/music/5f6c166c5692.wav"
+  },
+  "unit_music_language_default_en": {
+   "reqs": [
+    "R69",
+    "R31"
+   ],
+   "status": "pass",
+   "detail": "absent/empty/null -> en; code lower-cased; auto -> '' (LM guesses); instrumental -> unknown; garbage -> ValueError"
+  },
+  "http_music_language": {
+   "reqs": [
+    "R69",
+    "R31"
+   ],
+   "status": "pass",
+   "detail": "en by default, de kept, auto -> engine guess, instrumental unknown, garbage 400 + no job"
+  },
+  "http_music_engine_missing": {
+   "reqs": [
+    "R31",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "engine absent -> 400 'not installed' (no traceback), /api/models reports it; music is an add-on"
+  },
+  "unit_manifest_cmd_matches_built_engines": {
+   "reqs": [
+    "R31",
+    "R8"
+   ],
+   "status": "pass",
+   "detail": "install-engines.sh builds ['ace-lm', 'ace-server', 'ace-synth', 'llama-cli', 'llama-server', 'sd-cli', 'sd-server']; every manifest cmd execs one of them; turbo DiT + exact names"
+  },
+  "unit_cuda_engine_build": {
+   "reqs": [
+    "R41",
+    "R50",
+    "R31",
+    "R8"
+   ],
+   "status": "pass",
+   "detail": "CUDA_ARCH default ['120', '89']; debian13 repo, 4 packages, no meta; 6 binaries link ['libcublas.so.13', 'libcublasLt.so.13', 'libcudart.so.13'] \u2014 all in the bundle list; 12 libggml*.so, one owner each"
+  },
+  "unit_vulkan_engine_build": {
+   "reqs": [
+    "R30",
+    "R33"
+   ],
+   "status": "pass",
+   "detail": "Vulkan build (llama/sd/ace, static, bin/vulkan) + runtime packages + cuda/vulkan auto-selection"
+  },
+  "http_image_uncensored": {
+   "reqs": [
+    "R29"
+   ],
+   "status": "pass",
+   "detail": "uncensored -> Muse Q4_0, no LoRA (Qwen3-VL encoder, 8 steps) via the 18+ expander; model=chroma -> Chroma1-HD (T5-XXL, --model-args)"
+  },
+  "http_boot_status": {
+   "reqs": [
+    "R73"
+   ],
+   "status": "pass",
+   "detail": "expected 120.0s (history []); the R27 routes are gone"
+  },
+  "unit_hidden_linux_image": {
+   "reqs": [
+    "R28",
+    "R30",
+    "R33",
+    "R73"
+   ],
+   "status": "pass",
+   "detail": "silent boot + boot screen unit/drop-ins + AMD/Vulkan drivers + UMA GTT in the image config"
+  },
+  "unit_boot_chain_never_shows_console": {
+   "reqs": [
+    "R73",
+    "R28",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "cmdline silent, agetty --skip-login, painter from the initramfs before udev + in the initrd, KD_GRAPHICS until the kiosk, boot page first, handover after launch, no mpv"
+  },
+  "unit_bootlog_capture_wired": {
+   "reqs": [
+    "R51",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "11 unit exec paths present+executable; capture units boot-safe; build quotes the chroot heredoc + enables/asserts bootlog; scripts run: verdict=FAIL 15 checks, json+breadcrumb ok"
+  },
+  "unit_appliance_boot_hardening": {
+   "reqs": [
+    "R48",
+    "R51",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "console order ['console=ttyS0,115200', 'console=tty1'] (+serial entry), ESP nofail pass 2 in both, initramfs 13 modules incl. vmd, installer verifies BOOTX64.EFI"
+  },
+  "unit_hw_deps_and_kiosk_reload": {
+   "reqs": [
+    "R38",
+    "R53",
+    "R55",
+    "R56"
+   ],
+   "status": "pass",
+   "detail": "flag /run/kairos/kiosk-reload (kairos-owned dir) shared by kernel+.xinitrc; 9 tools packaged; timeout kills child in 0.5s; full layout 20 args"
+  },
+  "unit_multiscreen_kiosk_hint_roundtrip": {
+   "reqs": [
+    "R52",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "primary-first numbering, mirror=1/identical-extended=2 kiosks, PID liveness sees a dead browser, hint read by shell"
+  },
+  "unit_kernel_startup_survives_bad_cache": {
+   "reqs": [
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "boottime init/history, VFS dirs + /system population degrade with warnings; no bare module-level writes"
+  },
+  "unit_cache_bound_and_disk_full": {
+   "reqs": [
+    "R67",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "oldest-first to cap/floor, fresh file kept, clean disk-full error, 507 JSON middleware"
+  },
+  "http_hw_api_laptop_setup": {
+   "reqs": [
+    "R38"
+   ],
+   "status": "pass",
+   "detail": "wifi scan/connect/status + battery 73% + brightness set + power guard all OK"
+  },
+  "http_display_datetime_bluetooth": {
+   "reqs": [
+    "R53",
+    "R54",
+    "R55",
+    "R56"
+   ],
+   "status": "pass",
+   "detail": "display list/arrange/set (+kiosk reload) \u00b7 datetime tz/ntp \u00b7 bluetooth status all OK"
+  },
+  "http_categorized_api_docs": {
+   "reqs": [
+    "R59"
+   ],
+   "status": "pass",
+   "detail": "8 short API sheets served + keyword-matched (display\u2192display.md, wifi\u2192network.md)"
+  },
+  "http_wiki_for_coding_llm": {
+   "reqs": [
+    "R39"
+   ],
+   "status": "pass",
+   "detail": "7 wiki pages served, matched to prompts, mounted read-only on /system"
+  },
+  "http_app_research_spec_step": {
+   "reqs": [
+    "R40",
+    "R9"
+   ],
+   "status": "pass",
+   "detail": "offline research \u2192 OS-written spec (123 chars) \u2192 app coded from it"
+  },
+  "unit_krea2_image_model": {
+   "reqs": [
+    "R34",
+    "R42"
+   ],
+   "status": "pass",
+   "detail": "all tiers: Muse (euler/simple, 1024\u00b2, Qwen VAE, expander) + Qwen-Image-2.1 (25 steps, own schedule) + Z-Image 1024\u00b2 + 16k ctx"
+  },
+  "http_image_model_settings_and_clamp": {
+   "reqs": [
+    "R42",
+    "R43"
+   ],
+   "status": "pass",
+   "detail": "model list (5 keys, expander/licence/files) + per-call/settings switching + step override + 2048\u00b2\u21921024\u00b2 clamp"
+  },
+  "http_addon_models_downloadable": {
+   "reqs": [
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "default baked; 3 add-ons downloadable; tier set excludes add-ons"
+  },
+  "unit_vision_manifest_and_argv": {
+   "reqs": [
+    "R70",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "4 tiers: vision addon, weights = image.text_encoder by reference, download = mmproj only, argv -m/--mmproj/--image-max-tokens"
+  },
+  "http_vision_addon_download": {
+   "reqs": [
+    "R70",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "extras[vision] listed; download = projector only (weights shared); projector missing -> clean 400"
+  },
+  "http_vision_sees_images": {
+   "reqs": [
+    "R70",
+    "R66"
+   ],
+   "status": "pass",
+   "detail": "2000x1500 -> 1280x960, 300x200 kept; /files + /genimg ok; 10 bad paths 400, missing 404; remote 172.17.0.2: screen 403 without token, 400 (no X) with it, data URL open; bridge + docs"
+  },
+  "http_vision_ffmpeg_still_images_only": {
+   "reqs": [
+    "R70",
+    "R66"
+   ],
+   "status": "pass",
+   "detail": "hls/concat -> 400, marker never named or read; nut refused ('not on whitelist'); png/jpeg/gif/bmp + rawvideo screen path ok"
+  },
+  "unit_vision_screen_capture": {
+   "reqs": [
+    "R70",
+    "R52",
+    "R68"
+   ],
+   "status": "pass",
+   "detail": "two monitors: all = 2304x768 bbox -> 1280x427 PNG, screen:1 = 1280x720, screen:2 + no X = clean errors"
+  },
+  "http_install_targets": {
+   "reqs": [
+    "R48"
+   ],
+   "status": "pass",
+   "detail": "install targets endpoint present (available=False); confirm-guard enforced"
+  },
+  "http_bug_report_self_repair": {
+   "reqs": [
+    "R12",
+    "R45"
+   ],
+   "status": "pass",
+   "detail": "SyntaxError bug report (type/loc/stack/excerpt) formatted + LLM rework OK"
+  },
+  "http_wallpaper_paints_the_session": {
+   "reqs": [
+    "R44"
+   ],
+   "status": "pass",
+   "detail": "3 session-painted wallpapers; random keep/discard differs per run (e.g. 2 fragments kept)"
+  },
+  "http_remote_needs_token": {
+   "reqs": [
+    "R66"
+   ],
+   "status": "pass",
+   "detail": "remote 172.17.0.2: 13 machine-changing calls 403, reads open, wrong token 403; token 0640 + loopback-only; with token 200; kiosk path token-free"
+  },
+  "unit_network_hardening_static": {
+   "reqs": [
+    "R66"
+   ],
+   "status": "pass",
+   "detail": "default bind refuses 172.17.0.2, answers 127.0.0.1; unit exposure opt-in only; sshd key-only; no PSK in tree; shell sends the header"
+  },
+  "unit_systemd_ordering_acyclic": {
+   "reqs": [
+    "R63",
+    "R28"
+   ],
+   "status": "pass",
+   "detail": "32 units modelled (incl. 3 heredoc/drop-in), no cycle; detector proven on the D7 unit"
+  },
+  "unit_loader_default_single_entry": {
+   "reqs": [
+    "R28",
+    "R48"
+   ],
+   "status": "pass",
+   "detail": "default kairos.conf everywhere, exactly the kAIrOS entries asserted, layout=other before update-initramfs, esp-sync hooks work; sync-guest.sh mirrors it"
+  },
+  "unit_image_fonts_emoji": {
+   "reqs": [
+    "R13",
+    "R60"
+   ],
+   "status": "pass",
+   "detail": "11 emoji dock icons; fonts-noto-color-emoji + fonts-noto-core in the image; CSS stack ends with the emoji font"
+  },
+  "unit_nvidia_persistenced_conditional": {
+   "reqs": [
+    "R63",
+    "R41"
+   ],
+   "status": "pass",
+   "detail": "persistenced disabled by build-img/patch-img/0100 hook, started by kairos-gpu-setup only with a bound device (4 sysfs cases)"
+  },
+  "unit_bootlog_verdict_accuracy": {
+   "reqs": [
+    "R51"
+   ],
+   "status": "pass",
+   "detail": "no echo on captured data, X files resolved after the wait, taint notice excluded (pipeline run), degraded -> WARN"
+  },
+  "unit_failure_capture_bounded": {
+   "reqs": [
+    "R51",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "Restart=on-failure, 12 starts/600s with 3s..30s backoff -> failed at ~238s; per-trigger template; capture cap proven (3 failures -> 2 logs), attempts.txt trimmed to <=40"
+  },
+  "unit_x_retry_chain_consistent": {
+   "reqs": [
+    "R51",
+    "R53",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "paced retries (sleep 3s to attempt 5, 30s after; flag at #6) vs getty limit 20/60s: max 6 starts per window; x11 handler instance; X pinned to :0, hw.py finds :1 fallback"
+  },
+  "unit_bootlog_paced_and_preliminary": {
+   "reqs": [
+    "R51",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "N1 WARN 'boot still in progress' while starting; N2 paced (skip < FAILPACE s), 1 uncounted early look, budget from multi-user, failed always captured; N3 X flag re-raised every 30 attempts"
+  },
+  "unit_bootlog_crash_records": {
+   "reqs": [
+    "R51"
+   ],
+   "status": "pass",
+   "detail": "one crash per Part1 group across pstore dirs, log order, dmesg.txt once, no re-copy, FAIL crash headline"
+  },
+  "unit_bootlog_shutdown_and_stall": {
+   "reqs": [
+    "R51"
+   ],
+   "status": "pass",
+   "detail": "shutdown: X once = PASS, kiosk/kernel/target/network neutral; stalled: FAIL only before multi-user, no file after"
+  },
+  "unit_hybrid_gpu_x_single_gpu": {
+   "reqs": [
+    "R41",
+    "R50"
+   ],
+   "status": "pass",
+   "detail": "nvidia_drm/nvidia_modeset alias-blacklisted (explicit load kept for an NVIDIA boot GPU), AutoAddGPU off, xinitrc breadcrumbs, no serial getty on the default entry"
+  },
+  "unit_stick_run_boot_llm_pointer": {
+   "reqs": [
+    "R41",
+    "R73",
+    "R28",
+    "R51"
+   ],
+   "status": "pass",
+   "detail": "pointer arrow after the kiosk launch; compute-only NVIDIA in the background (<1 s), NVIDIA boot GPU synchronous; ESP-only syncs; prewarm USB-only + RAM-guarded; LLM load window 900 s and mid-load requests wait for /health"
+  },
+  "unit_kernel_logs_job_and_engine_errors": {
+   "reqs": [
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "job outcome lines (once, item or update), JSON intact; engine log title/tail/rotation; LLM/app/web/5xx/download printed"
+  },
+  "unit_wm_ewmh_fake_display": {
+   "reqs": [
+    "R68",
+    "R7",
+    "R61"
+   ],
+   "status": "pass",
+   "detail": "3 kiosk + dock + mpv windows filtered, game attributed to its app + monitor; raise/minimize/restore/move/resize/place/close verified (9 EWMH messages); kill only for registered games; no X -> available:false"
+  },
+  "http_windows_api_gated": {
+   "reqs": [
+    "R68",
+    "R66"
+   ],
+   "status": "pass",
+   "detail": "no X: available:false on GET + stream, 503 on POST; ids/ops validated; remote 172.17.0.2: POST 403 without token, 503 with it, GET open; fake backend: 4 ops routed"
+  },
+  "unit_wm_x_restart_recovery": {
+   "reqs": [
+    "R68",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "restart on :0 -> same call answers from the new server (ops + list, 3 reconnects), generation bump, BadWindow stays benign, down -> available:false -> back, stream pushes the fresh list"
+  },
+  "unit_wm_minimized_game_frozen": {
+   "reqs": [
+    "R68",
+    "R7",
+    "R61"
+   ],
+   "status": "pass",
+   "detail": "minimize -> T, raise/close/re-map -> S, unknown pid untouched, group vs pid signalling, shutdown thaws + ends in 0.05 s"
+  },
+  "http_kernel_stops_with_open_streams": {
+   "reqs": [
+    "R68",
+    "R63",
+    "R62"
+   ],
+   "status": "pass",
+   "detail": "SIGTERM with 2 open SSE streams -> exit 0 in 1.32 s, no traceback, app told, engine gone"
+  },
+  "unit_r68_fixes_static": {
+   "reqs": [
+    "R68",
+    "R63",
+    "R28"
+   ],
+   "status": "pass",
+   "detail": "TimeoutStopSec bounded, shutdown hook + 5 s handler grace, games own group, taskbar layout, root cursor, flag files, rig unit"
+  },
+  "unit_desktop_hidden_linux_r68_static": {
+   "reqs": [
+    "R68",
+    "R28"
+   ],
+   "status": "pass",
+   "detail": "rc.xml decor off/no menu/no keys + openbox-session; contextmenu on 4 page classes; F11 flags; python3-xlib; home owned; search z-index idle < win; closeWin release; SSE chips"
+  },
+  "unit_requirements_traceability": {
+   "reqs": [
+    "R26"
+   ],
+   "status": "pass",
+   "detail": "86 requirements, no holes, all cited ids documented, 22 without a test so far this run"
+  },
+  "unit_game_launch_gate_mapped_window": {
+   "reqs": [
+    "R7",
+    "R11",
+    "R68"
+   ],
+   "status": "pass",
+   "detail": "mapped in 0.2 s / exited / no-window at the bound / iconified ignored / no WM and no X -> survival probe; record: exit 0 + kernel-ended = none, code/signal/summary kept; report formatted; pushed with the list"
+  },
+  "http_game_crash_after_running_is_recorded": {
+   "reqs": [
+    "R7",
+    "R11",
+    "R45",
+    "R68"
+   ],
+   "status": "pass",
+   "detail": "in-gate crash repaired with its traceback (attempt 2); post-success crash 8.2 s in -> journal + meta.json + job + /api/apps + desktop search, no auto-repair; relaunch got the BUG REPORT, v2 healthy, record cleared; SIGTERM end = exit 0, no record"
+  },
+  "unit_knowledge_base_wikipedia_mini": {
+   "reqs": [
+    "R32"
+   ],
+   "status": "pass",
+   "detail": "4 tiers: wikipedia_en_all_mini ~12 GB; downloader resolves it; Knowledge serves <dir>/knowledge/*.zim via kiwix-serve"
+  },
+  "unit_gpu_setup_boot_vga_display_logic": {
+   "reqs": [
+    "R41",
+    "R50"
+   ],
+   "status": "pass",
+   "detail": "boot_vga decides: laptop/iGPU-display compute-only, NVIDIA boot VGA (+Intel iGPU) modeset, no GPU exit 0, persistenced when bound; vmd+nvme_core in initramfs; Intel firmware/microcode shipped"
+  },
+  "http_api_docs_are_llm_only": {
+   "reqs": [
+    "R46"
+   ],
+   "status": "pass",
+   "detail": "no \ud83d\udcd6 dock app; /api/docs + /api/docs/{category} served and matched into generation; vibe.docs() in the bridge"
+  },
+  "http_wifi_api_fully_documented": {
+   "reqs": [
+    "R49"
+   ],
+   "status": "pass",
+   "detail": "status/scan/connect/disconnect/forget documented (API.md + network.md, examples + flow) and implemented + routed; sheet served; status/scan round trip"
+  },
+  "unit_testrig_real_pc_and_gpu_desktop_traceable": {
+   "reqs": [
+    "R64",
+    "R65"
+   ],
+   "status": "pass",
+   "detail": "/images/pod/testrig: vm.sh q35/SMBIOS/NVMe/e1000e/xHCI/HDA; gpu-display-setup.sh nvidia Xorg pinning + x11vnc :5900 unit; run-gpu-vm.sh wires them"
+  },
+  "unit_engine_stamp_manifest_pairing": {
+   "reqs": [
+    "R3",
+    "R47",
+    "R41"
+   ],
+   "status": "pass",
+   "detail": "stamp shape ok (UTC dates, tag build numbers, none for acestep); rule newer/equal/older/missing/unstamped/unchecked; {'stable-diffusion.cpp': '2026-09-27', 'llama.cpp': '2026-09-27', 'acestep.cpp': '2026-09-11'}; vibeos-cuda-next (llama.cpp 4da6337 2026-09-27, stable-diffusion.cpp 3f8527a 2026-09-27"
+  },
+  "http_engine_mismatch_clean_error": {
+   "reqs": [
+    "R3",
+    "R4",
+    "R31"
+   ],
+   "status": "pass",
+   "detail": "mock stamp ok; July stamp -> mismatch (3 engines named), /api/image one clean job error (sd-cli not run), /api/music 400; no stamp -> unstamped; restored -> ok"
+  },
+  "unit_testrig_sync_guest_ships_engines": {
+   "reqs": [
+    "R64",
+    "R65",
+    "R3"
+   ],
+   "status": "pass",
+   "detail": "sync-guest.sh ships bin+lib (build-iso bundle rule) + stamp over $SSH, size printed, guest ldd/--version/stamp check, kernel verdict gate; vm.sh check line; both judges parse via sh"
+  },
+  "unit_manifest_image_sections_2026_09": {
+   "reqs": [
+    "R34",
+    "R42",
+    "R29",
+    "R47",
+    "R3"
+   ],
+   "status": "fail",
+   "detail": "AssertionError: ('8gb', 'image', {'file': 'image/museByStableYogi_v35Q4Extended.gguf', 'url': 'https://civitai.com/api/download/models/3258948', 'size_gb': 8.32, 'size_bytes': 8316720160, 'sha256': 'db3eceab8049b5ba7dbebeff297145698c5498d618db15b88fd1c7e0bfa4e6c5'})"
+  },
+  "unit_prompt_expansion_helpers": {
+   "reqs": [
+    "R34",
+    "R42"
+   ],
+   "status": "pass",
+   "detail": "clean() strips think/brackets/keeps last paragraph; expander per section/setting/adult; encoder spec shared; prompts = bench copies (+1 line)"
+  },
+  "http_image_prompt_expansion": {
+   "reqs": [
+    "R34",
+    "R42",
+    "R29",
+    "R79"
+   ],
+   "status": "pass",
+   "detail": "auto: expanded prompt rendered (no brackets/think/hint) by the resident LLM, no expander server [R79]; image_expander=encoder -> the encoder under llama-server; adult -> 18+ rules; expand:false / off / classic -> raw + hint"
+  },
+  "http_images_batch_one_session": {
+   "reqs": [
+    "R42",
+    "R22",
+    "R4"
+   ],
+   "status": "pass",
+   "detail": "3 prompts = 1 sd-server launch + 3 txt2img (fresh seeds, expanded, 1024\u00b2); partial failure kept; validation; without the server: 1 sd-cli per picture"
+  },
+  "http_genimg_batch_window": {
+   "reqs": [
+    "R58",
+    "R42"
+   ],
+   "status": "pass",
+   "detail": "3 same-size /genimg within the window -> 1 sd-server session (+1 for the other size); cache hit instant"
+  },
+  "unit_llm_sampling_merge_and_variants": {
+   "reqs": [
+    "R3",
+    "R5"
+   ],
+   "status": "pass",
+   "detail": "sampling merged (temperature override, per-call wins, messages/stream protected); variants: qwen35 0.7/0.8/20/1.5, gemma 1.0/64/0.95 + --fit = tier-8gb llm, coder7b = tier-8gb llm_fast"
+  },
+  "unit_engine_stamp_next_set_and_sd_server": {
+   "reqs": [
+    "R3",
+    "R47",
+    "R41"
+   ],
+   "status": "pass",
+   "detail": "next set stamped: sd.cpp 929 (sd-cli+sd-server), llama.cpp b11223, acestep daf7644; satisfies all tiers; 7 binaries resolve; scripts ship sd-server"
+  },
+  "unit_manifests_gemma4_and_fast_mode": {
+   "reqs": [
+    "R3",
+    "R5",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "8/16 GB: Gemma 4 (sha256, --fit, thinking off, 1.0/64/0.95) + llm_fast add-on (coder7b, sha256); 24/32 GB untouched; variants carry llm_fast"
+  },
+  "unit_r47_baked_set_and_build_scripts": {
+   "reqs": [
+    "R47",
+    "R3"
+   ],
+   "status": "fail",
+   "detail": "AssertionError: llm/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf\nimage/museByStableYogi_v35Q4Extended.gguf\nimage/Qwen3VL-4B-Instruct-Q4_K_M.gguf\nimage/qwen_image_vae.safetensors\ntranslation/Index-Translate-2B.Q4_K_M.gguf\ndict/beolingus-de-en.txt.gz\ndict/freedict-deu-eng-1.9-fd1.dictd.tar.xz\ndict/freedict-deu-f"
+  },
+  "http_llm_fast_mode": {
+   "reqs": [
+    "R3",
+    "R5",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "models.llm default/fast + llm_setting; fast \u2192 llama-server on coder7b; add-on missing \u2192 default + reason; download keys fast|llm_fast; bad value 400"
+  },
+  "http_settings_validation": {
+   "reqs": [
+    "R15",
+    "R42"
+   ],
+   "status": "pass",
+   "detail": "16 bad values \u2192 400 (nothing stored), 10 good ones \u2192 200; unknown keys kept"
+  },
+  "http_music_addon_absent_hint": {
+   "reqs": [
+    "R31",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "music absent \u2192 400 with vibe.models.download('music') hint; present again \u2192 available"
+  },
+  "unit_js_syntax_gate": {
+   "reqs": [
+    "R12",
+    "R45"
+   ],
+   "status": "pass",
+   "detail": "gate on (qjsc 2025-04-26): broken/TLA/return/truncated caught with document lines; modern syntax + module/json skipped; cross-script let caught"
+  },
+  "http_app_js_gate_repairs_before_done": {
+   "reqs": [
+    "R12",
+    "R45",
+    "R5"
+   ],
+   "status": "pass",
+   "detail": "broken script \u2192 gate issue in the stream \u2192 repaired before done; unfixable \u2192 done + broken verdict (stream note, meta, cached, repair reply, /app page)"
+  },
+  "unit_shell_fixes_static": {
+   "reqs": [
+    "R45",
+    "R12",
+    "R61",
+    "R13"
+   ],
+   "status": "pass",
+   "detail": "D1 cap + D2 dock room + D3 parity + D4 undefined/hint + D5 shims + D6/D5 prompt rules + D9 confirms + D11 shapes documented"
+  },
+  "unit_n6_docs_reach_the_model": {
+   "reqs": [
+    "R39",
+    "R59",
+    "R43",
+    "R45"
+   ],
+   "status": "pass",
+   "detail": "dock prompt: api sheet 6476 + recipe 11725 chars injected whole; 28263 of 28400 budget chars used (-c 16384)"
+  },
+  "unit_translation_manifest_and_specs": {
+   "reqs": [
+    "R71",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "4 tiers: translation addon (fast 2B CPU -ngl 0 -dev none, quality 9B GPU; Q4_K_M on 8 GB, Q8_0 above), sha256/size_bytes, provisional note; specs + prompt + script heuristics"
+  },
+  "http_translation_settings_validation": {
+   "reqs": [
+    "R71",
+    "R15"
+   ],
+   "status": "pass",
+   "detail": "8 bad values \u2192 400 naming the key, nothing stored; on/off, the 7 languages, fast/quality accepted; defaults off/en/fast"
+  },
+  "http_translation_off_is_no_change": {
+   "reqs": [
+    "R71",
+    "R5"
+   ],
+   "status": "pass",
+   "detail": "off: /api/translate 400 naming the setting, ASK_SYSTEM unchanged, no launch; on+en: identity, no launch, no prompt change"
+  },
+  "http_translate_api_cache_and_addon": {
+   "reqs": [
+    "R71",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "single/batch/cache (de.json; repeat = 0 calls)/to+from/7 bad bodies 400; ONE CPU launch (-ngl 0 -dev none :8085, no system msg, thinking off, temp 0); extras + download = 2 files; quality\u2192fast fallback; absent \u2192 400; off stops the server"
+  },
+  "http_translation_present_modes_fast_baked": {
+   "reqs": [
+    "R71",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "fast only \u2192 present true, present_modes {fast, !quality}, missing_gb 5.78, download_gb 7.1; download: not 'already', both entries handed over, aria2c for the 9B only; quality only \u2192 present; neither \u2192 present false; other add-ons unchanged"
+  },
+  "http_translation_llm_language_and_english_hop": {
+   "reqs": [
+    "R71",
+    "R5",
+    "R42"
+   ],
+   "status": "pass",
+   "detail": "ASK/APP/GAME/BROWSER prompts + the German line, fix/spec/expander/vision/wallpaper untouched; classic prompt \u2192 '[en] \u2026' via the MT hop; the Krea expander told English (no hop); search query \u2192 English, results back in German"
+  },
+  "unit_translation_shell_bridge_docs_static": {
+   "reqs": [
+    "R71",
+    "R12",
+    "R39",
+    "R59"
+   ],
+   "status": "pass",
+   "detail": "translator 6764 chars identical in shell + bridge (inert literal); handlers in both host pages; settings hook + translate=no spots; settings sheet 6476 + recipe 11725 chars carry keys/picker/switch/download/vibe.translate"
+  },
+  "unit_p3_dictionaries_wiktionary_manifests": {
+   "reqs": [
+    "R71",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "7 manifests: dictionaries (BEOLINGUS + 37 FreeDict, sha256+sha512, licences) + 7 wiktionary_<lang> (store: knowledge), none baked, --cache-ram 0 on fast+quality; 42 sources / 40 pairs; fold/parsers OK; queue cross-check done"
+  },
+  "http_dict_lookup_fixtures_and_addon": {
+   "reqs": [
+    "R71",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "BEOLINGUS + FreeDict fixtures: exact/folded/prefix, reversed en\u2192de, to=language, from omitted (6 placeholder errors reported), 9 bad requests 400, status, download hook (38 files + index; wiktionary \u2192 kiwix restart), extras, add-on missing \u2192 400"
+  },
+  "http_translation_dom_batches_fast_and_cache_ram": {
+   "reqs": [
+    "R71",
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "quality selected: dom batch \u2192 fast (:8085, --cache-ram 0, logged), explicit call \u2192 quality (9B via the LLM port, --cache-ram 0); \u2192 fast unloads the 9B and keeps the fast server; off stops it"
+  },
+  "unit_knowledge_multi_zim_sources": {
+   "reqs": [
+    "R32",
+    "R71"
+   ],
+   "status": "pass",
+   "detail": "3 ZIMs: Wikipedia first, labels, native group first (title hit leads), round-robin merge, facts name their book, restart/stop; search links + Wiktionary page text parsed; knowledge_native; native hits not re-translated"
+  },
+  "unit_p3_dict_wiktionary_docs_bridge_static": {
+   "reqs": [
+    "R71",
+    "R39",
+    "R59",
+    "R12"
+   ],
+   "status": "pass",
+   "detail": "vibe.dict + dom flag in bridge/shell/host; API.md + core + settings sheet 6476 / recipe 11725 chars carry the add-ons; requirement (h) + log section; kernel appends --cache-ram"
+  },
+  "unit_bake_flagged_addons_in_image": {
+   "reqs": [
+    "R47",
+    "R71"
+   ],
+   "status": "pass",
+   "detail": "bake flag on translation.fast + dictionaries in 7 manifests, nowhere else; 8gb list +39 files / +1.43 GB (the 9B + ZIMs stay downloads); tier presence unchanged"
+  }
+ }
+}

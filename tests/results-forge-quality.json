@@ -1,0 +1,121 @@
+{
+ "at": "2026-10-10 11:41:47",
+ "tests": {
+  "unit_forge_pyflakes_static_gate": {
+   "reqs": [
+    "R77",
+    "R7",
+    "R11"
+   ],
+   "status": "pass",
+   "detail": "undefined name in an unreached branch, SyntaxError, missing module blocked; unused imports/guarded import pass; pyflakes 4.0.2 + MIT LICENSE vendored"
+  },
+  "unit_forge_feedback_and_guards": {
+   "reqs": [
+    "R77",
+    "R11"
+   ],
+   "status": "pass",
+   "detail": "code identity, error signature across lines, input log + failing line + IDENTICAL/SAME notes; 6 attempts / 4 rounds; main.py after both checks"
+  },
+  "unit_appcheck_chromium_output_parser": {
+   "reqs": [
+    "R77",
+    "R12",
+    "R45"
+   ],
+   "status": "pass",
+   "detail": "stderr (new+old console form, 3 Uncaught), DOM report, line map, dedupe, console.error/JSON filters, BRIDGE_SRC (26003 chars)"
+  },
+  "unit_forge_playtest_catches_keypress_crash": {
+   "reqs": [
+    "R77",
+    "R7",
+    "R11"
+   ],
+   "status": "pass",
+   "detail": "RIGHT-key crash caught in 1.2 s (line 10, input t=1.00s KEYDOWN right); healthy passed (73 events, 7.1 s); no-window, after-QUIT crash caught; QUIT ignored = pass"
+  },
+  "unit_appcheck_runtime_chromium": {
+   "reqs": [
+    "R77",
+    "R12",
+    "R45"
+   ],
+   "status": "skip",
+   "detail": "no chromium here (the parser is covered by unit_appcheck_chromium_output_parser)"
+  },
+  "http_forge_game_static_gate_blocks_undefined_name": {
+   "reqs": [
+    "R77",
+    "R7",
+    "R11"
+   ],
+   "status": "pass",
+   "detail": "pyflakes blocked attempt 1 (no launch, no play-test), the fix carried the line, attempt 2 running"
+  },
+  "http_forge_game_playtest_catches_key_crash": {
+   "reqs": [
+    "R77",
+    "R7",
+    "R11"
+   ],
+   "status": "pass",
+   "detail": "key-only IndexError caught headless at attempt 1 (traceback + KEYDOWN right to the debugger), attempt 2 running"
+  },
+  "http_forge_game_identical_resubmission_guard": {
+   "reqs": [
+    "R77",
+    "R11"
+   ],
+   "status": "pass",
+   "detail": "identical resubmission detected (not re-run), re-asked with the IDENTICAL order, fixed: running at attempt 3"
+  },
+  "http_forge_game_failed_evolution_keeps_working_version": {
+   "reqs": [
+    "R77",
+    "R35",
+    "R45",
+    "R7"
+   ],
+   "status": "pass",
+   "detail": "6 failed attempts, main.py = v1 byte-identical, history/failed-v2.py + log, meta v1 + failed_evolution, v1 relaunched (fallback)"
+  },
+  "http_forge_app_repair_rounds": {
+   "reqs": [
+    "R77",
+    "R12",
+    "R45"
+   ],
+   "status": "pass",
+   "detail": "fixed in round 3 of 4: delivered clean (gate clean, runtime not run (no chromium on this system))"
+  },
+  "http_forge_app_identical_repair_guard": {
+   "reqs": [
+    "R77",
+    "R12",
+    "R11"
+   ],
+   "status": "pass",
+   "detail": "identical repair reply detected (not re-checked), re-asked with the IDENTICAL order, clean in round 2"
+  },
+  "http_forge_app_regressing_improvement_falls_back": {
+   "reqs": [
+    "R77",
+    "R24",
+    "R35"
+   ],
+   "status": "pass",
+   "detail": "regressing v2 (4 rounds) not mounted: fallback v1, app.html unchanged, history/failed-v2.html, meta failed_evolutions"
+  },
+  "http_forge_app_runtime_error_repaired": {
+   "reqs": [
+    "R77",
+    "R12",
+    "R45"
+   ],
+   "status": "skip",
+   "detail": "no chromium here (the runtime check skips; parser covered by the unit test)"
+  }
+ }
+}

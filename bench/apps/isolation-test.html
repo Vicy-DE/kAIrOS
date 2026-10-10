@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>bridge isolation</title>
+<style>body{margin:0;background:#181010;color:#eee;font:13px monospace;padding:12px}</style></head><body>
+<pre id="out">F9: direct kernel access from app HTML must FAIL…</pre>
+<script>
+// F9 — the app tries to bypass the bridge: relative and absolute kernel URLs, and the
+// origin it runs under. blocked=1 means the R66 chokepoint holds.
+const BENCH = "{{BENCH}}", APPID = "{{APPID}}";
+const out = document.getElementById("out");
+(async () => {
+  const r = { origin: location.origin, rel: "?", abs: "?" };
+  try { const x = await fetch("/api/install/targets"); r.rel = "HTTP " + x.status + (x.type === "opaque" ? " opaque" : ""); } catch (e) { r.rel = "blocked: " + e.message; }
+  try { const x = await fetch("http://127.0.0.1:1337/api/install/targets"); r.abs = "HTTP " + x.status; } catch (e) { r.abs = "blocked: " + e.message; }
+  const blocked = r.rel.startsWith("blocked") && r.abs.startsWith("blocked") ? 1 : 0;
+  out.textContent += "\n" + JSON.stringify(r) + "\nblocked=" + blocked;
+  new Image().src = BENCH + "/mark?id=" + APPID + "&ev=f9&blocked=" + blocked + "&detail=" + encodeURIComponent(JSON.stringify(r)) + "&t=" + Date.now();
+})();
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  new Image().src = BENCH + "/mark?id=" + APPID + "&ev=paint&t=" + Date.now();
+}));
+</script></body></html>

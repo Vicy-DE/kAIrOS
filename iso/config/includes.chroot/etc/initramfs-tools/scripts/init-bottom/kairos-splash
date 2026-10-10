@@ -1,0 +1,14 @@
+#!/bin/sh
+# kAIrOS boot screen [R73]: the root file system is mounted at ${rootmnt} — hand the
+# painter the boot time the kernel measured over the last boots (its progress bar runs
+# against it) and mark the "root" milestone. /run is moved into the real root by init, so
+# the files stay visible to the painter and to userspace (kairos-splash-ctl). Exits 0 always.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+[ -e /run/kairos-splash.pid ] || exit 0
+mkdir -p /run/kairos-splash 2>/dev/null
+f="${rootmnt:-/root}/opt/vibeos/cache/boottime/expected"
+[ -r "$f" ] && cp "$f" /run/kairos-splash/expected 2>/dev/null
+echo root > /run/kairos-splash/milestone 2>/dev/null
+exit 0

@@ -1,0 +1,9 @@
+#!/usr/bin/env python3
+"""Mock timedatectl for the hw datetime API."""
+import sys
+a = sys.argv[1:]
+if a[:1] == ["show"]:
+    print("Timezone=Europe/Berlin\nNTP=yes\nNTPSynchronized=yes\nLocalRTC=no")
+elif a[:1] == ["list-timezones"]:
+    print("Europe/Berlin\nEurope/London\nAmerica/New_York\nAsia/Tokyo")
+# set-timezone / set-ntp / set-time -> silent success

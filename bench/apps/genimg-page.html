@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>genimg page</title>
+<style>html,body{margin:0;height:100%;background:#0e0b16;color:#eee;font:14px system-ui}
+h1{margin:0;padding:14px 18px;font-size:18px;color:#c9b6ff}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0 18px 18px}
+img{width:100%;aspect-ratio:1;border-radius:12px;border:1px solid #333;background:#222}
+#probe{position:fixed;left:40px;top:60px;width:64px;height:64px;background:#000;border:1px solid #333;z-index:5}</style>
+</head><body>
+<h1>A gallery of six generated pictures</h1>
+<div class="grid">
+<img src="{{BENCH}}/img/1.png"><img src="{{BENCH}}/img/2.png"><img src="{{BENCH}}/img/3.png">
+<img src="{{BENCH}}/img/4.png"><img src="{{BENCH}}/img/5.png"><img src="{{BENCH}}/img/6.png">
+</div><div id="probe"></div>
+<script>
+// A3 — a /genimg-style page: six <img> from the bench stub server (pre-rendered 512x512 PNGs,
+// never the real /genimg/ endpoint — diffusion time must not enter the measurement)
+</script>
+<script>
+const BENCH = "{{BENCH}}", APPID = "{{APPID}}";
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  new Image().src = BENCH + "/mark?id=" + APPID + "&ev=paint&t=" + Date.now();
+}));
+addEventListener("click", () => { probe.style.background = probe.style.background === "rgb(255, 255, 255)" ? "#000" : "#fff";
+  new Image().src = BENCH + "/mark?id=" + APPID + "&ev=click&t=" + Date.now(); });
+</script>
+</body></html>

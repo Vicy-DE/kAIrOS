@@ -1,0 +1,102 @@
+# kAIrOS live image — package manifest (Debian trixie, amd64)
+
+## boot / live
+linux-image-amd64
+linux-headers-amd64
+live-boot
+live-config
+live-config-systemd
+systemd-sysv
+firmware-linux
+firmware-linux-nonfree
+firmware-misc-nonfree
+# Intel WiFi incl. the BE200 (WiFi 7 / "Gale Peak", gl-*.ucode) — needs a current
+# firmware-iwlwifi (trixie's is recent enough; backports hook tops it up if newer).
+firmware-iwlwifi
+firmware-realtek
+firmware-atheros
+# Intel Arrow Lake / Core Ultra 9 iGPU (Xe graphics): dedicated firmware, split out
+# of firmware-misc-nonfree on trixie. Harmless on machines without an Intel iGPU.
+firmware-intel-graphics
+amd64-microcode
+intel-microcode
+
+## networking + ssh (hardware-test / real-hardware monitoring access)
+network-manager
+wpasupplicant
+wireless-regdb
+openssh-server
+iw
+rfkill
+iproute2
+iputils-ping
+curl
+ca-certificates
+pciutils
+usbutils
+
+## kAIrOS runtime
+python3
+python3-aiohttp
+python3-pygame
+ffmpeg
+libgomp1
+libcurl4
+aria2
+## quickjs (qjsc, ~2 MB): the kernel's JavaScript syntax gate parses every generated app's
+## inline scripts before delivery — a real ES2023 parser without node (kernel/jscheck.py,
+## docs/FIXES-2026-09-28.md D7); trixie's 2025-04-26 build (noble's 2021 one is too old)
+quickjs
+
+## kiosk (kAIrOS desktop on the laptop screen)
+xserver-xorg
+xinit
+openbox
+chromium
+unclutter
+x11-xserver-utils
+## the kernel's window layer (kernel/wm.py): EWMH over python-xlib lists/raises/
+## minimizes/closes the real X windows (pygame games) for the shell's taskbar [R68]
+python3-xlib
+## fonts: the dock / Apps menu / task chips in shell/index.html are emoji — without
+## a colour emoji font 10 of 12 dock icons rendered as tofu boxes on the real
+## desktop (D6). fonts-noto-color-emoji is what Chromium falls back to for emoji
+## presentation (shell.css also names it); fonts-noto-core gives text glyph
+## coverage beyond DejaVu (generated apps in any script)
+fonts-noto-color-emoji
+fonts-noto-core
+
+## (no boot animation player any more: the R73 boot screen is a static framebuffer
+## painter in the initrd, scripts/splash/, and a local page in the kiosk)
+
+## audio + bluetooth — kernel/hw.py shells out to pactl (pulseaudio-utils), amixer
+## (alsa-utils) and bluetoothctl (bluez); without a sound server the machine has NO
+## audio at all (generated music/video have nowhere to play). PipeWire runs as the
+## kiosk user's session (wireplumber is a Recommends — listed: apt-recommends off).
+## firmware-sof-signed: Intel laptop audio DSPs (Core Ultra) have no sound card
+## without it. libspa-0.2-bluetooth: bluetooth headsets/speakers [R31/R38/R55/R56]
+pipewire
+pipewire-pulse
+wireplumber
+pulseaudio-utils
+alsa-utils
+bluez
+libspa-0.2-bluetooth
+firmware-sof-signed
+
+## dual-GPU (R30): AMD iGPU drivers + Vulkan compute for engines on both GPUs
+firmware-amd-graphics
+mesa-vulkan-drivers
+libvulkan1
+vulkan-tools
+
+## installer (kairos-install: clone the live system onto an internal disk)
+gdisk
+dosfstools
+rsync
+systemd-boot
+
+## convenience for hardware testing over ssh
+htop
+nano
+less

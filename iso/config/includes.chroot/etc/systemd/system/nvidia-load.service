@@ -1,0 +1,27 @@
+[Unit]
+Description=Load NVIDIA modules for CUDA/display (non-critical) [R41/R50]
+# The driver is bound BEFORE the kiosk's X starts (getty@tty1 -> autologin ->
+# startx) and after basic.target, the point every default-dependency service
+# starts at. It is deliberately NOT After=multi-user.target: getty@tty1 lives
+# inside multi-user.target (multi-user -> getty.target -> getty@tty1), so "after
+# multi-user AND before getty@tty1" was an ordering cycle that systemd broke by
+# deleting a random job of the cycle — on one boot in six that job was
+# getty@tty1/start: no login, no X, a black screen, and `systemctl --failed`
+# empty (D7). A unit is never ordered both after a target and before something
+# that target contains (tests/test_kernel.py unit_systemd_ordering_acyclic).
+After=basic.target
+Before=getty@tty1.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# a finicky dGPU still cannot fail the boot: the script exits 0 on every path
+# (no NVIDIA device, no module) and ExecStart=- ignores it anyway [R63]
+ExecStart=-/usr/local/sbin/kairos-gpu-setup
+# oneshot units have NO start timeout by default: a modprobe that hangs would
+# hold getty@tty1 (the kiosk) forever — cut it, the desktop then comes up on the
+# integrated GPU and the boot log names the unit
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

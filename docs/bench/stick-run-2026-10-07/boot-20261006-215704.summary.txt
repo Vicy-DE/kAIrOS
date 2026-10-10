@@ -1,0 +1,22 @@
+==================== kAIrOS boot log (shutdown) ====================
+############ SUMMARY / VERDICT ############
+VERDICT: WARN — boot OK with 1 warning(s)
+ PASS boot_history  attempt #1; early breadcrumb ran (root + EFI partition mounted)
+ PASS boot_target   shutdown capture (system: stopping) — end-of-run state
+ PASS failed_units  no failed units [R63]
+ PASS boot_errors   no systemd job failures this boot
+ PASS crash         no kernel crash record (EFI pstore) from an earlier boot
+ PASS hung_units    nothing stuck in activating
+ PASS rootfs_grow   root grown on first boot (58G total, 7.1G free)
+ PASS gpu_driver    0000:01:00.0 NVIDIA driver=nvidia boot_vga=0; 0000:05:00.0 AMD driver=amdgpu boot_vga=1; 
+ WARN firmware      firmware load problems: [    8.765746] iwlwifi 0000:02:00.0: firmware: failed to load iwl-debug-yoyo.bin (-2);[    8.765755] iwlwifi 0000:02:00.0: firmware: failed to load iwl-debug-yoyo.bin (-2);[    8.765763] iwlwifi 0000:02:00.0: firmware: failed to load iwl-debug-yoyo.bin (-2);
+ PASS modules       no module load failures in the journal
+ PASS xorg          X server up on :0 (attempts this boot: 1)
+ PASS kernel_api    answering on :1337 (kairos.service active)
+ PASS kiosk         n/a at shutdown (the kiosk stops first)
+ PASS network       n/a at shutdown (NetworkManager stopping)
+ PASS esp           EFI partition mounted at /boot/efi via fstab
+boot attempts (early breadcrumb, newest last):
+   #1  started 2026-10-06 21:42:12  kernel 6.12.90+deb13.1-amd64  root /dev/sda2  esp /dev/sda1
+   #1  boot log written 2026-10-06 21:44:29  verdict WARN
+###########################################

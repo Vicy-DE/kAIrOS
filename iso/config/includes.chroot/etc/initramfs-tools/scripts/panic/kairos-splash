@@ -1,0 +1,11 @@
+#!/bin/sh
+# kAIrOS [R51/R73]: an initramfs failure (root= not found, a missing module, ...) drops to
+# the "(initramfs)" shell. initramfs-tools runs the panic scripts BEFORE that shell: stop
+# the boot screen painter and put tty1 back into text mode, so the ALERT line and the
+# prompt are readable on the screen (debuggability beats the splash). The text written
+# to tty1 while it was in graphics mode is redrawn by fbcon on the switch.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+[ -x /sbin/kairos-splash ] && /sbin/kairos-splash --stop >/dev/null 2>&1
+exit 0

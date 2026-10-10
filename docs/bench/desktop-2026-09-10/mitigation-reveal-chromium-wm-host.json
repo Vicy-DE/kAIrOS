@@ -1,0 +1,1077 @@
+{
+ "candidate": "chromium-wm",
+ "env": "host",
+ "run": 1,
+ "started": "2026-09-10 19:12:04",
+ "M1": {
+  "ready_ms": 2415.910005569458,
+  "dock_painted_ms": 2416.1629676818848,
+  "cold": false,
+  "probe": "40x24 patch on the second dock button (\ud83d\ude80 emoji): >=3 pixels with max(R,G,B)>150"
+ },
+ "M2": {
+  "opens": [
+   {
+    "app": "bench-a1-0",
+    "label": "cold",
+    "t_req": 1789060328.7666109,
+    "t_win": 1789060328.878741,
+    "t_map": 1789060328.878,
+    "t_paint": 1789060328.880648,
+    "open_ms": 114.03703689575195,
+    "win_ms": 112.13016510009766,
+    "geom": [
+     90,
+     70,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 130,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    },
+    "map_to_paint_ms": 2.647876739501953
+   },
+   {
+    "app": "bench-a1-1",
+    "label": "warm",
+    "t_req": 1789060329.8394265,
+    "t_win": 1789060329.9453847,
+    "t_map": 1789060329.945,
+    "t_paint": 1789060329.946456,
+    "open_ms": 107.02943801879883,
+    "win_ms": 105.95822334289551,
+    "geom": [
+     126,
+     102,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 133,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    },
+    "map_to_paint_ms": 1.4560222625732422
+   },
+   {
+    "app": "bench-a2-1",
+    "label": "warm",
+    "t_req": 1789060330.2476206,
+    "t_win": 1789060330.378695,
+    "t_map": 1789060330.378,
+    "t_paint": 1789060330.5742936,
+    "open_ms": 326.6730308532715,
+    "win_ms": 131.0744285583496,
+    "geom": [
+     162,
+     134,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 132,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    },
+    "map_to_paint_ms": 196.29359245300293
+   },
+   {
+    "app": "bench-a3-1",
+    "label": "warm",
+    "t_req": 1789060330.6801422,
+    "t_win": 1789060330.7967398,
+    "t_map": 1789060330.796,
+    "t_paint": 1789060330.7796686,
+    "open_ms": 99.52640533447266,
+    "win_ms": 116.59765243530273,
+    "geom": [
+     198,
+     166,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 131,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    },
+    "map_to_paint_ms": -16.33143424987793
+   },
+   {
+    "app": "bench-a1-2",
+    "label": "warm",
+    "t_req": 1789060338.879667,
+    "t_win": 1789060339.0007427,
+    "t_map": 1789060339.0,
+    "t_paint": 1789060338.9826632,
+    "open_ms": 102.9961109161377,
+    "win_ms": 121.07563018798828,
+    "geom": [
+     234,
+     198,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 130,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    },
+    "map_to_paint_ms": -17.33684539794922
+   },
+   {
+    "app": "bench-a2-2",
+    "label": "warm",
+    "t_req": 1789060339.3019001,
+    "t_win": 1789060339.4795237,
+    "t_map": 1789060339.479,
+    "t_paint": 1789060339.6391027,
+    "open_ms": 337.2025489807129,
+    "win_ms": 177.62351036071777,
+    "geom": [
+     270,
+     70,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 129,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    },
+    "map_to_paint_ms": 160.10260581970215
+   },
+   {
+    "app": "bench-a3-2",
+    "label": "warm",
+    "t_req": 1789060339.9557335,
+    "t_win": 1789060340.0634038,
+    "t_map": 1789060340.063,
+    "t_paint": 1789060340.061364,
+    "open_ms": 105.63039779663086,
+    "win_ms": 107.67030715942383,
+    "geom": [
+     306,
+     102,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 128,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    },
+    "map_to_paint_ms": -1.6360282897949219
+   },
+   {
+    "app": "bench-a1-3",
+    "label": "warm",
+    "t_req": 1789060340.364104,
+    "t_win": 1789060340.5623908,
+    "t_map": 1789060340.562,
+    "t_paint": 1789060340.5770733,
+    "open_ms": 212.96930313110352,
+    "win_ms": 198.286771774292,
+    "geom": [
+     90,
+     134,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 128,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    },
+    "map_to_paint_ms": 15.073299407958984
+   },
+   {
+    "app": "bench-a2-3",
+    "label": "warm",
+    "t_req": 1789060340.8626866,
+    "t_win": 1789060341.1283262,
+    "t_map": 1789060341.128,
+    "t_paint": 1789060341.3410726,
+    "open_ms": 478.38592529296875,
+    "win_ms": 265.6395435333252,
+    "geom": [
+     126,
+     166,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 128,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    },
+    "map_to_paint_ms": 213.0725383758545
+   },
+   {
+    "app": "bench-a3-3",
+    "label": "warm",
+    "t_req": 1789060341.4287386,
+    "t_win": 1789060341.6504326,
+    "t_map": 1789060341.65,
+    "t_paint": 1789060341.6616738,
+    "open_ms": 232.93519020080566,
+    "win_ms": 221.6939926147461,
+    "geom": [
+     162,
+     198,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 128,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    },
+    "map_to_paint_ms": 11.673688888549805
+   },
+   {
+    "app": "bench-a1-4",
+    "label": "warm",
+    "t_req": 1789060341.9524617,
+    "t_win": 1789060342.0629559,
+    "t_map": 1789060342.062,
+    "t_paint": 1789060342.0788057,
+    "open_ms": 126.34396553039551,
+    "win_ms": 110.49413681030273,
+    "geom": [
+     198,
+     70,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 128,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    },
+    "map_to_paint_ms": 16.805648803710938
+   },
+   {
+    "app": "bench-vibe",
+    "label": "F8",
+    "t_req": 1789060367.224407,
+    "t_win": 1789060367.323129,
+    "t_map": 1789060367.321,
+    "t_paint": 1789060367.411833,
+    "open_ms": 187.42609024047852,
+    "win_ms": 98.72198104858398,
+    "geom": [
+     234,
+     102,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 118,
+     "white_samples": 20,
+     "white_ms": 62.63113801064901,
+     "white_ms_bar": 62.63113801064901,
+     "white_samples_bar": 20
+    },
+    "map_to_paint_ms": 90.83294868469238
+   },
+   {
+    "app": "bench-f9",
+    "label": "F9",
+    "t_req": 1789060378.0163293,
+    "t_win": 1789060378.293943,
+    "t_map": 1789060378.293,
+    "t_paint": 1789060378.3344102,
+    "open_ms": 318.0809020996094,
+    "win_ms": 277.61363983154297,
+    "geom": [
+     270,
+     134,
+     720,
+     520
+    ],
+    "flash": {
+     "samples": 123,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    },
+    "map_to_paint_ms": 41.410207748413086
+   },
+   {
+    "app": "bench-hang",
+    "label": "F11",
+    "t_req": 1789060378.6078768,
+    "t_win": 1789060378.731403,
+    "t_map": 1789060378.73,
+    "t_paint": 1789060378.7408288,
+    "open_ms": 132.9519748687744,
+    "win_ms": 123.52633476257324,
+    "geom": [
+     426,
+     302,
+     400,
+     300
+    ],
+    "flash": {
+     "samples": 121,
+     "white_samples": 0,
+     "white_ms": 0,
+     "white_ms_bar": 0,
+     "white_samples_bar": 0
+    },
+    "map_to_paint_ms": 10.828733444213867
+   }
+  ]
+ },
+ "M2b": [
+  2.647876739501953,
+  1.4560222625732422,
+  196.29359245300293,
+  -16.33143424987793,
+  -17.33684539794922,
+  160.10260581970215,
+  -1.6360282897949219,
+  15.073299407958984,
+  213.0725383758545,
+  11.673688888549805,
+  16.805648803710938,
+  90.83294868469238,
+  41.410207748413086,
+  10.828733444213867
+ ],
+ "M3": {
+  "0": {
+   "pss_mib": 795.8310546875,
+   "rss_mib": 2228.8515625,
+   "procs": 26,
+   "per_kind_mib": {
+    "chromium:browser": 143.3486328125,
+    "chromium:zygote": 29.40234375,
+    "chromium:utility": 46.0439453125,
+    "chromium:renderer": 364.3115234375,
+    "chromium:gpu-process": 115.1103515625,
+    "openbox": 15.22265625,
+    "driver": 36.0341796875,
+    "docker": 26.06640625,
+    "gone": 0.0,
+    "xserver": 20.291015625
+   },
+   "samples": [
+    795.8310546875
+   ]
+  },
+  "1": {
+   "pss_mib": 844.2275390625,
+   "rss_mib": 2456.0078125,
+   "procs": 29,
+   "per_kind_mib": {
+    "chromium:browser": 149.7626953125,
+    "chromium:zygote": 29.08203125,
+    "chromium:utility": 46.201171875,
+    "chromium:renderer": 401.470703125,
+    "chromium:gpu-process": 118.537109375,
+    "openbox": 15.2451171875,
+    "driver": 36.125,
+    "docker": 26.0654296875,
+    "gone": 0.0,
+    "xserver": 21.73828125
+   },
+   "samples": [
+    844.2275390625
+   ]
+  },
+  "3": {
+   "pss_mib": 1007.9921875,
+   "rss_mib": 2972.6796875,
+   "procs": 33,
+   "per_kind_mib": {
+    "chromium:browser": 163.2294921875,
+    "chromium:zygote": 28.5537109375,
+    "chromium:utility": 48.279296875,
+    "chromium:renderer": 543.0205078125,
+    "chromium:gpu-process": 131.16015625,
+    "openbox": 15.224609375,
+    "driver": 36.1845703125,
+    "docker": 17.6474609375,
+    "gone": 0.0,
+    "xserver": 24.6923828125
+   },
+   "samples": [
+    1007.9921875
+   ]
+  },
+  "5": {
+   "pss_mib": 1226.4375,
+   "rss_mib": 3638.30859375,
+   "procs": 38,
+   "per_kind_mib": {
+    "chromium:browser": 169.51171875,
+    "chromium:zygote": 28.119140625,
+    "chromium:utility": 46.7412109375,
+    "chromium:renderer": 736.1318359375,
+    "chromium:gpu-process": 139.6494140625,
+    "openbox": 15.224609375,
+    "driver": 36.3359375,
+    "docker": 26.0625,
+    "gone": 0.0,
+    "xserver": 28.6611328125
+   },
+   "samples": [
+    1226.4375
+   ]
+  },
+  "10": {
+   "pss_mib": 1640.9580078125,
+   "rss_mib": 5136.0546875,
+   "procs": 51,
+   "per_kind_mib": {
+    "chromium:browser": 200.7783203125,
+    "chromium:zygote": 27.4609375,
+    "chromium:utility": 48.076171875,
+    "chromium:renderer": 1097.7744140625,
+    "chromium:gpu-process": 153.2529296875,
+    "openbox": 15.251953125,
+    "driver": 36.314453125,
+    "docker": 26.05859375,
+    "gone": 0.0,
+    "xserver": 35.990234375
+   },
+   "samples": [
+    1640.9580078125
+   ]
+  },
+  "after_close": {
+   "pss_mib": 733.4140625,
+   "rss_mib": 2725.078125,
+   "procs": 38,
+   "per_kind_mib": {
+    "chromium:browser": 142.5537109375,
+    "chromium:zygote": 19.623046875,
+    "chromium:utility": 29.8720703125,
+    "chromium:renderer": 441.828125,
+    "gone": 0.0,
+    "chromium:gpu-process": 40.5126953125,
+    "openbox": 6.80078125,
+    "driver": 13.296875,
+    "docker": 18.0712890625,
+    "xserver": 20.85546875
+   },
+   "samples": [
+    733.4140625
+   ]
+  }
+ },
+ "M3b": {
+  "chromium:browser": 1,
+  "chromium:zygote": 3,
+  "chromium:utility": 2,
+  "chromium:renderer": 38,
+  "chromium:gpu-process": 1,
+  "openbox": 1,
+  "driver": 1,
+  "docker": 1,
+  "gone": 2,
+  "xserver": 1,
+  "one_browser_process": true
+ },
+ "M4": {},
+ "M5": {
+  "a1_visible": {
+   "seconds": 2.0002802160015563,
+   "system_busy_pct": 23.4,
+   "system_idle_pct": 76.6,
+   "stack_cpu_pct_one_core": 128.48199864403367,
+   "stack_cpu_pct_all_cores": 8.030124915252104
+  },
+  "a1_minimized": {
+   "seconds": 2.000312707008561,
+   "system_busy_pct": 17.8,
+   "system_idle_pct": 82.2,
+   "stack_cpu_pct_one_core": 35.49445031831017,
+   "stack_cpu_pct_all_cores": 2.2184031448943857
+  }
+ },
+ "M6": {
+  "ops": 9,
+  "seconds": 0.02209400400170125,
+  "ops_per_s": 407.35033809657114,
+  "fails": 0,
+  "per_op": {
+   "move": {
+    "n": 3,
+    "p50": 1.1996349930996075,
+    "p95": 4.592514000250958,
+    "min": 0.9547259978717193,
+    "max": 4.592514000250958,
+    "mean": 2.248958330407428
+   },
+   "resize": {
+    "n": 3,
+    "p50": 2.468128004693426,
+    "p95": 3.1645820126868784,
+    "min": 2.256652995129116,
+    "max": 3.1645820126868784,
+    "mean": 2.6297876708364734
+   },
+   "raise": {
+    "n": 3,
+    "p50": 2.4791790056042373,
+    "p95": 2.576842001872137,
+    "min": 2.3632619995623827,
+    "max": 2.576842001872137,
+    "mean": 2.4730943356795856
+   }
+  },
+  "all": {
+   "n": 9,
+   "p50": 2.468128004693426,
+   "p95": 4.592514000250958,
+   "min": 0.9547259978717193,
+   "max": 4.592514000250958,
+   "mean": 2.4506134456411623
+  }
+ },
+ "M7": {
+  "3apps": {
+   "drags": [
+    {
+     "frames": 41,
+     "interval_ms": {
+      "n": 40,
+      "p50": 8.338503503182437,
+      "p95": 16.727510999771766,
+      "min": 3.1067430099938065,
+      "max": 144.36438601114787,
+      "mean": 13.246066125066136
+     },
+     "stalls_gt32ms": 2,
+     "moved_px": 430,
+     "probe_hz": 13113.327259577813,
+     "samples": 6948,
+     "duration_s": 0.5
+    }
+   ],
+   "frames_median": 41,
+   "stalls_median": 2,
+   "interval_p95_median": 16.727510999771766,
+   "moved_px": [
+    430
+   ]
+  },
+  "10apps": {
+   "drags": [
+    {
+     "frames": 68,
+     "interval_ms": {
+      "n": 67,
+      "p50": 8.342681991052814,
+      "p95": 17.598682999960147,
+      "min": 0.06889899668749422,
+      "max": 27.18990000721533,
+      "mean": 10.050393820830635
+     },
+     "stalls_gt32ms": 0,
+     "moved_px": 590,
+     "probe_hz": 9030.610705198178,
+     "samples": 6081,
+     "duration_s": 0.5
+    }
+   ],
+   "frames_median": 68,
+   "stalls_median": 0,
+   "interval_p95_median": 17.598682999960147,
+   "moved_px": [
+    590
+   ]
+  }
+ },
+ "M8": {
+  "input_to_photon_ms": {
+   "n": 3,
+   "p50": 11.328588996548206,
+   "p95": 23.824533011065796,
+   "min": 4.40728799731005,
+   "max": 23.824533011065796,
+   "mean": 13.186803334974684
+  },
+  "misses": 0,
+  "clicks": 3,
+  "probe": "8x8 centre of the app's 64x64 #probe patch, polled as fast as XGetImage returns"
+ },
+ "M9": {
+  "M9a": {
+   "driver": {
+    "cpu_ms_per_op": 1.2809999999999988,
+    "utime_ms": 7.0669999999999895,
+    "stime_ms": 4.462000000000001,
+    "pss_kb": 37055
+   }
+  },
+  "M9b": {
+   "3apps": {
+    "driver": {
+     "n": 132,
+     "p50": 629.6039937296882,
+     "p95": 2077.61226920411,
+     "p99": 2097.3890786990523,
+     "max": 2117.373762303032
+    }
+   },
+   "10apps": {
+    "driver": {
+     "n": 130,
+     "p50": 610.42356537655,
+     "p95": 2085.6865448877215,
+     "p99": 2104.464190779254,
+     "max": 2143.981502740644
+    }
+   }
+  }
+ },
+ "F": {
+  "F3a_minimize_restore_x2": {
+   "pass": true
+  },
+  "F3": {
+   "pass": true,
+   "evidence": {
+    "chip_region_before": null,
+    "restored": true,
+    "active": true,
+    "minimized_listed": true
+   }
+  },
+  "F4": {
+   "pass": true,
+   "evidence": {
+    "sticky_note_yellow_px": 9572,
+    "minimized_by_button": true,
+    "maximized_geom": {
+     "x": 0,
+     "y": 30,
+     "w": 1280,
+     "h": 690,
+     "mapped": true,
+     "screen": 0
+    },
+    "maximized_by_button": true,
+    "restored_geom": {
+     "x": 126,
+     "y": 102,
+     "w": 720,
+     "h": 520,
+     "mapped": true,
+     "screen": 0
+    },
+    "restored_by_button": true
+   },
+   "note": "close (\u2715) verified separately via the close op at the end of the run"
+  },
+  "F2": {
+   "pass": true,
+   "evidence": {
+    "pid": 2627762,
+    "x_window": "0x1400009",
+    "frame_delta": [
+     0,
+     0
+    ],
+    "in_shell_window_list": true,
+    "minimized_listed": true,
+    "raise_ok": true,
+    "minimize_ok": true,
+    "restore_ok": true,
+    "close_ok": true
+   },
+   "visible": true
+  },
+  "F5": {
+   "pass": true,
+   "evidence": {
+    "minimized_listed": true
+   }
+  },
+  "F1": {
+   "pass": true,
+   "evidence": {
+    "reply": "OK 1789060359250 (1406, 102, 720, 520, True)",
+    "before": {
+     "x": 126,
+     "y": 102,
+     "w": 720,
+     "h": 520,
+     "mapped": true,
+     "screen": 0
+    },
+    "after": {
+     "x": 1406,
+     "y": 102,
+     "w": 720,
+     "h": 520,
+     "mapped": true,
+     "screen": 1
+    },
+    "fully_on_screen_1": true,
+    "frames_changed_0.8s": 48
+   }
+  },
+  "F6": {
+   "pass": true,
+   "evidence": {
+    "search_window": true,
+    "windows_before_after": [
+     16,
+     18
+    ],
+    "opened_app": [
+     "bench-vibe"
+    ],
+    "over_app_windows": true
+   },
+   "note": "search moved into its own window (search.html) so it opens over real windows"
+  },
+  "F7": {
+   "pass": true,
+   "evidence": {
+    "page_window": "kairos-page:bench-town-news",
+    "content_nonuniform": true
+   },
+   "note": "page window keeps the /web/ document in a sandboxed iframe (allow-scripts allow-forms)"
+  },
+  "F8": {
+   "pass": true,
+   "evidence": {
+    "ask": "ok",
+    "store": "ok",
+    "hw": "ok",
+    "image": "ok"
+   }
+  },
+  "F9": {
+   "pass": true,
+   "evidence": {
+    "blocked": "1",
+    "detail": "{\"origin\":\"null\",\"rel\":\"blocked: Failed to fetch\",\"abs\":\"blocked: Failed to fetch\"}"
+   }
+  },
+  "F11": {
+   "pass": true,
+   "evidence": {
+    "hang_beacon": true,
+    "a1_frames_changed_2s": 120,
+    "again_0.5s": 30,
+    "close_hung_app": true
+   }
+  },
+  "F10": {
+   "pass": true,
+   "evidence": {
+    "decorated_windows": [],
+    "override_windows_after_rightclick": [
+     [
+      10485870,
+      404,
+      347,
+      "",
+      2625510
+     ]
+    ],
+    "wm_menus": [],
+    "browser_context_menu": [
+     [
+      10485870,
+      404,
+      347,
+      "",
+      2625510
+     ]
+    ],
+    "screenshots": 10
+   },
+   "browser_context_menu": true,
+   "note": "structural check + saved frames; Chromium's own context menu is reported, not gated"
+  },
+  "F12": {
+   "pass": null,
+   "evidence": "host: NVIDIA is vfio-bound \u2014 not measurable"
+  },
+  "close_all": {
+   "closed": 10,
+   "of": 10
+  }
+ },
+ "notes": [],
+ "screenshots": [
+  "shot-chromium-wm-host-r1-ready.jpg",
+  "shot-chromium-wm-host-r1-3apps.jpg",
+  "shot-chromium-wm-host-r1-10apps.jpg",
+  "shot-chromium-wm-host-r1-pygame.jpg",
+  "shot-chromium-wm-host-r1-pygame-minimized.jpg",
+  "shot-chromium-wm-host-r1-f1-screen1.jpg",
+  "shot-chromium-wm-host-r1-f6-search.jpg",
+  "shot-chromium-wm-host-r1-f7-page.jpg",
+  "shot-chromium-wm-host-r1-f11.jpg",
+  "shot-chromium-wm-host-r1-f10-rightclick.jpg"
+ ],
+ "M2b_white_ms": [
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  62.63113801064901,
+  0,
+  0
+ ],
+ "M2b_white_bar_ms": [
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  62.63113801064901,
+  0,
+  0
+ ],
+ "driver_log_tail": [
+  [
+   "geom bench-a1-1",
+   "GEOM 126 102 720 520 1 0",
+   0.0006599549960810691
+  ],
+  [
+   "toscreen bench-a1-1 1",
+   "OK 1789060359250 (1406, 102, 720, 520, True)",
+   0.0024939460126915947
+  ],
+  [
+   "geom bench-a1-1",
+   "GEOM 1406 102 720 520 1 1",
+   0.0004949959984514862
+  ],
+  [
+   "toscreen bench-a1-1 0",
+   "OK 1789060360596 (126, 102, 720, 520, True)",
+   0.0027518989954842255
+  ],
+  [
+   "geom bench-a1-1",
+   "GEOM 126 102 720 520 1 0",
+   0.0002458300004946068
+  ],
+  [
+   "windows",
+   "WINDOWS [{\"xid\": 10485762, \"title\": \"kairos-desk:0\", \"kind\": \"desk\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485777, \"title\": \"kairos-menubar:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485780, \"title\": \"kairos-dock:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485783, \"title\": \"kairos-desk:1\", \"kind\": \"desk\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485786, \"title\": \"kairos-menubar:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485789, \"title\": \"kairos-dock:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485795, \"title\": \"kairos-app:bench-a1-1\", \"kind\": \"app\", \"app\": \"bench-a1-1\", \"x\": 126, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485798, \"title\": \"kairos-app:bench-a2-1\", \"kind\": \"app\", \"app\": \"bench-a2-1\", \"x\": 162, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485801, \"title\": \"kairos-app:bench-a3-1\", \"kind\": \"app\", \"app\": \"bench-a3-1\", \"x\": 198, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485829, \"title\": \"kairos-app:bench-a1-2\", \"kind\": \"app\", \"app\": \"bench-a1-2\", \"x\": 234, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485832, \"title\": \"kairos-app:bench-a2-2\", \"kind\": \"app\", \"app\": \"bench-a2-2\", \"x\": 270, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485835, \"title\": \"kairos-app:bench-a3-2\", \"kind\": \"app\", \"app\": \"bench-a3-2\", \"x\": 306, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485838, \"title\": \"kairos-app:bench-a1-3\", \"kind\": \"app\", \"app\": \"bench-a1-3\", \"x\": 90, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485841, \"title\": \"kairos-app:bench-a2-3\", \"kind\": \"app\", \"app\": \"bench-a2-3\", \"x\": 126, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485844, \"title\": \"kairos-app:bench-a3-3\", \"kind\": \"app\", \"app\": \"bench-a3-3\", \"x\": 162, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485847, \"title\": \"kairos-app:bench-a1-4\", \"kind\": \"app\", \"app\": \"bench-a1-4\", \"x\": 198, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": true, \"screen\": 0}]",
+   0.0023136590025387704
+  ],
+  [
+   "windows",
+   "WINDOWS [{\"xid\": 10485762, \"title\": \"kairos-desk:0\", \"kind\": \"desk\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485777, \"title\": \"kairos-menubar:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485780, \"title\": \"kairos-dock:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485783, \"title\": \"kairos-desk:1\", \"kind\": \"desk\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485786, \"title\": \"kairos-menubar:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485789, \"title\": \"kairos-dock:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485795, \"title\": \"kairos-app:bench-a1-1\", \"kind\": \"app\", \"app\": \"bench-a1-1\", \"x\": 126, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485798, \"title\": \"kairos-app:bench-a2-1\", \"kind\": \"app\", \"app\": \"bench-a2-1\", \"x\": 162, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485801, \"title\": \"kairos-app:bench-a3-1\", \"kind\": \"app\", \"app\": \"bench-a3-1\", \"x\": 198, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485829, \"title\": \"kairos-app:bench-a1-2\", \"kind\": \"app\", \"app\": \"bench-a1-2\", \"x\": 234, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485832, \"title\": \"kairos-app:bench-a2-2\", \"kind\": \"app\", \"app\": \"bench-a2-2\", \"x\": 270, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485835, \"title\": \"kairos-app:bench-a3-2\", \"kind\": \"app\", \"app\": \"bench-a3-2\", \"x\": 306, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485838, \"title\": \"kairos-app:bench-a1-3\", \"kind\": \"app\", \"app\": \"bench-a1-3\", \"x\": 90, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485841, \"title\": \"kairos-app:bench-a2-3\", \"kind\": \"app\", \"app\": \"bench-a2-3\", \"x\": 126, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485844, \"title\": \"kairos-app:bench-a3-3\", \"kind\": \"app\", \"app\": \"bench-a3-3\", \"x\": 162, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485847, \"title\": \"kairos-app:bench-a1-4\", \"kind\": \"app\", \"app\": \"bench-a1-4\", \"x\": 198, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": true, \"screen\": 0}]",
+   0.0023532339982921258
+  ],
+  [
+   "windows",
+   "WINDOWS [{\"xid\": 10485762, \"title\": \"kairos-desk:0\", \"kind\": \"desk\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485777, \"title\": \"kairos-menubar:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485780, \"title\": \"kairos-dock:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485783, \"title\": \"kairos-desk:1\", \"kind\": \"desk\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485786, \"title\": \"kairos-menubar:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485789, \"title\": \"kairos-dock:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485795, \"title\": \"kairos-app:bench-a1-1\", \"kind\": \"app\", \"app\": \"bench-a1-1\", \"x\": 126, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485798, \"title\": \"kairos-app:bench-a2-1\", \"kind\": \"app\", \"app\": \"bench-a2-1\", \"x\": 162, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485801, \"title\": \"kairos-app:bench-a3-1\", \"kind\": \"app\", \"app\": \"bench-a3-1\", \"x\": 198, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485829, \"title\": \"kairos-app:bench-a1-2\", \"kind\": \"app\", \"app\": \"bench-a1-2\", \"x\": 234, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485832, \"title\": \"kairos-app:bench-a2-2\", \"kind\": \"app\", \"app\": \"bench-a2-2\", \"x\": 270, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485835, \"title\": \"kairos-app:bench-a3-2\", \"kind\": \"app\", \"app\": \"bench-a3-2\", \"x\": 306, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485838, \"title\": \"kairos-app:bench-a1-3\", \"kind\": \"app\", \"app\": \"bench-a1-3\", \"x\": 90, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485841, \"title\": \"kairos-app:bench-a2-3\", \"kind\": \"app\", \"app\": \"bench-a2-3\", \"x\": 126, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485844, \"title\": \"kairos-app:bench-a3-3\", \"kind\": \"app\", \"app\": \"bench-a3-3\", \"x\": 162, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485847, \"title\": \"kairos-app:bench-a1-4\", \"kind\": \"app\", \"app\": \"bench-a1-4\", \"x\": 198, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": true, \"screen\": 0}]",
+   0.003395413004909642
+  ],
+  [
+   "windows",
+   "WINDOWS [{\"xid\": 10485762, \"title\": \"kairos-desk:0\", \"kind\": \"desk\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485777, \"title\": \"kairos-menubar:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485780, \"title\": \"kairos-dock:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485783, \"title\": \"kairos-desk:1\", \"kind\": \"desk\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485786, \"title\": \"kairos-menubar:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485789, \"title\": \"kairos-dock:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485795, \"title\": \"kairos-app:bench-a1-1\", \"kind\": \"app\", \"app\": \"bench-a1-1\", \"x\": 126, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485798, \"title\": \"kairos-app:bench-a2-1\", \"kind\": \"app\", \"app\": \"bench-a2-1\", \"x\": 162, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485801, \"title\": \"kairos-app:bench-a3-1\", \"kind\": \"app\", \"app\": \"bench-a3-1\", \"x\": 198, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485829, \"title\": \"kairos-app:bench-a1-2\", \"kind\": \"app\", \"app\": \"bench-a1-2\", \"x\": 234, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485832, \"title\": \"kairos-app:bench-a2-2\", \"kind\": \"app\", \"app\": \"bench-a2-2\", \"x\": 270, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485835, \"title\": \"kairos-app:bench-a3-2\", \"kind\": \"app\", \"app\": \"bench-a3-2\", \"x\": 306, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485838, \"title\": \"kairos-app:bench-a1-3\", \"kind\": \"app\", \"app\": \"bench-a1-3\", \"x\": 90, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485841, \"title\": \"kairos-app:bench-a2-3\", \"kind\": \"app\", \"app\": \"bench-a2-3\", \"x\": 126, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485844, \"title\": \"kairos-app:bench-a3-3\", \"kind\": \"app\", \"app\": \"bench-a3-3\", \"x\": 162, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485847, \"title\": \"kairos-app:bench-a1-4\", \"kind\": \"app\", \"app\": \"bench-a1-4\", \"x\": 198, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485852, \"title\": \"kairos-search:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 30, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": true, \"screen\": 0}]",
+   0.0041470510041108355
+  ],
+  [
+   "raise 10485852",
+   "OK 1789060360810 {'active': True}",
+   0.0010095189936691895
+  ],
+  [
+   "windows",
+   "WINDOWS [{\"xid\": 10485762, \"title\": \"kairos-desk:0\", \"kind\": \"desk\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485777, \"title\": \"kairos-menubar:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485780, \"title\": \"kairos-dock:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485783, \"title\": \"kairos-desk:1\", \"kind\": \"desk\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485786, \"title\": \"kairos-menubar:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485789, \"title\": \"kairos-dock:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485795, \"title\": \"kairos-app:bench-a1-1\", \"kind\": \"app\", \"app\": \"bench-a1-1\", \"x\": 126, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485798, \"title\": \"kairos-app:bench-a2-1\", \"kind\": \"app\", \"app\": \"bench-a2-1\", \"x\": 162, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485801, \"title\": \"kairos-app:bench-a3-1\", \"kind\": \"app\", \"app\": \"bench-a3-1\", \"x\": 198, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485829, \"title\": \"kairos-app:bench-a1-2\", \"kind\": \"app\", \"app\": \"bench-a1-2\", \"x\": 234, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485832, \"title\": \"kairos-app:bench-a2-2\", \"kind\": \"app\", \"app\": \"bench-a2-2\", \"x\": 270, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485835, \"title\": \"kairos-app:bench-a3-2\", \"kind\": \"app\", \"app\": \"bench-a3-2\", \"x\": 306, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485838, \"title\": \"kairos-app:bench-a1-3\", \"kind\": \"app\", \"app\": \"bench-a1-3\", \"x\": 90, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485841, \"title\": \"kairos-app:bench-a2-3\", \"kind\": \"app\", \"app\": \"bench-a2-3\", \"x\": 126, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485844, \"title\": \"kairos-app:bench-a3-3\", \"kind\": \"app\", \"app\": \"bench-a3-3\", \"x\": 162, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485847, \"title\": \"kairos-app:bench-a1-4\", \"kind\": \"app\", \"app\": \"bench-a1-4\", \"x\": 198, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485852, \"title\": \"kairos-search:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 30, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485855, \"title\": \"kairos-app:bench-vibe\", \"kind\": \"app\", \"app\": \"bench-vibe\", \"x\": 0, \"y\": 30, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": true, \"screen\": 0}]",
+   0.00402531199506484
+  ],
+  [
+   "windows",
+   "WINDOWS [{\"xid\": 10485762, \"title\": \"kairos-desk:0\", \"kind\": \"desk\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485777, \"title\": \"kairos-menubar:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485780, \"title\": \"kairos-dock:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485783, \"title\": \"kairos-desk:1\", \"kind\": \"desk\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485786, \"title\": \"kairos-menubar:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485789, \"title\": \"kairos-dock:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485795, \"title\": \"kairos-app:bench-a1-1\", \"kind\": \"app\", \"app\": \"bench-a1-1\", \"x\": 126, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485798, \"title\": \"kairos-app:bench-a2-1\", \"kind\": \"app\", \"app\": \"bench-a2-1\", \"x\": 162, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485801, \"title\": \"kairos-app:bench-a3-1\", \"kind\": \"app\", \"app\": \"bench-a3-1\", \"x\": 198, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485829, \"title\": \"kairos-app:bench-a1-2\", \"kind\": \"app\", \"app\": \"bench-a1-2\", \"x\": 234, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485832, \"title\": \"kairos-app:bench-a2-2\", \"kind\": \"app\", \"app\": \"bench-a2-2\", \"x\": 270, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485835, \"title\": \"kairos-app:bench-a3-2\", \"kind\": \"app\", \"app\": \"bench-a3-2\", \"x\": 306, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485838, \"title\": \"kairos-app:bench-a1-3\", \"kind\": \"app\", \"app\": \"bench-a1-3\", \"x\": 90, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485841, \"title\": \"kairos-app:bench-a2-3\", \"kind\": \"app\", \"app\": \"bench-a2-3\", \"x\": 126, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485844, \"title\": \"kairos-app:bench-a3-3\", \"kind\": \"app\", \"app\": \"bench-a3-3\", \"x\": 162, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485847, \"title\": \"kairos-app:bench-a1-4\", \"kind\": \"app\", \"app\": \"bench-a1-4\", \"x\": 198, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485852, \"title\": \"kairos-search:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 30, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485855, \"title\": \"kairos-app:bench-vibe\", \"kind\": \"app\", \"app\": \"bench-vibe\", \"x\": 0, \"y\": 30, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": true, \"screen\": 0}]",
+   0.0028578979981830344
+  ],
+  [
+   "close 10485852",
+   "OK 1789060363941 None",
+   0.00954509100120049
+  ],
+  [
+   "close bench-vibe",
+   "OK 1789060363962 None",
+   0.02130189200397581
+  ],
+  [
+   "windows",
+   "WINDOWS [{\"xid\": 10485762, \"title\": \"kairos-desk:0\", \"kind\": \"desk\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485777, \"title\": \"kairos-menubar:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485780, \"title\": \"kairos-dock:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485783, \"title\": \"kairos-desk:1\", \"kind\": \"desk\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485786, \"title\": \"kairos-menubar:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485789, \"title\": \"kairos-dock:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485795, \"title\": \"kairos-app:bench-a1-1\", \"kind\": \"app\", \"app\": \"bench-a1-1\", \"x\": 126, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485798, \"title\": \"kairos-app:bench-a2-1\", \"kind\": \"app\", \"app\": \"bench-a2-1\", \"x\": 162, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485801, \"title\": \"kairos-app:bench-a3-1\", \"kind\": \"app\", \"app\": \"bench-a3-1\", \"x\": 198, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485829, \"title\": \"kairos-app:bench-a1-2\", \"kind\": \"app\", \"app\": \"bench-a1-2\", \"x\": 234, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485832, \"title\": \"kairos-app:bench-a2-2\", \"kind\": \"app\", \"app\": \"bench-a2-2\", \"x\": 270, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485835, \"title\": \"kairos-app:bench-a3-2\", \"kind\": \"app\", \"app\": \"bench-a3-2\", \"x\": 306, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485838, \"title\": \"kairos-app:bench-a1-3\", \"kind\": \"app\", \"app\": \"bench-a1-3\", \"x\": 90, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485841, \"title\": \"kairos-app:bench-a2-3\", \"kind\": \"app\", \"app\": \"bench-a2-3\", \"x\": 126, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485844, \"title\": \"kairos-app:bench-a3-3\", \"kind\": \"app\", \"app\": \"bench-a3-3\", \"x\": 162, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485847, \"title\": \"kairos-app:bench-a1-4\", \"kind\": \"app\", \"app\": \"bench-a1-4\", \"x\": 198, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": true, \"screen\": 0}]",
+   0.0035987139999633655
+  ],
+  [
+   "windows",
+   "WINDOWS [{\"xid\": 10485762, \"title\": \"kairos-desk:0\", \"kind\": \"desk\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485777, \"title\": \"kairos-menubar:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485780, \"title\": \"kairos-dock:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485783, \"title\": \"kairos-desk:1\", \"kind\": \"desk\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485786, \"title\": \"kairos-menubar:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485789, \"title\": \"kairos-dock:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485795, \"title\": \"kairos-app:bench-a1-1\", \"kind\": \"app\", \"app\": \"bench-a1-1\", \"x\": 126, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485798, \"title\": \"kairos-app:bench-a2-1\", \"kind\": \"app\", \"app\": \"bench-a2-1\", \"x\": 162, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485801, \"title\": \"kairos-app:bench-a3-1\", \"kind\": \"app\", \"app\": \"bench-a3-1\", \"x\": 198, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485829, \"title\": \"kairos-app:bench-a1-2\", \"kind\": \"app\", \"app\": \"bench-a1-2\", \"x\": 234, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485832, \"title\": \"kairos-app:bench-a2-2\", \"kind\": \"app\", \"app\": \"bench-a2-2\", \"x\": 270, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485835, \"title\": \"kairos-app:bench-a3-2\", \"kind\": \"app\", \"app\": \"bench-a3-2\", \"x\": 306, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485838, \"title\": \"kairos-app:bench-a1-3\", \"kind\": \"app\", \"app\": \"bench-a1-3\", \"x\": 90, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485841, \"title\": \"kairos-app:bench-a2-3\", \"kind\": \"app\", \"app\": \"bench-a2-3\", \"x\": 126, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485844, \"title\": \"kairos-app:bench-a3-3\", \"kind\": \"app\", \"app\": \"bench-a3-3\", \"x\": 162, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485847, \"title\": \"kairos-app:bench-a1-4\", \"kind\": \"app\", \"app\": \"bench-a1-4\", \"x\": 198, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485858, \"title\": \"127.0.0.1_/shell/bench/page.html\", \"kind\": \"other\", \"app\": null, \"x\": 0, \"y\": 30, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": true, \"screen\": 0}]",
+   0.004920336999930441
+  ],
+  [
+   "windows",
+   "WINDOWS [{\"xid\": 10485762, \"title\": \"kairos-desk:0\", \"kind\": \"desk\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485777, \"title\": \"kairos-menubar:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485780, \"title\": \"kairos-dock:0\", \"kind\": \"strip\", \"app\": null, \"x\": 0, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485783, \"title\": \"kairos-desk:1\", \"kind\": \"desk\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 800, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485786, \"title\": \"kairos-menubar:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 0, \"w\": 1280, \"h\": 30, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485789, \"title\": \"kairos-dock:1\", \"kind\": \"strip\", \"app\": null, \"x\": 1280, \"y\": 720, \"w\": 1280, \"h\": 80, \"minimized\": false, \"active\": false, \"screen\": 1}, {\"xid\": 10485795, \"title\": \"kairos-app:bench-a1-1\", \"kind\": \"app\", \"app\": \"bench-a1-1\", \"x\": 126, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485798, \"title\": \"kairos-app:bench-a2-1\", \"kind\": \"app\", \"app\": \"bench-a2-1\", \"x\": 162, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485801, \"title\": \"kairos-app:bench-a3-1\", \"kind\": \"app\", \"app\": \"bench-a3-1\", \"x\": 198, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485829, \"title\": \"kairos-app:bench-a1-2\", \"kind\": \"app\", \"app\": \"bench-a1-2\", \"x\": 234, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485832, \"title\": \"kairos-app:bench-a2-2\", \"kind\": \"app\", \"app\": \"bench-a2-2\", \"x\": 270, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485835, \"title\": \"kairos-app:bench-a3-2\", \"kind\": \"app\", \"app\": \"bench-a3-2\", \"x\": 306, \"y\": 102, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485838, \"title\": \"kairos-app:bench-a1-3\", \"kind\": \"app\", \"app\": \"bench-a1-3\", \"x\": 90, \"y\": 134, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485841, \"title\": \"kairos-app:bench-a2-3\", \"kind\": \"app\", \"app\": \"bench-a2-3\", \"x\": 126, \"y\": 166, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485844, \"title\": \"kairos-app:bench-a3-3\", \"kind\": \"app\", \"app\": \"bench-a3-3\", \"x\": 162, \"y\": 198, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485847, \"title\": \"kairos-app:bench-a1-4\", \"kind\": \"app\", \"app\": \"bench-a1-4\", \"x\": 198, \"y\": 70, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": false, \"screen\": 0}, {\"xid\": 10485858, \"title\": \"kairos-page:bench-town-news\", \"kind\": \"page\", \"app\": null, \"x\": 0, \"y\": 30, \"w\": 720, \"h\": 520, \"minimized\": false, \"active\": true, \"screen\": 0}]",
+   0.004815852007595822
+  ],
+  [
+   "geom 10485858",
+   "GEOM 0 30 720 520 1 0",
+   0.0007526980043621734
+  ],
+  [
+   "close 10485858",
+   "OK 1789060367224 None",
+   0.010330851990147494
+  ],
+  [
+   "open bench-vibe 234 102 720 520",
+   "WIN bench-vibe 1789060367321 10485861 (234, 102, 720, 520, True)",
+   0.09871636699244846
+  ],
+  [
+   "close bench-vibe",
+   "OK 1789060378016 None",
+   0.0102839940082049
+  ],
+  [
+   "open bench-f9 270 134 720 520",
+   "WIN bench-f9 1789060378293 10485864 (270, 134, 720, 520, True)",
+   0.2776076519949129
+  ],
+  [
+   "close bench-f9",
+   "OK 1789060378604 None",
+   0.009926546001224779
+  ],
+  [
+   "geom bench-a1-1",
+   "GEOM 126 102 720 520 1 0",
+   0.0004953970055794343
+  ],
+  [
+   "raise bench-a1-1",
+   "OK 1789060378607 {'active': True}",
+   0.003121731002465822
+  ],
+  [
+   "open bench-hang 426 302 400 300",
+   "WIN bench-hang 1789060378730 10485867 (426, 302, 400, 300, True)",
+   0.12352128299244214
+  ],
+  [
+   "close bench-hang",
+   "OK 1789060383496 None",
+   0.009488484996836632
+  ],
+  [
+   "pids",
+   "PIDS 2625510 2625472 2625433",
+   8.522901043761522e-05
+  ],
+  [
+   "close bench-a1-1",
+   "OK 1789060384497 None",
+   0.014250085994717665
+  ],
+  [
+   "close bench-a2-1",
+   "OK 1789060384534 None",
+   0.036923373001627624
+  ],
+  [
+   "close bench-a3-1",
+   "OK 1789060384572 None",
+   0.03806798599543981
+  ],
+  [
+   "close bench-a1-2",
+   "OK 1789060384601 None",
+   0.029469434986822307
+  ],
+  [
+   "close bench-a2-2",
+   "OK 1789060384621 None",
+   0.01916312999674119
+  ],
+  [
+   "close bench-a3-2",
+   "OK 1789060384642 None",
+   0.02099960600025952
+  ],
+  [
+   "close bench-a1-3",
+   "OK 1789060384665 None",
+   0.023849058008636348
+  ],
+  [
+   "close bench-a2-3",
+   "OK 1789060384693 None",
+   0.0274044120014878
+  ],
+  [
+   "close bench-a3-3",
+   "OK 1789060384714 None",
+   0.02071622500079684
+  ],
+  [
+   "close bench-a1-4",
+   "OK 1789060384736 None",
+   0.022053357999539003
+  ],
+  [
+   "pids",
+   "PIDS 2625510 2625472 2625433",
+   0.00012980299652554095
+  ],
+  [
+   "stop",
+   "BYE",
+   1.5999960920016747
+  ]
+ ],
+ "finished": "2026-09-10 19:13:07"
+}

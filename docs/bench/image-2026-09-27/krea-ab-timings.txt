@@ -1,0 +1,16 @@
+A_cube_short rc=0 wall=37,5s cond=2.98s sampling=26.59s prompt=to 30 tokens
+A_cube_long rc=0 wall=37,6s cond=3.57s sampling=26.93s prompt=to 115 tokens
+A_sign_short rc=0 wall=37,0s cond=3.36s sampling=26.29s prompt=to 19 tokens
+A_sign_long rc=0 wall=37,4s cond=2.82s sampling=26.95s prompt=to 102 tokens
+A_cat_short rc=0 wall=37,2s cond=3.35s sampling=26.25s prompt=to 13 tokens
+A_cat_long rc=0 wall=37,1s cond=2.62s sampling=26.88s prompt=to 116 tokens
+B_cube_short rc=0 wall=53,5s cond=2.78s sampling=39.15s prompt=to 30 tokens
+B_cube_long rc=0 wall=53,7s cond=2.84s sampling=39.58s prompt=to 115 tokens
+B_sign_short rc=0 wall=53,5s cond=2.79s sampling=39.03s prompt=to 19 tokens
+B_sign_long rc=0 wall=54,6s cond=2.98s sampling=40.12s prompt=to 102 tokens
+B_cat_short rc=0 wall=52,8s cond=2.79s sampling=38.81s prompt=to 13 tokens
+B_cat_long rc=0 wall=54,1s cond=2.81s sampling=39.86s prompt=to 116 tokens
+DONE
+G512_cube rc=0 wall=25s (512x512, config A, short prompt)
+G512_sign rc=0 wall=24s
+G512_cat rc=0 wall=25s
