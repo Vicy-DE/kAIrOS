@@ -1,0 +1,165 @@
+#!/bin/bash
+# kairos-install — install the running kAIrOS (booted live from a USB stick) onto
+# an internal disk, then boot standalone from it (the "installer, like Ubuntu" flow).
+# It clones the live root to the target, installs systemd-boot, and gives the
+# installed system its own identity. Safe: it refuses to touch the boot medium.
+#
+#   kairos-install --list            list installable target disks (JSON)
+#   kairos-install /dev/nvme0n1      install onto that disk (WIPES it)
+set -euo pipefail
+
+log(){ printf '[install] %s\n' "$*"; }
+
+# --- the disk we booted from is off-limits -------------------------------------
+ROOTSRC=$(findmnt -no SOURCE / 2>/dev/null || true)
+BOOTDISK=""
+[ -n "$ROOTSRC" ] && BOOTDISK="/dev/$(lsblk -no PKNAME "$ROOTSRC" 2>/dev/null | head -1)"
+
+if [ "${1:-}" = "--list" ]; then
+  # emit JSON: every whole disk that is not the boot medium
+  first=1; printf '['
+  for d in $(lsblk -dno NAME,TYPE | awk '$2=="disk"{print $1}'); do
+    dev="/dev/$d"
+    [ "$dev" = "$BOOTDISK" ] && continue
+    size=$(lsblk -dno SIZE "$dev" | tr -d ' ')
+    model=$(lsblk -dno MODEL "$dev" | sed 's/"/ /g; s/  */ /g; s/^ *//; s/ *$//')
+    [ $first -eq 1 ] || printf ','
+    first=0
+    printf '{"dev":"%s","size":"%s","model":"%s"}' "$dev" "$size" "$model"
+  done
+  printf ']\n'
+  exit 0
+fi
+
+TARGET="${1:-}"
+[ -n "$TARGET" ] || { echo "usage: kairos-install /dev/DISK   (or --list)"; exit 2; }
+[ -b "$TARGET" ] || { echo "not a block device: $TARGET"; exit 2; }
+[ "$TARGET" = "$BOOTDISK" ] && { echo "refusing: $TARGET is the live boot medium"; exit 3; }
+
+log "target $TARGET — WIPING and installing kAIrOS"
+# partition suffix: a device whose name ends in a digit (nvme0n1, mmcblk0, loop0)
+# separates partitions with 'p'; a letter-terminated one (sda) does not.
+if [[ "$TARGET" =~ [0-9]$ ]]; then P1="${TARGET}p1"; P2="${TARGET}p2"; else P1="${TARGET}1"; P2="${TARGET}2"; fi
+
+log "partitioning (GPT: 512M ESP + rest ext4 root)"
+sgdisk --zap-all "$TARGET" >/dev/null
+sgdisk -n1:0:+512M -t1:ef00 -c1:ESP "$TARGET" >/dev/null
+sgdisk -n2:0:0     -t2:8304 -c2:KAIROS_ROOT "$TARGET" >/dev/null
+# reload the kernel partition table (partprobe lives in `parted`, not shipped;
+# partx/blockdev are util-linux and always present)
+partx -u "$TARGET" 2>/dev/null || blockdev --rereadpt "$TARGET" 2>/dev/null || true
+udevadm settle 2>/dev/null || sleep 2
+
+mkfs.vfat -F32 -n ESP "$P1" >/dev/null
+mkfs.ext4 -F -q -L KAIROS_ROOT "$P2"
+
+MNT=/mnt/kairos-target
+mkdir -p "$MNT"; mount "$P2" "$MNT"
+mkdir -p "$MNT/boot/efi"; mount "$P1" "$MNT/boot/efi"
+# whatever happens from here on, leave no mounts behind (a failure below exits
+# non-zero — the UI must never say DONE for a disk that cannot boot)
+cleanup(){
+  for fs in run dev sys proc; do umount -R "$MNT/$fs" 2>/dev/null || true; done
+  umount "$MNT/boot/efi" 2>/dev/null || true
+  umount "$MNT" 2>/dev/null || true
+}
+trap cleanup EXIT
+die(){ log "FAILED: $*"; exit 5; }
+
+log "cloning the live system onto $TARGET (a few minutes)…"
+# -x stays on the root filesystem: the split-payload layout bind-mounts the
+# models/knowledge partition (KAIROS_DATA) under /opt/vibeos — those are copied
+# explicitly right after, so an installed disk is complete and self-contained
+rsync -aHAXx \
+  --exclude='/proc/*' --exclude='/sys/*' --exclude='/dev/*' --exclude='/run/*' \
+  --exclude='/tmp/*' --exclude='/var/tmp/*' --exclude='/mnt/*' --exclude='/media/*' \
+  --exclude='/lost+found' --exclude='/swapfile' --exclude='/opt/vibeos/cache/*' \
+  --exclude='/var/log/*' \
+  / "$MNT/"
+for d in /opt/vibeos/models /opt/vibeos/knowledge; do
+  if mountpoint -q "$d" 2>/dev/null; then
+    log "copying the payload mount $d ($(du -sh "$d" 2>/dev/null | cut -f1))…"
+    mkdir -p "$MNT$d"; rsync -a "$d"/ "$MNT$d"/ || die "could not copy $d (target full?)"
+  fi
+done
+
+log "giving the installed system a fresh identity"
+: > "$MNT/etc/machine-id"
+rm -f "$MNT/etc/ssh/ssh_host_"* "$MNT/var/lib/kairos-firstboot-done" "$MNT/var/lib/kairos-resized"
+# an installed disk fills itself; the USB auto-resize service is not wanted here
+rm -f "$MNT/etc/systemd/system/multi-user.target.wants/kairos-growroot.service" 2>/dev/null || true
+
+log "recreating the 8 GB swapfile (video generation needs the headroom)"
+# non-fatal: a tight target must not abort the installer AFTER the clone — the
+# system runs without swap; the fstab line is only written when the file exists
+SWAPLINE=""
+if fallocate -l 8G "$MNT/swapfile" 2>/dev/null && chmod 600 "$MNT/swapfile" && mkswap -q "$MNT/swapfile" 2>/dev/null; then
+  SWAPLINE="/swapfile none swap sw 0 0"
+else
+  rm -f "$MNT/swapfile"; log "WARNING: no room for the 8 GB swapfile — installing without swap"
+fi
+
+ROOT_UUID=$(blkid -s PARTUUID -o value "$P2")
+ESP_UUID=$(blkid -s PARTUUID -o value "$P1")
+# ESP: nofail + fsck pass 2 — a missing/corrupt EFI partition must never fail
+# local-fs.target (emergency mode on a console nobody sees) [R51]
+# and an automount (v7.5): mounted on first access, unmounted when idle — never a boot-time wait
+cat > "$MNT/etc/fstab" <<EOF
+PARTUUID=$ROOT_UUID / ext4 defaults,noatime 0 1
+PARTUUID=$ESP_UUID /boot/efi vfat umask=0077,nofail,x-systemd.automount,x-systemd.idle-timeout=120,x-systemd.device-timeout=45 0 2
+${SWAPLINE}
+EOF
+
+log "installing systemd-boot to the target ESP"
+for fs in proc sys dev run; do mount --rbind "/$fs" "$MNT/$fs"; done
+chroot "$MNT" bootctl install --esp-path=/boot/efi --no-variables >/dev/null 2>&1 || \
+  chroot "$MNT" bootctl install --esp-path=/boot/efi >/dev/null 2>&1 || true
+
+KVER=$(ls "$MNT/lib/modules" | sort -V | tail -1)
+mkdir -p "$MNT/boot/efi/kairos" "$MNT/boot/efi/loader/entries" "$MNT/boot/efi/EFI/BOOT"
+cp "$MNT/boot/vmlinuz-$KVER"    "$MNT/boot/efi/kairos/vmlinuz"
+cp "$MNT/boot/initrd.img-$KVER" "$MNT/boot/efi/kairos/initrd"
+# `default` matches entry IDs = file names INCLUDING .conf ("default kairos" matched
+# nothing — D4); no menu, no editor [R28]
+cat > "$MNT/boot/efi/loader/loader.conf" <<EOF
+default kairos.conf
+timeout 0
+console-mode max
+editor no
+EOF
+# hidden-Linux silent boot cmdline (same as the appliance image); the panel
+# (tty1) is the LAST console= so emergency prompts land on the screen
+cat > "$MNT/boot/efi/loader/entries/kairos.conf" <<EOF
+title kAIrOS
+linux /kairos/vmlinuz
+initrd /kairos/initrd
+options root=PARTUUID=$ROOT_UUID rw rootwait quiet loglevel=0 systemd.show_status=false rd.udev.log_level=3 vt.global_cursor_default=0 console=tty1
+EOF
+# removable fallback so it boots on any UEFI even without an NVRAM entry. If
+# bootctl failed (both attempts above are tolerated) take the loader binary
+# from the live system's systemd-boot-efi package instead.
+EFISRC=/usr/lib/systemd/boot/efi/systemd-bootx64.efi
+[ -f "$MNT/boot/efi/EFI/systemd/systemd-bootx64.efi" ] || install -D "$EFISRC" "$MNT/boot/efi/EFI/systemd/systemd-bootx64.efi" 2>/dev/null || true
+cp "$MNT/boot/efi/EFI/systemd/systemd-bootx64.efi" "$MNT/boot/efi/EFI/BOOT/BOOTX64.EFI" 2>/dev/null || true
+
+# post-condition (mirrors build-img.sh): a cloned disk without a loader, kernel or
+# entry is unbootable — fail LOUDLY rather than report DONE [R48]
+for f in EFI/BOOT/BOOTX64.EFI kairos/vmlinuz kairos/initrd loader/entries/kairos.conf; do
+  [ -s "$MNT/boot/efi/$f" ] || die "bootloader install incomplete: /boot/efi/$f missing on $TARGET"
+done
+grep -q "root=PARTUUID=$ROOT_UUID" "$MNT/boot/efi/loader/entries/kairos.conf" || die "loader entry does not point at $P2"
+# exactly ONE entry and it is the default [D4]: kernel-install is off on the cloned
+# system (/etc/kernel/install.conf layout=other) and bootctl writes no entries, so
+# anything else here would be a foreign entry that could sort first and boot instead
+ENTRIES=$(ls "$MNT/boot/efi/loader/entries/"*.conf | xargs -n1 basename | tr '\n' ' ')
+[ "$ENTRIES" = "kairos.conf " ] || die "loader entries on $TARGET are '$ENTRIES', expected exactly kairos.conf"
+grep -q '^default kairos.conf$' "$MNT/boot/efi/loader/loader.conf" || die "loader.conf default is not kairos.conf"
+# a live system built before this file existed still installs correctly: make sure
+# the cloned system never lets kernel-install add entries
+grep -q '^layout=other' "$MNT/etc/kernel/install.conf" 2>/dev/null \
+  || { mkdir -p "$MNT/etc/kernel"; printf '# kAIrOS [D4]: only the kAIrOS loader entry, see kairos-esp-sync\nlayout=other\n' > "$MNT/etc/kernel/install.conf"; }
+log "bootloader verified: BOOTX64.EFI + kernel + initrd + the single default entry on the ESP"
+
+sync
+cleanup; trap - EXIT
+log "DONE — remove the USB stick and reboot into $TARGET"

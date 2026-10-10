@@ -1,0 +1,221 @@
+{
+ "at": "2026-10-10 11:39:36",
+ "tests": {
+  "sched_concurrency_limit": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "6 holders, peak concurrency 2 (slots 2), released clean"
+  },
+  "sched_fifo_no_starvation": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "20 llm + IMG + VIS: IMG ran at #5 after 123 ms, VIS at #7, FIFO held"
+  },
+  "sched_consecutive_same_key_start_together": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "3 llm started together after the exclusive ((3, 'llm')), vision alone after the drain"
+  },
+  "sched_swap_only_after_drain": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "vision waited for both llm holders; the later llm request waited for vision"
+  },
+  "sched_cancelled_waiter_leaves_queue": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "cancelled exclusive left the queue; the shared request behind it joined at once"
+  },
+  "sched_release_on_error_and_cancel": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "error \u2192 released; cancel mid-hold \u2192 released, exclusive started; async-with = exclusive"
+  },
+  "sched_grant_and_cancel_same_step": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "granted-then-cancelled waiter handed its slot back; scheduler free"
+  },
+  "sched_drained_hook_on_release_and_handback": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "hook: silent while the granted waiter counted, once on its handback, once per drain, never for exclusive"
+  },
+  "unit_parallel_argv_absent_is_today": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "16 sections across the tier manifests: argv unchanged without parallel / with parallel 1"
+  },
+  "unit_parallel_argv_n_slots": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "N*C in place + -np N --no-kv-unified; --ctx-size ok; junk / no -c \u2192 1 slot"
+  },
+  "unit_parallel_budget_stays_per_request": {
+   "reqs": [
+    "R72",
+    "R43"
+   ],
+   "status": "pass",
+   "detail": "llm_ctx() = 16384 with parallel 4 (server -c 65536)"
+  },
+  "unit_parallel_expander_vision_keys": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "expander_parallel / vision.parallel read; slots_for safe"
+  },
+  "unit_parallel_gpu_validated_values": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "12 sections carry the GPU-validated values; derived argv keeps the caps, every slot its full context"
+  },
+  "unit_parallel_ensure_llama_single_flight": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "starts: ['llm', 'expander:image/Qwen3VL-4B-Instruct-Q4_K_M.gguf']; gpu_lock exclusive blocks a shared hold"
+  },
+  "unit_parallel_mid_load_wait_no_send_before_health": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "starter cancelled mid-load; the next pair waited 1.63 s for /health, one launch, first request 0.29 s after the server bound"
+  },
+  "unit_parallel_choice_change_while_queued": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "queued request re-resolved to llm_fast, waited for the Gemma pair to drain, both Gemma answers intact"
+  },
+  "unit_parallel_translation_key_swap_and_unload": {
+   "reqs": [
+    "R72",
+    "R71"
+   ],
+   "status": "pass",
+   "detail": "translation key: 1 slot, argv unchanged; idle unload 0.03 s; busy unload waited for the holder, then 0.05 s"
+  },
+  "unit_parallel_chat_stream_release_paths": {
+   "reqs": [
+    "R72",
+    "R68"
+   ],
+   "status": "pass",
+   "detail": "2 chats shared the server (holders 2, state llm\u2192idle); break/cancel/error each freed the slot at once"
+  },
+  "unit_parallel_state_idle_after_grant_handback": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "granted-then-cancelled waiter and a re-check error both left state idle with 0 holders"
+  },
+  "unit_parallel_payload_from_held_spec": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "held on Gemma, flipped to fast mid-load \u2192 Gemma's body; held on the coder, flipped back \u2192 the coder's"
+  },
+  "unit_parallel_ctx_zero_is_one_slot": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "-c 0 / --ctx-size 0 / -c -1 with parallel 2 \u2192 1 slot, argv untouched; -c 4096 \u2192 2 slots"
+  },
+  "unit_parallel_request_timeout_scales_with_slots": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "chat on 2 slots: total 3600 s; stream: total 3600 s + sock_read 1800 s; 1 slot: 1800 s as before"
+  },
+  "unit_parallel_docs_no_tier_upgrade_requeue_claim": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "R72 text, rule (i) and _llm_hold: a tier upgrade is run_upgrade's exclusive stop, not a re-queue"
+  },
+  "unit_parallel_reselect_keeps_freshly_loaded_choice": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "c loaded the coder ahead of reselect(); reselect left it running; the next request launched nothing"
+  },
+  "e2e_parallel_asks_share_one_server": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "4 asks in 5.0 s on 2 slots (in-flight max 2, no overflow); argv -c 32768 -np 2 --no-kv-unified; first request 0.04 s after the server bound"
+  },
+  "e2e_exclusive_job_waits_then_runs_fifo": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "image waited +3.2 s past the pair, ran, third ask after it (+0.9 s); states seen ['image', 'llm']"
+  },
+  "e2e_swap_to_expander_after_drain_and_back": {
+   "reqs": [
+    "R72",
+    "R79"
+   ],
+   "status": "pass",
+   "detail": "default: the expansion took a freed slot of the running llm (no launch, \u2264 2 in flight), llm back lazily; encoder: expander server after the drain with its own argv (per-slot -c 8192), llm (2 slots) back"
+  },
+  "e2e_parallel_one_section_is_today": {
+   "reqs": [
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "llm_fast argv == manifest serve_args ['-ngl', '99', '-c', '16384', '--cache-ram', '2048', '--ctx-checkpoints', '8', '--jinja']; default back with 2 slots"
+  },
+  "e2e_translation_quality_swap_and_unload": {
+   "reqs": [
+    "R72",
+    "R71"
+   ],
+   "status": "pass",
+   "detail": "quality MT swap after the pair drained (translate waited 2.3 s), 1 slot, argv unchanged; off \u2192 unloaded in 0.16 s; llm (2 slots) back"
+  },
+  "e2e_vanished_app_client_keeps_its_slot_r62": {
+   "reqs": [
+    "R72",
+    "R62"
+   ],
+   "status": "pass",
+   "detail": "both vanished generations completed (ask waited 3.0 s), apps saved, state idle"
+  }
+ }
+}

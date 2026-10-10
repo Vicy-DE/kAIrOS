@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>canvas anim</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#05060c}canvas{display:block}
+#probe{position:fixed;left:40px;top:60px;width:64px;height:64px;background:#000;border:1px solid #333}</style>
+</head><body>
+<canvas id="c"></canvas><div id="probe"></div>
+<script>
+// A1 — 2 000-particle requestAnimationFrame canvas at full window size (compositor + GPU load)
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+const N = 2000, P = [];
+function fit() { cv.width = innerWidth; cv.height = innerHeight; }
+addEventListener("resize", fit); fit();
+for (let i = 0; i < N; i++) P.push({ x: Math.random() * cv.width, y: Math.random() * cv.height,
+  vx: (Math.random() - .5) * 3, vy: (Math.random() - .5) * 3, h: (i * 137) % 360 });
+let frames = 0;
+function step() {
+  ctx.fillStyle = "rgba(5,6,12,.35)"; ctx.fillRect(0, 0, cv.width, cv.height);
+  for (const p of P) {
+    p.x += p.vx; p.y += p.vy;
+    if (p.x < 0 || p.x > cv.width) p.vx = -p.vx;
+    if (p.y < 0 || p.y > cv.height) p.vy = -p.vy;
+    ctx.fillStyle = `hsl(${p.h},90%,60%)`; ctx.fillRect(p.x, p.y, 3, 3);
+  }
+  frames++;
+  requestAnimationFrame(step);
+}
+requestAnimationFrame(step);
+</script>
+<!-- bench instrumentation (identical in every app, every candidate) -->
+<script>
+const BENCH = "{{BENCH}}", APPID = "{{APPID}}";
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  new Image().src = BENCH + "/mark?id=" + APPID + "&ev=paint&t=" + Date.now();
+}));
+addEventListener("click", () => { probe.style.background = probe.style.background === "rgb(255, 255, 255)" ? "#000" : "#fff";
+  new Image().src = BENCH + "/mark?id=" + APPID + "&ev=click&t=" + Date.now(); });
+</script>
+</body></html>

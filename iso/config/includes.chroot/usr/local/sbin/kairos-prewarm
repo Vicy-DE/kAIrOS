@@ -1,0 +1,117 @@
+#!/bin/sh
+# kairos-prewarm — read the files the boot and the first LLM request need into the page cache,
+# SEQUENTIALLY and AHEAD of use, when the root file system lives on a USB stick (stick run
+# 2026-10-07, docs/STICK-RUN-2026-10-07.md): the stick reads 152 MB/s sequentially but X,
+# Chromium and llama-server fault their files in page by page — X's AMD/LLVM libraries took
+# ~50 s to start, Gemma 4 (13.6 GB) loaded at 30 MB/s = 7 min 23 s, past the kernel's wait.
+#   phase 1 (normal I/O priority, at once): the desktop — Xorg, Mesa/LLVM, Chromium, openbox
+#   phase 2a [R79] (best-effort I/O, the default LLM FIRST): the tier's `llm` GGUF in one sequential
+#           pass of 16 MiB blocks, then the CUDA runtime + llama-server — the kernel's FIRST
+#           llama-server start waits for this (/run/kairos/prewarm-llm-wait holds this script's PID
+#           until /run/kairos/prewarm-llm-done exists; the kernel's wait is bounded, 240 s)
+#   phase 2 (idle I/O priority: the boot and the user always go first): the rest — other LLM files
+#           and the image model's text encoder
+# Phase 2/2a only when RAM can hold them next to the desktop (+ 4 GiB headroom).
+# v7.5 read the LLM at idle priority in the middle of phase 2 and the kernel's first Gemma load ran
+# against it: 331 / 352 s (stick run 2026-10-07 v7.5, docs/STICK-RUN-2026-10-07-v75.md).
+# Never fails or blocks anything (Type=simple unit, every error ignored). An internal SSD/NVMe
+# needs none of this: skipped unless the root disk's transport is usb (KAIROS_PREWARM_FORCE=1).
+# Timings -> /var/log/kairos/prewarm.log (collected by kairos-bootlog / pod/stick-logs.sh).
+set -u
+LOG=${KAIROS_PREWARM_LOG:-/var/log/kairos/prewarm.log}
+VIBEOS=${KAIROS_PREWARM_VIBEOS:-/opt/vibeos}
+RUN=${KAIROS_PREWARM_RUN:-/run/kairos}
+DESKTOP=${KAIROS_PREWARM_DESKTOP:-"/usr/lib/xorg /usr/lib/x86_64-linux-gnu/libLLVM* /usr/lib/x86_64-linux-gnu/libgallium* /usr/lib/x86_64-linux-gnu/dri /usr/lib/x86_64-linux-gnu/libGLX_mesa.so* /usr/lib/x86_64-linux-gnu/libEGL_mesa.so* /usr/lib/x86_64-linux-gnu/libgbm.so* /usr/lib/x86_64-linux-gnu/libdrm_amdgpu.so* /usr/lib/chromium /usr/bin/openbox /usr/bin/unclutter /usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"}
+MODELS=${KAIROS_PREWARM_MODELS:-"$VIBEOS/lib $VIBEOS/bin/llama-server $VIBEOS/models/llm $VIBEOS/models/image/Qwen3VL-4B-Instruct-Q4_K_M.gguf"}
+# [R79] what the first llama-server start needs besides the GGUF (read in phase 2a when listed in MODELS)
+ENGINE=${KAIROS_PREWARM_ENGINE:-"$VIBEOS/lib $VIBEOS/bin/llama-server"}
+mkdir -p "$(dirname "$LOG")" 2>/dev/null
+say() { printf '%s %6ss  %s\n' "$(date '+%H:%M:%S' 2>/dev/null)" "$(cut -d' ' -f1 /proc/uptime 2>/dev/null)" "$*" >> "$LOG" 2>/dev/null; }
+
+if [ "${KAIROS_PREWARM_FORCE:-0}" != 1 ]; then
+  # the root partition's sysfs path runs through the USB host controller on a stick
+  # (sysfs, not lsblk: no udev database needed)
+  ROOTDEV=${KAIROS_PREWARM_ROOTDEV:-$(findmnt -no SOURCE / 2>/dev/null)}
+  SYSP=$(readlink -f "/sys/class/block/$(basename "$(readlink -f "$ROOTDEV" 2>/dev/null)")" 2>/dev/null)
+  case "$SYSP" in
+    */usb*) ;;
+    *) say "root $ROOTDEV is not on USB (${SYSP:-no sysfs path}): no prewarm needed"; exit 0 ;;
+  esac
+fi
+
+READ=" "            # files read so far (space-separated): a later pass skips them
+# every regular file under the given paths (globs expanded by the shell), read in one sequential pass
+warm() {  # warm <label> <paths...>
+  label=$1; shift; t0=$(date +%s); n=0; bytes=0
+  for p in "$@"; do
+    [ -e "$p" ] || continue
+    for f in $(find "$p" -type f 2>/dev/null); do
+      case "$READ" in *" $f "*) continue ;; esac
+      s=$(stat -c %s "$f" 2>/dev/null || echo 0)
+      cat "$f" > /dev/null 2>&1 && { n=$((n + 1)); bytes=$((bytes + s)); READ="$READ$f "; }
+    done
+  done
+  dt=$(( $(date +%s) - t0 ))
+  say "$label: $n files, $((bytes / 1048576)) MiB in ${dt}s"
+}
+
+# [R79] the default LLM = the active tier's `llm` file, resolved like the kernel (active-tier ->
+# os/manifests/tier-<t>.json, else the baked manifest.json, else tier-8gb.json) — only when it is one
+# of phase 2's files (a MODELS entry or under one); KAIROS_PREWARM_LLM overrides
+in_models() {
+  for p in $MODELS; do
+    case "$1" in "$p"|"$p"/*) return 0 ;; esac
+  done
+  return 1
+}
+default_llm() {
+  if [ -n "${KAIROS_PREWARM_LLM:-}" ]; then echo "$KAIROS_PREWARM_LLM"; return; fi
+  t=$(cat "$VIBEOS/active-tier" 2>/dev/null)
+  m="$VIBEOS/os/manifests/tier-$t.json"
+  [ -n "$t" ] && [ -r "$m" ] || m="$VIBEOS/manifest.json"
+  [ -r "$m" ] || m="$VIBEOS/os/manifests/tier-8gb.json"
+  f=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["llm"]["file"])' "$m" 2>/dev/null)
+  [ -n "$f" ] && echo "$VIBEOS/models/$f"
+}
+LLM=$(default_llm)
+[ -n "$LLM" ] && [ -f "$LLM" ] && in_models "$LLM" || LLM=""
+
+say "===== prewarm (root on usb) ====="
+# phase 2 only when the page cache can keep it next to the desktop (+ 4 GiB headroom):
+# evicting what phase 1 just read would make the boot slower, not faster
+need=0
+for p in $MODELS; do [ -e "$p" ] && need=$((need + $(du -sbL "$p" 2>/dev/null | cut -f1))); done
+memk=$(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null)
+fits=1
+[ $(( need / 1024 + 4194304 )) -gt "${memk:-0}" ] && fits=0
+if [ "$fits" = 1 ] && [ -n "$LLM" ]; then
+  # the kernel's first llama-server start waits while this PID is reading the LLM
+  mkdir -p "$RUN" 2>/dev/null
+  rm -f "$RUN/prewarm-llm-done" 2>/dev/null
+  echo $$ > "$RUN/prewarm-llm-wait" 2>/dev/null
+  trap 'rm -f "$RUN/prewarm-llm-wait" 2>/dev/null' EXIT
+fi
+# shellcheck disable=SC2086
+warm "phase 1 desktop" $DESKTOP
+
+if [ "$fits" = 0 ]; then
+  say "phase 2 skipped: $((need / 1048576)) MiB of engine + models does not fit next to the desktop in $((memk / 1024)) MiB RAM"
+  exit 0
+fi
+if [ -n "$LLM" ]; then
+  ionice -c 2 -n 4 -p $$ 2>/dev/null   # best-effort, normal level: the first LLM load is next in line
+  t0=$(date +%s); s=$(stat -c %s "$LLM" 2>/dev/null || echo 0)
+  dd if="$LLM" of=/dev/null bs=16M 2>/dev/null; rc=$?
+  READ="$READ$LLM "
+  say "phase 2a default LLM (best-effort I/O, 16 MiB blocks): $(basename "$LLM"), $((s / 1048576)) MiB in $(( $(date +%s) - t0 ))s$([ "$rc" = 0 ] || echo " (dd rc $rc)")"
+  engine=""
+  for p in $ENGINE; do in_models "$p" && engine="$engine $p"; done
+  # shellcheck disable=SC2086
+  [ -n "$engine" ] && warm "phase 2a llama-server engine (best-effort I/O)" $engine
+  echo "$(date '+%H:%M:%S' 2>/dev/null) $(cut -d' ' -f1 /proc/uptime 2>/dev/null)s $LLM" > "$RUN/prewarm-llm-done" 2>/dev/null
+  rm -f "$RUN/prewarm-llm-wait" 2>/dev/null
+fi
+ionice -c 3 -p $$ 2>/dev/null          # idle class from here on: anything else on the stick goes first
+# shellcheck disable=SC2086
+warm "phase 2 engine + LLM (idle I/O)" $MODELS
+exit 0

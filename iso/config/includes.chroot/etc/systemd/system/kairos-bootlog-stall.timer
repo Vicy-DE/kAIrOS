@@ -1,0 +1,18 @@
+[Unit]
+Description=kAIrOS: capture a boot log if this boot has not reached multi-user.target after 5 min [R51]
+# The late capture is After=multi-user.target: a boot that hangs before it (a start job
+# that never finishes, a device wait without end) left only the early breadcrumb, and
+# the screen shows nothing (boot animation / black). This fires once, 5 min after
+# power-on; kairos-bootlog judges the boot only when multi-user.target is still not
+# active (a slow but working boot is left to the late capture).
+DefaultDependencies=no
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Timer]
+OnBootSec=5min
+AccuracySec=15s
+Unit=kairos-bootlog-stall.service
+
+[Install]
+WantedBy=sysinit.target

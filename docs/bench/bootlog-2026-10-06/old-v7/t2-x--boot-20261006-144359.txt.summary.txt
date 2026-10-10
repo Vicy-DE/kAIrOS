@@ -1,0 +1,24 @@
+==================== kAIrOS boot log (failure x11) ====================
+############ SUMMARY / VERDICT ############
+VERDICT: FAIL — 1 check(s) failed, 1 warning(s) — first failure: xorg: X failed to start (6 attempt(s) this boot) — see X LOG / Xorg.0.log below
+ PASS boot_history  attempt #5; early breadcrumb ran (root + EFI partition mounted)
+ PASS boot_target   graphical.target reached (system: running)
+ PASS failed_units  no failed units [R63]
+ PASS hung_units    nothing stuck in activating
+ PASS rootfs_grow   root grown on first boot (58G total, 7.1G free)
+ PASS gpu_driver    0000:00:05.0 0x1af4 driver=virtio-pci boot_vga=1; 
+ PASS firmware      no firmware load failures in dmesg
+ PASS modules       no module load failures in the journal
+ FAIL xorg          X failed to start (6 attempt(s) this boot) — see X LOG / Xorg.0.log below
+ PASS kernel_api    answering on :1337 (kairos.service active)
+ WARN kiosk         no kiosk Chromium running — see X LOG (.xinitrc output)
+ PASS network       enp0s4 10.0.2.15/24; 
+ PASS esp           EFI partition mounted at /boot/efi via fstab
+boot attempts (early breadcrumb, newest last):
+   #4  failure kairos.service log written 2026-10-06 14:40:01  verdict FAIL (kernel_api: no answer on :1337 (kairos.service activating, restarts this boot: 7) — see KAIROS KERNEL LOG)
+   #4  failure kairos.service log written 2026-10-06 14:40:31  verdict FAIL (kernel_api: no answer on :1337 (kairos.service activating, restarts this boot: 8) — see KAIROS KERNEL LOG)
+   #4  boot log written 2026-10-06 14:40:33  verdict FAIL (kernel_api: no answer on :1337 (kairos.service activating, restarts this boot: 8) — see KAIROS KERNEL LOG)
+   #4  failure kairos.service log written 2026-10-06 14:42:32  verdict FAIL (failed_units: kairos.service )
+   #4  shutdown log written 2026-10-06 14:43:36  verdict FAIL (failed_units: kairos.service )
+   #5  started 2026-10-06 14:43:43  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+###########################################

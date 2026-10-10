@@ -1,0 +1,16 @@
+# kAIrOS [R28/R79] DISABLED fallback: a SOFTWARE cursor on amdgpu (the v7.5 setting).
+# X reads only *.conf files in xorg.conf.d, so this file does nothing as shipped. v7.5-1 lets the
+# amdgpu hardware cursor plane draw the pointer (20-kairos-swcursor.conf explains why: the software
+# cursor flickered under Chromium's KMS page flips — docs/STICK-RUN-2026-10-07-v75.md §2).
+# Re-enable ONLY if the pointer is invisible with the hardware cursor — one line as root, then a new
+# X session (`systemctl restart getty@tty1` or a reboot):
+#   mv /etc/X11/xorg.conf.d/21-kairos-swcursor-amdgpu.conf.disabled /etc/X11/xorg.conf.d/21-kairos-swcursor-amdgpu.conf
+# (expect the top-of-screen flicker back; the .xinitrc pointer diagnostics in /var/log/kairos/x.log
+# then show 'Option "SWcursor" "on"' for AMDGPU again).
+
+Section "OutputClass"
+    Identifier "kAIrOS software cursor (amdgpu)"
+    MatchDriver "amdgpu"
+    Driver "amdgpu"
+    Option "SWcursor" "on"
+EndSection

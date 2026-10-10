@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Mock sd-server (stable-diffusion.cpp examples/server): takes the CLI's flag set like the real
+one (--diffusion-model, --vae, --llm, --steps …, --listen-ip/--listen-port), listens only once
+"loaded", answers /sdapi/v1/options (the kernel's readiness probe) and /sdapi/v1/txt2img with a
+tiny PNG per request. MOCK_SDSERVER_LOG records one `LAUNCH\t<argv>` line per process and one
+`REQ\t<json>` line per picture — a test counts model loads vs pictures. A prompt containing
+"__mockfail__" answers 500 like the real server's "generate_image returned no results".
+[R76] LoRAs like the real server (sd.cpp 3f8527a examples/server): GET /sdapi/v1/loras scans
+--lora-model-dir (recursive, model extensions) into the LoRA cache and answers [{name, path}]
+(logged as `LORAS\t<json>`); a txt2img "lora" item whose path is not in that cache — e.g. no
+/loras call yet — is a 400 "invalid lora path: …" (routes_sdapi.cpp), so a test proves the
+kernel refreshes first. Prompt `<lora:…>` tags are ignored (the real server disables them).
+`--lora-apply-mode immediately` on a .gguf base aborts (sd.cpp #2083). MOCK_SDSERVER_NO_LORAS=1
+= a server without the route (404): the kernel must fall back to sd-cli."""
+import asyncio
+import base64
+import json
+import os
+import struct
+import sys
+import time
+import zlib
+
+from aiohttp import web
+
+
+def png_bytes(w=64, h=64, rgb=(92, 124, 255)):
+    raw = b"".join(b"\x00" + bytes(rgb) * w for _ in range(h))
+
+    def chunk(tag, data):
+        c = struct.pack(">I", len(data)) + tag + data
+        return c + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+args = sys.argv[1:]
+LOG = os.environ.get("MOCK_SDSERVER_LOG")
+
+
+def log(kind, text):
+    if LOG:
+        with open(LOG, "a") as f:
+            f.write(f"{kind}\t{text}\n")
+
+
+log("LAUNCH", "\t".join(args))
+port = int(args[args.index("--listen-port") + 1]) if "--listen-port" in args else 1234
+host = args[args.index("--listen-ip") + 1] if "--listen-ip" in args else "127.0.0.1"
+if "--diffusion-model" not in args or "--vae" not in args:
+    print("mock sd-server: --diffusion-model and --vae are required", file=sys.stderr)
+    sys.exit(2)
+for cli_only in ("-o", "-M", "--output", "--mode"):
+    if cli_only in args:                       # the real server rejects the CLI-only flags
+        print(f"mock sd-server: unknown option {cli_only}", file=sys.stderr)
+        sys.exit(1)
+LORA_DIR = args[args.index("--lora-model-dir") + 1] if "--lora-model-dir" in args else ""
+APPLY = args[args.index("--lora-apply-mode") + 1] if "--lora-apply-mode" in args else "auto"
+if APPLY not in ("auto", "immediately", "at_runtime"):
+    print(f"mock sd-server: invalid --lora-apply-mode {APPLY}", file=sys.stderr)
+    sys.exit(1)
+LORA_EXT = (".safetensors", ".ckpt", ".pt", ".pth", ".gguf", ".bin")
+LORA_CACHE = []                                # filled ONLY by GET /sdapi/v1/loras (runtime.cpp refresh_lora_cache)
+time.sleep(float(os.environ.get("MOCK_SDSERVER_LOAD_S", "1.0")))   # "model load" — listens only afterwards
+
+
+async def options(request):
+    return web.json_response({"samples_format": "png", "sd_model_checkpoint": "mock"})
+
+
+async def loras(request):
+    found = []
+    if LORA_DIR and os.path.isdir(LORA_DIR):
+        for root, _dirs, files in os.walk(LORA_DIR):
+            for f in files:
+                p = os.path.join(root, f)
+                if os.path.isfile(p) and f.lower().endswith(LORA_EXT):
+                    found.append({"name": os.path.splitext(f)[0],
+                                  "path": os.path.relpath(p, LORA_DIR).replace(os.sep, "/")})
+    found.sort(key=lambda e: e["path"])
+    LORA_CACHE[:] = found
+    log("LORAS", json.dumps(found, sort_keys=True))
+    return web.json_response(found)
+
+
+async def txt2img(request):
+    j = await request.json()
+    log("REQ", json.dumps(j, sort_keys=True))
+    cached = {e["path"] for e in LORA_CACHE}
+    for item in j.get("lora") or []:
+        if not isinstance(item, dict):
+            continue
+        if not item.get("path"):
+            return web.json_response({"error": "lora.path required"}, status=400)
+        if item["path"] not in cached:
+            return web.json_response({"error": f"invalid lora path: {item['path']}"}, status=400)
+        if APPLY == "immediately" and args[args.index("--diffusion-model") + 1].endswith(".gguf"):
+            print("mock sd-server: GGML_ASSERT — immediately merging a LoRA into a quantised GGUF (sd.cpp #2083)",
+                  file=sys.stderr, flush=True)
+            os._exit(134)
+    if "__mockfail__" in j.get("prompt", ""):
+        return web.json_response({"error": "generate_image returned no results"}, status=500)
+    await asyncio.sleep(float(os.environ.get("MOCK_SDSERVER_RENDER_S", "0.5")))
+    seed = j.get("seed", -1)
+    png = png_bytes()
+    return web.json_response({"images": [base64.b64encode(png).decode()], "parameters": j,
+                              "info": json.dumps({"seed": seed, "all_seeds": [seed], "width": j.get("width"),
+                                                  "height": j.get("height")})})
+
+
+app = web.Application()
+app.router.add_get("/sdapi/v1/options", options)
+if not os.environ.get("MOCK_SDSERVER_NO_LORAS"):
+    app.router.add_get("/sdapi/v1/loras", loras)
+app.router.add_post("/sdapi/v1/txt2img", txt2img)
+web.run_app(app, host=host, port=port, print=None)

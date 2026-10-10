@@ -1,0 +1,30 @@
+== system: running
+No jobs running.
+== kairos journal (job/llama lines)
+[kernel] llama-server exited during startup (code 1); last output (/var/log/kairos/llama-server.log):
+[kernel] llama-server had exited (code 1); last output (/var/log/kairos/llama-server.log):
+[kernel] llama-server exited during startup (code 1); last output (/var/log/kairos/llama-server.log):
+== /var/log/kairos
+total 24
+drwxr-xr-x 2 kairos kairos 4096 Oct  6 15:05 .
+drwxr-xr-x 8 root   root   4096 Oct  6 13:56 ..
+-rw-r--r-- 1 kairos kairos 3512 Oct  6 15:03 bootanim.log
+-rw-r--r-- 1 root   root   3908 Oct  6 15:05 llama-server.log
+-rw-rw-r-- 1 kairos kairos 3181 Oct  6 15:06 x.log
+-rw-rw-r-- 1 kairos kairos 3357 Oct  6 15:03 x.log.1
+== llama-server.log tail
+0.00.015.796 E ggml_cuda_init: failed to initialize CUDA: no CUDA-capable device is detected
+0.00.017.416 I cmn  common_param: common_params_print_info: verbosity = 3 (adjust with the `-lv N` CLI arg)
+0.00.017.743 W srv  llama_server: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.020.124 I srv    load_model: loading model '/opt/vibeos/models/llm/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf'
+0.00.020.268 E gguf_init_from_file: failed to open GGUF file '/opt/vibeos/models/llm/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf' (No such file or directory)
+0.00.020.360 E llama_model_load: error loading model: llama_model_loader: failed to load model from /opt/vibeos/models/llm/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf
+0.00.020.368 E llama_model_load_from_file_impl: failed to load model
+0.00.020.397 E common_fit_params: encountered an error while trying to fit params to free device memory: failed to load model
+0.00.020.405 E gguf_init_from_file: failed to open GGUF file '/opt/vibeos/models/llm/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf' (No such file or directory)
+0.00.020.411 E llama_model_load: error loading model: llama_model_loader: failed to load model from /opt/vibeos/models/llm/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf
+0.00.020.411 E llama_model_load_from_file_impl: failed to load model
+0.00.020.413 E cmn  common_init_: failed to load model '/opt/vibeos/models/llm/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf'
+0.00.020.416 E srv    load_model: failed to load model, '/opt/vibeos/models/llm/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf'
+0.00.020.416 I srv    operator(): operator(): cleaning up before exit...
+0.00.023.164 E srv  llama_server: exiting due to model loading error

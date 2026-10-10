@@ -1,0 +1,102 @@
+{
+ "at": "2026-10-10 11:40:26",
+ "tests": {
+  "unit_muse_manifest_pins": {
+   "reqs": [
+    "R76",
+    "R29",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "4 tiers: image = Muse Q4_0 pinned (sha256/size/url/licence), no lora, 8 steps/CFG 1.0, krea-neutral; image_safe = same files (krea); no Krea/Kroma files; variants = 8gb"
+  },
+  "unit_muse_in_bake_list": {
+   "reqs": [
+    "R76",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "--list carries museByStableYogi_v35Q4Extended.gguf once per tier ({'8gb': 43, '16gb': 43, '24gb': 44, '32gb': 44}), no Krea 2 Turbo / Kroma; image_safe shares image's files"
+  },
+  "unit_neutral_expander_rule": {
+   "reqs": [
+    "R76",
+    "R34"
+   ],
+   "status": "pass",
+   "detail": "neutral rule 8 (722 chars): conditional 25+, no added clothing/nudity, family picnic normal; SFW/18+ unchanged"
+  },
+  "unit_image_key_resolution": {
+   "reqs": [
+    "R76",
+    "R29"
+   ],
+   "status": "pass",
+   "detail": "11 resolution cases; expanders neutral/krea/18+; setting enum ok"
+  },
+  "unit_sd_lora_argv_helpers": {
+   "reqs": [
+    "R76"
+   ],
+   "status": "pass",
+   "detail": "default +--lora-model-dir image/lora --lora-apply-mode at_runtime; safe/qwen/classic/chroma none; missing/partial file -> stock"
+  },
+  "unit_all_image_paths_through_sd_batch": {
+   "reqs": [
+    "R76",
+    "R42"
+   ],
+   "status": "pass",
+   "detail": "sd-cli exec only in ['_sd_cli_each', 'sd_job']; image callers ['\"image\"', '\"video\"', 'kind'] all via render_images/sd_job -> sd_batch"
+  },
+  "http_image_lora_sd_cli": {
+   "reqs": [
+    "R76",
+    "R29",
+    "R34"
+   ],
+   "status": "pass",
+   "detail": "default: LoRA flags + tag after the expanded prompt, neutral expander; safe: stock + SFW; uncensored/adult: LoRA + 18+"
+  },
+  "http_images_lora_sd_server": {
+   "reqs": [
+    "R76",
+    "R42"
+   ],
+   "status": "pass",
+   "detail": "1 launch + /loras + 2 REQ with lora field (no tags); safe: none; mock contract: 400 before /loras, 200 after, immediately+gguf aborts (134)"
+  },
+  "http_genimg_lora_batch": {
+   "reqs": [
+    "R76",
+    "R58"
+   ],
+   "status": "pass",
+   "detail": "2 /genimg pictures = 1 LoRA session (launch + /loras + 2 REQ with the field)"
+  },
+  "http_sdserver_without_loras_falls_back_to_cli": {
+   "reqs": [
+    "R76"
+   ],
+   "status": "pass",
+   "detail": "no /loras -> server stopped after load, 2 pictures via sd-cli with the tag, logged"
+  },
+  "http_wallpaper_lora": {
+   "reqs": [
+    "R76",
+    "R44"
+   ],
+   "status": "pass",
+   "detail": "wallpaper job via sd-cli with the LoRA flags + tag (1280\u00d7704)"
+  },
+  "http_models_status_safe_and_uncensored": {
+   "reqs": [
+    "R76",
+    "R42",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "models: default(uncensored, lora, aliases) + safe(stock); actives {'uncensored': ['default'], 'safe': ['safe'], 'default': ['default']}; download uncensored = baked; missing LoRA -> stock"
+  }
+ }
+}

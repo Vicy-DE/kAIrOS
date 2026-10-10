@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>runaway app</title>
+<style>body{margin:0;background:#301010;color:#fcc;font:16px system-ui;padding:16px}</style></head><body>
+<p>F11: this app enters while(true){} 1.5 s after its first paint</p>
+<script>
+const BENCH = "{{BENCH}}", APPID = "{{APPID}}";
+requestAnimationFrame(() => requestAnimationFrame(() => {
+  new Image().src = BENCH + "/mark?id=" + APPID + "&ev=paint&t=" + Date.now();
+  setTimeout(() => { new Image().src = BENCH + "/mark?id=" + APPID + "&ev=hang&t=" + Date.now(); setTimeout(() => { while (true) {} }, 100); }, 1500);
+}));
+</script></body></html>

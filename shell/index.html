@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kAIrOS</title>
+<link rel="stylesheet" href="/shell/shell.css">
+</head>
+<body>
+<!-- the shell's own cover while it connects: the same wordmark, wallpaper and (full) bar as
+     the boot screen that preceded it (scripts/splash/kairos-splash + shell/boot-wait.html),
+     so the hand-off boot page -> shell -> desktop is one picture [R73/R28] -->
+<div id="boot">
+  <img class="boot-logo" src="/shell/splash/logo-thick.png" alt="kAIrOS by mAIer" draggable="false">
+  <div class="boot-bar"><div class="boot-fill"></div></div>
+  <div class="boot-sub" id="boot-sub">waking the machine spirits…</div>
+</div>
+
+<div id="desktop" class="hidden">
+  <div id="wallpaper"></div>
+
+  <div id="menubar">
+    <span class="mb-logo">❖ kAIrOS</span>
+    <span class="mb-item" id="mb-tier" translate="no"></span>
+    <span class="mb-status"><i id="mb-dot"></i><span id="mb-state">idle</span></span>
+    <span class="mb-spacer"></span>
+    <span class="mb-item hidden" id="mb-upgrade"></span>
+    <span class="mb-item mb-btn" id="mb-wallpaper" title="Generate a new AI wallpaper">◐ wallpaper</span>
+    <!-- [R74] the clock is the system menu: click / Enter / Space / ↓ opens it -->
+    <button class="mb-item mb-clock" id="mb-clock" translate="no" type="button" aria-haspopup="menu"
+            aria-expanded="false" aria-controls="mb-sysmenu" title="Sleep, restart, shut down, install, about"></button>
+  </div>
+
+  <!-- [R74] the system menu under the clock: power (through /api/hw, the shell's own confirmation
+       for restart and shut down), the installer (moved here from its own menubar button; shown
+       only when checkInstallable() finds a target disk) and About -->
+  <div id="mb-sysmenu" class="hidden" role="menu" aria-label="System">
+    <div class="sm-date" id="sm-date" translate="no"></div>
+    <button class="sm-item" type="button" role="menuitem" data-power="suspend"><span class="sm-ic">☾</span>Sleep</button>
+    <button class="sm-item" type="button" role="menuitem" data-power="reboot"><span class="sm-ic">↻</span>Restart…</button>
+    <button class="sm-item sm-danger" type="button" role="menuitem" data-power="off"><span class="sm-ic">⏻</span>Shut down…</button>
+    <div class="sm-sep hidden" id="sm-install-sep" role="separator"></div>
+    <button class="sm-item hidden" type="button" role="menuitem" id="mb-install"><span class="sm-ic">⛁</span>Install kAIrOS on this computer…</button>
+    <div class="sm-sep" role="separator"></div>
+    <button class="sm-item" type="button" role="menuitem" id="mb-about"><span class="sm-ic">❖</span>About kAIrOS</button>
+  </div>
+
+  <div id="setup" class="hidden">
+    <div class="setup-box">
+      <div class="setup-logo">❖</div>
+      <div class="setup-title">welcome to kAIrOS</div>
+      <p class="setup-text" id="setup-text"></p>
+      <div class="setup-actions" id="setup-actions"></div>
+    </div>
+  </div>
+
+  <div id="install" class="hidden">
+    <div class="setup-box">
+      <div class="setup-logo">⛁</div>
+      <div class="setup-title">install kAIrOS</div>
+      <p class="setup-text" id="install-text">Install kAIrOS onto this computer's internal disk.
+        You can then remove the USB stick and boot from the disk.</p>
+      <div id="install-disks"></div>
+      <pre id="install-log" class="hidden"></pre>
+      <div class="setup-actions" id="install-actions"></div>
+    </div>
+  </div>
+
+  <div id="dsearch">
+    <input id="ds-input" placeholder="⌕  search everything — it always finds something…" autocomplete="off">
+    <div id="ds-results" class="hidden"></div>
+  </div>
+
+  <div id="windows"></div>
+
+  <div id="taskbar"></div>
+
+  <div id="appsmenu" class="hidden">
+    <div class="appsmenu-box">
+      <div class="appsmenu-title">Your apps</div>
+      <input id="appsmenu-search" placeholder="filter apps…" autocomplete="off">
+      <div id="appsmenu-grid"></div>
+      <div class="appsmenu-hint">click to open · every app is living software — it evolves when you press ✨ improve</div>
+    </div>
+  </div>
+
+  <div id="dock">
+    <button class="dock-app" data-menu="1">⊞<span>Apps</span></button>
+    <button class="dock-app" data-builtin="applauncher">🚀<span>App Launcher</span></button>
+    <button class="dock-app" data-launch="✨">✨<span>Summon</span></button>
+    <span class="dock-sep"></span>
+    <button class="dock-app" data-app="notes" data-prompt="a notes app with a sidebar list of notes, autosaving via vibe.store">📝<span>Notes</span></button>
+    <button class="dock-app" data-app="news" data-prompt="a news reader for 'The Local Times', a newspaper from a parallel universe. Use vibe.ask to imagine today's headlines and articles as JSON and render them beautifully">📰<span>News</span></button>
+    <button class="dock-app" data-app="browser" data-prompt="the kAIrOS web browser for the imaginary web. Follow the browser recipe exactly: a slim top bar (back, forward, ↻ reload, an address input, a bookmark star) above one full-size iframe pointing at /web/. Keep it simple and bug-free — every control has an id, links inside pages navigate the iframe by themselves.">🌐<span>Browser</span></button>
+    <span class="dock-sep"></span>
+    <button class="dock-app" data-builtin="imagine">🖼️<span>Imagine</span></button>
+    <button class="dock-app" data-builtin="motion">🎬<span>Motion</span></button>
+    <button class="dock-app" data-builtin="arcade">🕹️<span>Arcade</span></button>
+    <button class="dock-app" data-builtin="melody">🎵<span>Music</span></button>
+    <span class="dock-sep"></span>
+    <button class="dock-app" data-app="files" data-prompt="the kAIrOS file manager: two-pane browser over vibe.fs starting at / (partitions /system and /data). Navigate folders, view and edit text files (save via vibe.fs.write), create folders, delete entries, breadcrumbs, and a clearly-marked red 'Format /data' factory-reset button calling vibe.fs.format(). Show read-only errors from /system gracefully">📁<span>Files</span></button>
+    <button class="dock-app" data-app="settings" data-prompt="the kAIrOS system settings app: reads vibe.settings.get(), lets the user change the OS name, accent and accent2 colors (color pickers + live preview swatches), set or clear the wallpaper URL. A 'Network' section with three parts, all required: 1. WiFi per the wifi-manager recipe (bars, a password field only if needs is 'password', a Sign in button = vibe.hw.wifi.signin() if connectivity is 'portal'); 2. Bluetooth (vibe.hw.bluetooth: the devices with a kind icon and Connect/Disconnect, a Scan button listing found devices with Pair, show the code if pair() answers enter_code); 3. an airplane-mode switch (vibe.hw.airplane.set). Keep the code compact (the OS already styles buttons and inputs: little CSS, one small render function per section, no comments). An 'AI' section reads vibe.models() to pick the image model (m.models) and tune steps/scheduler, and to pick the coder LLM (m.llm: default = the big brain, fast = the small quick one; vibe.settings.set('llm_model', key), download an absent add-on with vibe.models.download(key)). A 'Language' section: a picker for the OS language (vibe.settings language: en/de/es/fr/it/ja/ru, rendered from vibe.models() m.translation.languages) and a translation on/off switch (vibe.settings translation), a fast/quality choice (translation_quality) and a download button for the translation add-on when m.translation.present.fast is false (vibe.models.download('translation')); below it the dictionaries and Wiktionary add-ons from m.extras (keys dictionaries and wiktionary_&lt;lang&gt;, a download button each while present is false). A 'System' section shows vibe.system.setup() info (GPU VRAM, current model tier, available tiers with download size and presence) and lets the user start a tier upgrade via vibe.system.upgrade(tier). A danger zone offers factory reset via vibe.fs.format() behind an in-page two-step confirmation (never window.confirm). Apply instantly with vibe.settings.set; render hardware and setup fields (percent, name, GB numbers), never whole objects">⚙️<span>Settings</span></button>
+  </div>
+
+  <div id="launcher" class="hidden">
+    <div class="launcher-box">
+      <div class="launcher-title">What should exist?</div>
+      <input id="launcher-input" placeholder="a pomodoro timer with rain sounds…" autocomplete="off">
+      <div class="launcher-hint">Enter to summon · Esc to close · apps are dreamed up by a local model</div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+</div>
+
+<script src="/shell/shell.js"></script>
+</body>
+</html>

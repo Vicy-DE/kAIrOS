@@ -1,0 +1,62 @@
+== cmdline
+initrd=\kairos\initrd root=PARTUUID=baab6cd6-68d2-4400-aa53-29cf7cc2d321 rw rootwait quiet loglevel=0 systemd.show_status=false rd.udev.log_level=3 vt.global_cursor_default=0 console=ttyS0,115200 console=tty1 kairos.inject=stall
+== system
+starting
+== jobs
+JOB UNIT                        TYPE  STATE
+16  multi-user.target           start waiting
+154 kairos-inject-stall.service start running
+151 kairos-bootlog.service      start waiting
+15  graphical.target            start waiting
+
+4 jobs listed.
+== failed
+== kairos
+Result=success
+NRestarts=0
+ActiveState=active
+SubState=running
+== pstore (sysfs)
+total 0
+drwxr-x--- 2 root root 0 Oct  6 14:51 .
+drwxr-xr-x 8 root root 0 Oct  6 14:51 ..
+== pstore archive
+/var/lib/systemd/pstore:
+total 12
+drwxr-xr-x  3 root root 4096 Oct  6 14:48 .
+drwxr-xr-x 11 root root 4096 Oct  6 13:59 ..
+drwxr-xr-x  3 root root 4096 Oct  6 14:48 1791298043
+
+/var/lib/systemd/pstore/1791298043:
+total 12
+drwxr-xr-x 3 root root 4096 Oct  6 14:48 .
+drwxr-xr-x 3 root root 4096 Oct  6 14:48 ..
+drwxr-xr-x 2 root root 4096 Oct  6 14:48 001
+
+/var/lib/systemd/pstore/1791298043/001:
+total 96
+drwxr-xr-x 2 root root  4096 Oct  6 14:48 .
+drwxr-xr-x 3 root root  4096 Oct  6 14:48 ..
+-rw------- 1 root root  1660 Oct  6 14:47 dmesg-efi_pstore-179129804301001
+-rw------- 1 root root  1665 Oct  6 14:47 dmesg-efi_pstore-179129804302001
+-rw------- 1 root root  1651 Oct  6 14:47 dmesg-efi_pstore-179129804303001
+-rw------- 1 root root  1663 Oct  6 14:47 dmesg-efi_pstore-179129804304001
+-rw------- 1 root root  1693 Oct  6 14:47 dmesg-efi_pstore-179129804305001
+-rw------- 1 root root  1694 Oct  6 14:47 dmesg-efi_pstore-179129804306001
+-rw------- 1 root root  1677 Oct  6 14:47 dmesg-efi_pstore-179129804307001
+-rw------- 1 root root  1680 Oct  6 14:47 dmesg-efi_pstore-179129804308001
+-rw------- 1 root root  1686 Oct  6 14:47 dmesg-efi_pstore-179129804309001
+-rw------- 1 root root  1645 Oct  6 14:47 dmesg-efi_pstore-179129804310001
+-rw------- 1 root root  1640 Oct  6 14:47 dmesg-efi_pstore-179129804311001
+-rw------- 1 root root  1674 Oct  6 14:47 dmesg-efi_pstore-179129804312001
+-rw------- 1 root root  1670 Oct  6 14:47 dmesg-efi_pstore-179129804313001
+-rw------- 1 root root  1679 Oct  6 14:47 dmesg-efi_pstore-179129804314001
+== boots
+ -7 c8f77d1ed72045229b4695ae8a99aff0 Tue 2026-10-06 14:20:57 UTC Tue 2026-10-06 14:25:12 UTC
+ -6 564284da497e4405ab9fac96fb78ec27 Tue 2026-10-06 14:25:16 UTC Tue 2026-10-06 14:34:38 UTC
+ -5 5554321f61484ca882641b3864422eec Tue 2026-10-06 14:34:45 UTC Tue 2026-10-06 14:38:24 UTC
+ -4 50735510bfb64d6598309c404104cebb Tue 2026-10-06 14:38:29 UTC Tue 2026-10-06 14:43:37 UTC
+ -3 57c4d37d54f147e3a36a2bac7670a6df Tue 2026-10-06 14:43:42 UTC Tue 2026-10-06 14:47:10 UTC
+ -2 e6d18f5a87d5447482cde95d1d24f95f Tue 2026-10-06 14:47:16 UTC Tue 2026-10-06 14:47:17 UTC
+ -1 fe333c363142421abaf5d7814de378a6 Tue 2026-10-06 14:48:28 UTC Tue 2026-10-06 14:51:10 UTC
+  0 8fbf95c4adb24a338712f2bce756471f Tue 2026-10-06 14:51:16 UTC Tue 2026-10-06 14:55:22 UTC

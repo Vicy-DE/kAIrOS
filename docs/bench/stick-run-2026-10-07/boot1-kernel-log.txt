@@ -1,0 +1,15 @@
+Oct 06 21:43:41 localhost.localdomain python3[1065]: [kernel] kAIrOS tier=8gb on http://127.0.0.1:1337 (token: /run/kairos/token)
+Oct 06 21:43:41 localhost.localdomain python3[1065]: [kernel] engines: ok — cuda set llama.cpp 4da6337 (2026-09-27), stable-diffusion.cpp 3f8527a (2026-09-27), acestep.cpp daf7644 (2026-09-11) satisfies tier 8gb (/opt/vibeos/bin/ENGINES.json)
+Oct 06 21:43:41 localhost.localdomain python3[1065]: [kernel] js syntax gate: qjsc 2025-04-26
+Oct 06 21:43:41 localhost.localdomain python3[1065]: [kernel] coder LLM: default (Gemma 4 26B-A4B-it (UD-IQ4_XS, MoE, experts partly in RAM))
+Oct 06 21:47:20 localhost.localdomain python3[1065]: [kernel] starting llama-server (llm, cuda): Gemma 4 26B-A4B-it (UD-IQ4_XS, MoE, experts partly in RAM)
+Oct 06 21:52:21 localhost.localdomain python3[1065]: [kernel] llama-server did not become healthy in 300 s; last output (/var/log/kairos/llama-server.log):
+Oct 06 21:52:21 localhost.localdomain python3[1065]: [kernel] web page 'Pornhub.com' failed: llama-server did not become healthy:
+Oct 06 21:52:34 localhost.localdomain python3[1065]: [kernel] web page 'Pornhub.com' failed: llama-server: {'message': 'Loading model', 'type': 'unavailable_error', 'code': 503}
+Oct 06 21:53:31 localhost.localdomain python3[1065]: [kernel] web page 'porn site with nude bitches' failed: llama-server: {'message': 'Loading model', 'type': 'unavailable_error', 'code': 503}
+Oct 06 21:54:29 localhost.localdomain python3[1065]: [kernel] app starship-in-a-old-barn generation failed: llama-server: {'message': 'Loading model', 'type': 'unavailable_error', 'code': 503}
+Oct 06 21:55:18 localhost.localdomain python3[1065]: [kernel] starting llama-server (expander:image/Qwen3VL-4B-Instruct-Q4_K_M.gguf, cuda): prompt expander (Qwen3VL-4B-Instruct-Q4_K_M.gguf)
+Oct 06 21:56:23 localhost.localdomain python3[1065]: [kernel] llama-server ready
+Oct 06 21:56:25 localhost.localdomain python3[1065]: [kernel] sd-server image: session of 1 picture(s)
+Oct 06 21:56:26 localhost.localdomain python3[1065]: [kernel] sd-server ready in 1.0 s
+Oct 06 21:56:26 localhost.localdomain python3[1065]: [kernel] sd-server image: A sleek, futuristic Starship spacecraft rests inside an abandoned, weathered bar

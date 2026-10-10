@@ -1,0 +1,35 @@
+#1  started 2026-10-06 14:20:58  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+#1  boot log written 2026-10-06 14:21:04  verdict PASS
+#1  shutdown log written 2026-10-06 14:25:11  verdict FAIL (xorg: X failed to start (1 attempt(s) this boot) — see X LOG / Xorg.0.log below)
+#2  started 2026-10-06 14:26:46  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+#2  started 2026-10-06 14:26:46  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+#2  failure local-fs.target log written 2026-10-06 14:26:47  verdict FAIL (kernel_api: no answer on :1337 (kairos.service inactive, restarts this boot: 0) — see KAIROS KERNEL LOG)
+#2  emergency log written 2026-10-06 14:26:48  verdict FAIL (kernel_api: no answer on :1337 (kairos.service inactive, restarts this boot: 0) — see KAIROS KERNEL LOG)
+#2  boot log written 2026-10-06 14:28:48  verdict FAIL (boot_target: no boot target reached (system: maintenance) — see journal)
+#3  started 2026-10-06 14:34:46  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+#3  boot log written 2026-10-06 14:34:52  verdict PASS
+#3  shutdown log written 2026-10-06 14:38:23  verdict FAIL (xorg: X failed to start (1 attempt(s) this boot) — see X LOG / Xorg.0.log below)
+#4  started 2026-10-06 14:38:30  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+#4  failure kairos.service log written 2026-10-06 14:38:32  verdict FAIL (kernel_api: no answer on :1337 (kairos.service activating, restarts this boot: 0) — see KAIROS KERNEL LOG)
+#4  failure kairos.service log written 2026-10-06 14:39:10  verdict FAIL (kernel_api: no answer on :1337 (kairos.service activating, restarts this boot: 5) — see KAIROS KERNEL LOG)
+#4  failure kairos.service log written 2026-10-06 14:40:01  verdict FAIL (kernel_api: no answer on :1337 (kairos.service activating, restarts this boot: 7) — see KAIROS KERNEL LOG)
+#4  failure kairos.service log written 2026-10-06 14:40:31  verdict FAIL (kernel_api: no answer on :1337 (kairos.service activating, restarts this boot: 8) — see KAIROS KERNEL LOG)
+#4  boot log written 2026-10-06 14:40:33  verdict FAIL (kernel_api: no answer on :1337 (kairos.service activating, restarts this boot: 8) — see KAIROS KERNEL LOG)
+#4  failure kairos.service log written 2026-10-06 14:42:32  verdict FAIL (failed_units: kairos.service )
+#4  shutdown log written 2026-10-06 14:43:36  verdict FAIL (failed_units: kairos.service )
+#5  started 2026-10-06 14:43:43  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+#5  failure x11 log written 2026-10-06 14:44:00  verdict FAIL (xorg: X failed to start (6 attempt(s) this boot) — see X LOG / Xorg.0.log below)
+#5  boot log written 2026-10-06 14:45:49  verdict FAIL (xorg: X failed to start (9 attempt(s) this boot) — see X LOG / Xorg.0.log below)
+#5  shutdown log written 2026-10-06 14:47:10  verdict FAIL (xorg: X failed to start (12 attempt(s) this boot) — see X LOG / Xorg.0.log below)
+#6  started 2026-10-06 14:47:17  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+#6  DID NOT COMPLETE — died before a log was written (panic/hang/loop?)
+#7  started 2026-10-06 14:48:29  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+#7  boot log written 2026-10-06 14:48:36  verdict WARN
+#7  shutdown log written 2026-10-06 14:51:09  verdict FAIL (xorg: X failed to start (1 attempt(s) this boot) — see X LOG / Xorg.0.log below)
+#8  started 2026-10-06 14:51:18  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+#8  DID NOT COMPLETE — died before a log was written (panic/hang/loop?)
+#9  started 2026-10-06 14:55:33  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+#9  boot log written 2026-10-06 14:55:39  verdict WARN
+#9  shutdown log written 2026-10-06 14:58:12  verdict FAIL (xorg: X failed to start (1 attempt(s) this boot) — see X LOG / Xorg.0.log below)
+#10  started 2026-10-06 15:00:10  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+#10  boot log written 2026-10-06 15:00:18  verdict WARN

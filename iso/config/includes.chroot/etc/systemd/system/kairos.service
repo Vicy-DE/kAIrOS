@@ -1,0 +1,51 @@
+[Unit]
+Description=kAIrOS kernel (local-AI operating system)
+After=network.target kairos-payload.service
+Wants=network-online.target kairos-payload.service
+# a kernel that gives up writes a diagnostics log to the stick [R51] — one
+# handler instance per trigger (kairos-bootlog-failure@.service)
+OnFailure=kairos-bootlog-failure@%n.service
+# [D10] a crashing kernel is retried with a growing pause (3 s .. 30 s, see
+# RestartSteps below): a transient failure (disk or GPU still coming up)
+# recovers within seconds. But 12 starts in 10 minutes (~4 min of crashing) mean
+# it is not coming back: the unit then ENDS in `failed` — visible to
+# `systemctl --failed` and the boot log — instead of restarting every 3 s
+# forever, never failing, and having the failure capture rewrite the EFI
+# partition every 3 s for the rest of the boot.
+StartLimitIntervalSec=600
+StartLimitBurst=12
+
+[Service]
+Type=simple
+Environment=VIBEOS_DIR=/opt/vibeos
+Environment=VIBEOS_SHELL=/opt/vibeos/os/shell
+Environment=VIBEOS_MANIFESTS=/opt/vibeos/os/manifests
+Environment=LD_LIBRARY_PATH=/opt/vibeos/lib
+Environment=PATH=/opt/vibeos/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# [R66] the kernel runs as root and listens on 127.0.0.1 only — the kiosk is on this
+# machine. Exposing the API to the network is a deliberate choice for hardware-test /
+# remote-monitoring builds; do it with a drop-in, never here:
+#   /etc/systemd/system/kairos.service.d/expose-ui.conf  containing  [Service] / Environment=VIBEOS_HOST=0.0.0.0
+# (pod/testrig/expose-ui.sh writes exactly that; iso/build-iso.sh bakes it with
+# KAIROS_EXPOSE_UI=1). Even exposed, disk-wipe/power/format/settings need the per-boot
+# token from /run/kairos/token — only /api/status-style reads are open to the network.
+#Environment=VIBEOS_HOST=0.0.0.0
+ExecStartPre=/bin/mkdir -p /opt/vibeos/cache
+ExecStart=/usr/bin/python3 /opt/vibeos/os/kernel/server.py
+# on-failure, not always: the kernel never exits 0 by itself (a clean exit is a
+# stop, a crash is restarted); 3 s, then geometrically up to 30 s over 6 steps
+Restart=on-failure
+RestartSec=3
+RestartSteps=6
+RestartMaxDelaySec=30
+# [D-R68-3] a stop is bounded by the kernel itself (server.py shutdown hook: the SSE
+# streams the kiosk holds open are ended, launched games thawed + terminated,
+# llama-server stopped, then 5 s for any other handler — ~12 s worst case, well under
+# a second normally). 30 s keeps a margin for an sd-cli/llama job that has to die with
+# the cgroup [R-AB: a restart mid-GPU-job is harmless, the new kernel starts clean].
+# The default 90 s was reached by ONE open SSE client: SIGKILL, Result=timeout, and
+# OnFailure= filed the deliberate restart as a boot failure on the ESP.
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

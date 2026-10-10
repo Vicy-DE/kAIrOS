@@ -1,0 +1,24 @@
+==================== kAIrOS boot log (emergency) ====================
+############ SUMMARY / VERDICT ############
+VERDICT: FAIL — 1 check(s) failed, 4 warning(s) — first failure: kernel_api: no answer on :1337 (kairos.service inactive, restarts this boot: 0) — see KAIROS KERNEL LOG
+ PASS boot_history  attempt #2; early breadcrumb ran (root + EFI partition mounted)
+ WARN boot_target   boot still in progress (system: initializing) — this capture is preliminary
+ PASS failed_units  no failed units [R63]
+ PASS hung_units    nothing stuck in activating
+ PASS rootfs_grow   root grown on first boot (58G total, 7.1G free)
+ PASS gpu_driver    0000:00:05.0 0x1af4 driver=virtio-pci boot_vga=1; 
+ PASS firmware      no firmware load failures in dmesg
+ PASS modules       no module load failures in the journal
+ WARN xorg          X never attempted (tty1 autologin -> startx did not run) — check getty@tty1 in the journal
+ FAIL kernel_api    no answer on :1337 (kairos.service inactive, restarts this boot: 0) — see KAIROS KERNEL LOG
+ WARN kiosk         no kiosk Chromium running — see X LOG (.xinitrc output)
+ WARN network       no interface UP with an address (WiFi not joined? offline use is fine)
+ PASS esp           EFI partition mounted at /boot/efi via fstab
+boot attempts (early breadcrumb, newest last):
+   #1  started 2026-10-06 14:20:58  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+   #1  boot log written 2026-10-06 14:21:04  verdict PASS
+   #1  shutdown log written 2026-10-06 14:25:11  verdict FAIL (xorg: X failed to start (1 attempt(s) this boot) — see X LOG / Xorg.0.log below)
+   #2  started 2026-10-06 14:26:46  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+   #2  started 2026-10-06 14:26:46  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+   #2  failure local-fs.target log written 2026-10-06 14:26:47  verdict FAIL (kernel_api: no answer on :1337 (kairos.service inactive, restarts this boot: 0) — see KAIROS KERNEL LOG)
+###########################################

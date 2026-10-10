@@ -1,0 +1,170 @@
+{
+ "at": "2026-10-10 11:39:48",
+ "painter": "committed binary",
+ "tests": {
+  "splash_bgrt_fullscreen_hp_style": {
+   "reqs": [
+    "R73"
+   ],
+   "status": "pass",
+   "detail": "1920x1080 24bpp status=0 parsed, bbox = the bright block (noise <= 24 ignored)"
+  },
+  "splash_bgrt_small_ovmf_32bpp_topdown_and_8bpp": {
+   "reqs": [
+    "R73"
+   ],
+   "status": "pass",
+   "detail": "193x58 at +543+371: 24bpp, 32bpp top-down and 8bpp palette all give bbox [2, 0, 191, 58]"
+  },
+  "splash_bgrt_none": {
+   "reqs": [
+    "R73"
+   ],
+   "status": "pass",
+   "detail": "missing dir + bad image -> present:false; phase 1 centres the lockup at (960,540)"
+  },
+  "splash_layout_maths": {
+   "reqs": [
+    "R73"
+   ],
+   "status": "pass",
+   "detail": "lockup at y=649 under the bbox, wordmark 606x374 centred at 0.40H, bar 540x12 at 0.655H; clamp + 4:3 scaling ok"
+  },
+  "splash_progress_formula_c_js_agree": {
+   "reqs": [
+    "R73"
+   ],
+   "status": "pass",
+   "detail": "P(E)=0.86, max 0.97, floors root 0.1 / userspace 0.18 / x 0.6; C == JS == python"
+  },
+  "splash_layout_matches_boot_page": {
+   "reqs": [
+    "R73",
+    "R28"
+   ],
+   "status": "pass",
+   "detail": "scale/logo-cy/bar-cy/bar-w/bar-h/logo-w identical, same gradient stops and accents, same PNG"
+  },
+  "splash_render_phase1_pixels": {
+   "reqs": [
+    "R73",
+    "R28"
+   ],
+   "status": "pass",
+   "detail": "logo block 1:1, black elsewhere, lockup at y=649 (2592 accent + 2981 white px)"
+  },
+  "splash_render_phase2_pixels": {
+   "reqs": [
+    "R73",
+    "R28"
+   ],
+   "status": "pass",
+   "detail": "bg (10, 10, 20), wordmark 8986 white samples, fill (109, 126, 255), track (37, 37, 49), glow (32, 35, 69)"
+  },
+  "splash_render_other_depths": {
+   "reqs": [
+    "R73"
+   ],
+   "status": "pass",
+   "detail": "24bpp fill (109, 126, 255), 16bpp fill (104, 124, 248)"
+  },
+  "splash_fb_handover_enodev": {
+   "reqs": [
+    "R73"
+   ],
+   "status": "pass",
+   "detail": "ENODEV -> closed + silent; reopened amdgpudrmfb 1920x1080 scale 1.35, repainted; SIGUSR1 -> rc 0, mode untouched; state 'phase=2 t=8277.2 expected=90.0 progress=0.970 fb=amdgpudrmfb'"
+  },
+  "splash_signals_and_stop": {
+   "reqs": [
+    "R73",
+    "R51"
+   ],
+   "status": "pass",
+   "detail": "SIGTERM -> 'stopped by signal 15'; flag file -> handover; --stop ends a running painter via the pidfile"
+  },
+  "splash_transition_never_both_layouts": {
+   "reqs": [
+    "R73",
+    "R28"
+   ],
+   "status": "pass",
+   "detail": "phase 1 1300 logo px -> fade-out (1300 left, 0 wordmark px) -> fade-in (0 logo px) -> phase 2 (1755 wordmark px)"
+  },
+  "splash_root_cover_hermetic": {
+   "reqs": [
+    "R73",
+    "R28"
+   ],
+   "status": "pass",
+   "detail": "42 put_image bands at +100+60 cover 1080 rows on a 3000x1200 root pixmap, RetainPermanent, background set + cleared; errors exit 0"
+  },
+  "splash_initramfs_hook_and_scripts": {
+   "reqs": [
+    "R73",
+    "R51",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "hook copy_exec (tolerant), init-top (quiet-only, --daemon, no prereq), init-bottom (expected + root), panic (--stop); '@' re-exec + dirfds"
+  },
+  "splash_unit_dropins_ctl": {
+   "reqs": [
+    "R73",
+    "R51",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "unit: no default deps, oneshot, sysinit; drop-ins stop the painter before sulogin; ctl: userspace/milestone/handover/stop/archive hermetic"
+  },
+  "splash_xinitrc_bash_profile_contracts": {
+   "reqs": [
+    "R73",
+    "R28",
+    "R51"
+   ],
+   "status": "pass",
+   "detail": "breadcrumbs, cursor, boot page first (+ progress params), handover flag after launch, relaunch flag; profile: counters, splash-x, no clear"
+  },
+  "splash_boot_page": {
+   "reqs": [
+    "R73",
+    "R28"
+   ],
+   "status": "pass",
+   "detail": "logo-thick.png + bar, progress continues from ?p=, hands over to the shell with the hint only, relaunch mode, R28 guards"
+  },
+  "splash_r27_removed": {
+   "reqs": [
+    "R73",
+    "R28"
+   ],
+   "status": "pass",
+   "detail": "no mpv, no clip, no dream module/units/prompt/endpoints; bootlog quotes BOOT SCREEN LOG; prewarm list untouched"
+  },
+  "splash_kernel_boottime_sessionlog": {
+   "reqs": [
+    "R73",
+    "R44",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "expected 120 -> measured history (5 kept, avg), late start ignored, unwritable dir warns; session log trims to 40"
+  },
+  "splash_build_sync_wiring": {
+   "reqs": [
+    "R73",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "hook + build-img install.sh before update-initramfs, initrd asserted; sync-guest rebuilds the initrd; committed binary 1.0 (2026-10-07) (committed binary)"
+  },
+  "splash_assets_reproducible": {
+   "reqs": [
+    "R73"
+   ],
+   "status": "skip",
+   "detail": "Pillow not installed"
+  }
+ }
+}

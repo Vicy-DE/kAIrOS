@@ -1,0 +1,48 @@
+---------- boot timing ----------
+Startup finished in 19.513s (firmware) + 4.364s (loader) + 5.943s (kernel) + 2min 36.374s (userspace) = 3min 6.194s 
+graphical.target reached after 1min 10.455s in userspace.
+1min 25.920s nvidia-persistenced.service
+     48.691s nvidia-load.service
+     13.348s kairos-bootlog-early.service
+      7.388s NetworkManager-wait-online.service
+      3.793s dev-sda2.device
+      3.161s NetworkManager.service
+      2.465s systemd-udevd.service
+      2.283s systemd-growfs-root.service
+      2.271s systemd-journal-flush.service
+      2.204s systemd-random-seed.service
+      2.134s ifupdown-pre.service
+      1.449s swapfile.swap
+       785ms ssh.service
+       574ms user@1000.service
+       571ms bluetooth.service
+       547ms dbus.service
+       529ms wpa_supplicant.service
+       501ms systemd-fsck@dev-disk-by\x2duuid-6153\x2d4063.service
+       279ms e2scrub_reap.service
+       246ms networking.service
+       186ms systemd-journald.service
+       183ms systemd-udev-trigger.service
+       159ms boot-efi.mount
+       138ms systemd-rfkill.service
+       138ms systemd-tmpfiles-setup.service
+       137ms systemd-backlight@backlight:amdgpu_bl0.service
+       136ms systemd-logind.service
+       132ms systemd-remount-fs.service
+       124ms systemd-tmpfiles-setup-dev-early.service
+       121ms dev-hugepages.mount
+The time when unit became active or started is printed after the "@" character.
+The time the unit took to start is printed after the "+" character.
+
+graphical.target @1min 10.455s
+└─multi-user.target @1min 10.455s
+  └─getty.target @1min 10.455s
+    └─getty@tty1.service @1min 10.455s
+      └─nvidia-load.service @21.762s +48.691s
+        └─basic.target @21.706s
+          └─kairos-bootlog-early.service @8.357s +13.348s
+            └─boot-efi.mount @8.197s +159ms
+              └─systemd-fsck@dev-disk-by\x2duuid-6153\x2d4063.service @7.694s +501ms
+                └─dev-disk-by\x2duuid-6153\x2d4063.device @7.693s
+
+---------- kAIrOS service ----------

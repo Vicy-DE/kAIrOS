@@ -1,0 +1,18 @@
+#!/bin/sh
+# kairos-display-apply [R53] — re-apply the display layout the user configured
+# through the display API (saved as exact xrandr args). Exit non-zero when there
+# is nothing saved so .xinitrc falls back to plain auto-extend.
+STATE=/opt/vibeos/cache/display.json
+[ -f "$STATE" ] || exit 1
+ARGS=$(python3 - "$STATE" <<'PY'
+import json, sys, shlex
+try:
+    a = json.load(open(sys.argv[1])).get("xrandr_args") or []
+    print(" ".join(shlex.quote(x) for x in a))
+except Exception:
+    pass
+PY
+)
+[ -n "$ARGS" ] || exit 1
+eval "xrandr $ARGS" 2>/dev/null || exit 1
+exit 0

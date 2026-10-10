@@ -1,0 +1,123 @@
+#!/bin/sh
+# kAIrOS system integration: users, ssh, wifi, kiosk, services, library paths.
+set -e
+
+ROOT_PW='kairos'
+KIOSK_USER='kairos'
+KIOSK_PW='kairos'
+
+echo "[kairos-hook] users + passwords"
+echo "root:${ROOT_PW}" | chpasswd
+if ! id "$KIOSK_USER" >/dev/null 2>&1; then
+    useradd -m -s /bin/bash -G sudo,video,audio,netdev "$KIOSK_USER"
+fi
+echo "${KIOSK_USER}:${KIOSK_PW}" | chpasswd
+
+echo "[kairos-hook] ssh: enabled for hardware-test monitoring, KEY-ONLY [R66]"
+# The image auto-joins WiFi and the passwords above are public (this repo, every
+# image): password SSH = root for anyone on that network. Root logs in with the key
+# staged by iso/build-iso.sh from iso/secrets/authorized_keys (untracked; the testrig
+# uses pod/testrig/id_kairos). No key -> no remote shell; the local console (tty2+,
+# serial) still takes the password for recovery on hardware.
+cat > /etc/ssh/sshd_config.d/kairos.conf <<'EOF'
+# kAIrOS [R66]: monitoring over SSH is key-based only (root password is baked + public)
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+EOF
+if [ -s /root/.ssh/authorized_keys ]; then
+    chmod 700 /root/.ssh && chmod 600 /root/.ssh/authorized_keys
+    echo "[kairos-hook] root authorized_keys: $(wc -l < /root/.ssh/authorized_keys) key(s)"
+else
+    echo "[kairos-hook] WARN: no /root/.ssh/authorized_keys staged — SSH monitoring is impossible on this image"
+    echo "              (iso/secrets/authorized_keys or KAIROS_SSH_PUBKEY at build time; see iso/secrets/README.md)"
+fi
+systemctl enable ssh
+
+echo "[kairos-hook] CUDA runtime libs bundled with the engines on the load path"
+echo "/opt/vibeos/lib" > /etc/ld.so.conf.d/kairos-cuda.conf
+ldconfig || true
+
+echo "[kairos-hook] kAIrOS env + autostart services"
+cat > /etc/profile.d/kairos.sh <<'EOF'
+export VIBEOS_DIR=/opt/vibeos
+export VIBEOS_SHELL=/opt/vibeos/os/shell
+export VIBEOS_MANIFESTS=/opt/vibeos/os/manifests
+export LD_LIBRARY_PATH=/opt/vibeos/lib:${LD_LIBRARY_PATH:-}
+export PATH=/opt/vibeos/bin:$PATH
+EOF
+systemctl enable kairos-payload.service   # mounts the models partition first
+systemctl enable kairos.service
+
+echo "[kairos-hook] audio + bluetooth: PipeWire user session for the kiosk user, bluez [R38/R55/R56]"
+# --global = every user's session (the kiosk user logs in via getty -> logind);
+# `|| true`: never fails the build on a package set without them
+systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service 2>/dev/null || true
+systemctl enable bluetooth.service 2>/dev/null || true
+usermod -aG bluetooth ${KIOSK_USER} 2>/dev/null || true
+
+echo "[kairos-hook] WiFi: profile (if any) staged at build time from iso/secrets/wifi.env [R66]"
+# no PSK lives in the repo any more: build-iso.sh renders the profile into the build
+# tree only. Without one the image joins no network by itself (the user connects
+# from the kiosk's WiFi app); an image WITH one auto-joins that SSID for monitoring.
+chmod 600 /etc/NetworkManager/system-connections/*.nmconnection 2>/dev/null \
+    && echo "[kairos-hook] wifi profiles: $(ls /etc/NetworkManager/system-connections/)" \
+    || echo "[kairos-hook] no wifi profile baked (no iso/secrets/wifi.env at build time)"
+systemctl enable NetworkManager
+
+echo "[kairos-hook] kiosk autologin on tty1 -> X -> Chromium @ kAIrOS"
+mkdir -p /etc/systemd/system/getty@tty1.service.d
+cat > /etc/systemd/system/getty@tty1.service.d/autologin.conf <<EOF
+[Service]
+ExecStart=
+# --skip-login: without it agetty prints '<host> login: kairos (automatic login)'
+# on tty1 — visible Linux text under the boot animation handover [R28]
+ExecStart=-/sbin/agetty --autologin ${KIOSK_USER} --skip-login --noclear --noissue --nohints %I \$TERM
+EOF
+
+echo "[kairos-hook] hide Linux: no login banners, no issue, silent journal on console"
+: > /etc/issue
+: > /etc/issue.net
+: > /etc/motd
+touch /home/${KIOSK_USER}/.hushlogin && chown ${KIOSK_USER}: /home/${KIOSK_USER}/.hushlogin
+# includes.chroot lands root-owned: the kiosk user owns its home (.xinitrc,
+# .bash_profile, .config/openbox/rc.xml [R68]) as on any real account
+chown -R ${KIOSK_USER}: /home/${KIOSK_USER}
+# the kiosk user may open DRM render nodes (games, GPU-rendered apps)
+usermod -aG render ${KIOSK_USER} 2>/dev/null || true
+
+echo "[kairos-hook] boot screen (R73: firmware logo + kAIrOS lockup, then the thick logo + loading bar)"
+# The painter is one static binary, built on the build host (the image has no compiler)
+# and committed as scripts/splash/kairos-splash; install.sh puts it in /usr/local/sbin,
+# fixes the exec bits of the initramfs hook + init-top/init-bottom/panic scripts and
+# kairos-splash-ctl, and enables kairos-splash.service. The initrd that carries it is
+# built afterwards (build-img.sh: update-initramfs -u -k all). LOUD: an image without
+# its boot screen is not the owner's image.
+sh /opt/vibeos/os/scripts/splash/install.sh /opt/vibeos/os
+
+echo "[kairos-hook] boot diagnostics -> KAIROS-LOGS on the EFI partition [R51]"
+# the emergency/rescue drop-ins (etc/systemd/system/{emergency,rescue}.service.d/kairos-splash.conf)
+# stop the boot screen painter and restore the text console before sulogin [R51/R73]
+# late capture + early breadcrumb + emergency capture + X-loop watcher; the
+# failure capture (kairos-bootlog-failure@.service) is pulled in by OnFailure= /
+# the path unit only. Exec bits: a repo sync once dropped one (203/EXEC, R63) —
+# restore them here, never trust the copy. kairos-gpu-setup (nvidia-load.service)
+# and kairos-esp-sync + its kernel hooks (D4) are used by the appliance image.
+chmod +x /usr/local/sbin/kairos-bootlog /usr/local/sbin/kairos-bootlog-early /usr/local/sbin/kairos-prewarm \
+         /usr/local/sbin/kairos-display-apply /usr/local/sbin/kairos-install \
+         /usr/local/sbin/kairos-gpu-setup /usr/local/sbin/kairos-esp-sync \
+         /etc/kernel/postinst.d/zz-kairos-esp /etc/initramfs/post-update.d/zz-kairos-esp
+systemctl enable kairos-bootlog.service kairos-bootlog-early.service \
+                 kairos-bootlog-emergency.service kairos-bootlog-xfail.path \
+                 kairos-bootlog-stall.timer kairos-prewarm.service
+mkdir -p /var/log/journal /var/log/kairos && chown ${KIOSK_USER}: /var/log/kairos
+
+echo "[kairos-hook] unified memory: nvidia_uvm loads via nvidia-load.service (appliance image);"
+echo "              amdgpu gets an explicit 16G GTT so iGPU inference can use system RAM"
+cat > /etc/modprobe.d/kairos-amdgpu.conf <<'EOF'
+# kAIrOS: the AMD iGPU shares system RAM (UMA). Guarantee a 16 GiB GTT window so
+# Vulkan compute (llama.cpp) can address large models through unified memory.
+options amdgpu gttsize=16384
+EOF
+
+echo "[kairos-hook] disable live-config root autologin clashes; done"

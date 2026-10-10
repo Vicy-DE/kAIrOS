@@ -1,0 +1,4 @@
+/* bench host page: one .win fills the whole top-level window — the X window is the
+   frame, so no radius/shadow (there is no compositor to draw outside the window) */
+.win { position: fixed; inset: 0; min-width: 0; min-height: 0; border-radius: 0; box-shadow: none; }
+.win.maximized { border-radius: 0; }

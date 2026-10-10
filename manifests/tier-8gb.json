@@ -1,0 +1,1076 @@
+{
+ "tier": "8gb",
+ "vram_gb": 8,
+ "strategy": "swap",
+ "comment": "Strict swap mode: only one model family in VRAM at any time. LLM is restarted after each image/video job.",
+ "engines": {
+  "stable-diffusion.cpp": "2026-09-27",
+  "llama.cpp": "2026-09-27",
+  "acestep.cpp": "2026-09-11"
+ },
+ "engines_comment": "oldest upstream commit DATE (UTC) of each engine this manifest's argv was validated with — the set built 2026-09-27/28 (`vibeos-cuda-next`: sd.cpp 3f8527a master-929 with Qwen-Image-2.1, `--model-args` and the sd-server the kernel uses for multi-image sessions; llama.cpp 4da6337 b11223 with `--reasoning off`; acestep.cpp daf7644 unchanged, docs/ENGINES-CUDA-NEXT-2026-09.md + docs/INTEGRATION-2026-09-28.md). The 2026-09-14 set (sd.cpp 7f410a3) cannot run image_qwen (Qwen-Image-2.1) or image_chroma's --model-args and is refused by the kernel's pairing check (bin/ENGINES.json written by scripts/engine-stamp.py). Raise a date here whenever gen_args/serve_args/music.cmd need a newer engine.",
+ "knowledge": {
+  "name": "Wikipedia English (all articles, intro text, no pictures)",
+  "dir_url": "https://download.kiwix.org/zim/wikipedia/",
+  "zim_pattern": "wikipedia_en_all_mini_[0-9-]+\\.zim",
+  "approx_gb": 12.0,
+  "upgrade_note": "wikipedia_en_all_nopic (~49 GB) = full article text; swap the pattern to upgrade"
+ },
+ "refusal_fallback": {
+  "ladder": [
+   "preamble",
+   "llm_uncensored"
+  ],
+  "expander_ladder": [
+   "preamble",
+   "encoder"
+  ],
+  "comment": "[R86, docs/REFUSAL-FALLBACK-2026-10-09.md] what the kernel does when the LLM declines a request (kernel/refusal.py judges every user-facing answer): \"preamble\" = the same model again with prompts.ADULT_PREAMBLE prepended to the system prompt (no model swap; drop or reorder here once the preamble is measured on Gemma); \"llm_uncensored\" = the decensored add-on section below, swapped in like llm_fast and skipped while its file is absent or empty (the v7.5-1 stick ships no new model file). Every rung declined -> a plain error, nothing cached. expander_ladder = the image-prompt expander's own cheap rungs: \"encoder\" = the image section's baked text encoder (or its optional expander_fallback_file) with the krea-18plus rules, then the raw prompt; \"preamble\" first (integrator 2026-10-09: the refusal screen measured 0/20 refused expansions on Gemma with the preamble — results/r86-refusal-fallback/screen/SCREEN.md — so a refused prompt needs no encoder swap, R79's no-thrash win kept). The minors guard (refusal.minor_risk) runs before any rung and cannot be configured away."
+ },
+ "llm": {
+  "role": "HTML app generation + Python game generation",
+  "name": "Gemma 4 26B-A4B-it (UD-IQ4_XS, MoE, experts partly in RAM)",
+  "comment": "Feature test 2026-09-28 (docs/FEATURE-TEST-2026-09-28.md §6): 36/37 functional app items, text editor 6/6, 7/7 apps error-free at first load vs 11/37 for Qwen2.5-Coder-7B and 13/37 for Qwen3.5-9B — the only candidate whose generated apps work; LiveCodeBench 65 % / AIME 60 % (docs/LLM-PROBLEM-SOLVING-2026-09.md). Costs: 3–4.7 min per app (28.8 tok/s, prompt 535 tok/s), llama-server RSS 15.5 GB (mmap'd GGUF), 6.4–8.2 s reload after every image job. 13.6 GB MoE on the 8 GB card: NO -ngl here on purpose — llama.cpp b11223's `--fit` (default on) placed it in the benchmark (all 31 layers' dense weights on CUDA0, the MoE experts of ~22 of 31 layers overflow to system RAM, 6.7 GB VRAM). `--reasoning off` + enable_thinking=false as for Qwen3.5. Vendor sampling: temp 1.0, top_k 64, top_p 0.95. Fast mode: settings key llm_model=fast serves the llm_fast add-on (Qwen2.5-Coder-7B, 40 s per app) instead (docs/FIXES-2026-09-28.md A2).",
+  "file": "llm/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf",
+  "url": "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf",
+  "size_gb": 13.6,
+  "size_bytes": 13597177568,
+  "sha256": "babd1e389d386352f71600765d37390f7dc993fbfad6725caccf996ffe34aecf",
+  "serve_args": [
+   "-c",
+   "16384",
+   "-fa",
+   "on",
+   "--cache-ram",
+   "4096",
+   "--ctx-checkpoints",
+   "8",
+   "--jinja",
+   "--reasoning",
+   "off"
+  ],
+  "parallel": 2,
+  "parallel_comment": "2 llama-server slots, each with the full -c above (-c 2*C -np 2 --no-kv-unified) [R72]: two LLM requests at once; CPU-measured 2026-10-06 (docs/PARALLEL-LLM-2026-10-06.md), GPU validation follows the current GPU benchmark",
+  "chat_template_kwargs": {
+   "enable_thinking": false
+  },
+  "sampling": {
+   "temperature": 1.0,
+   "top_k": 64,
+   "top_p": 0.95
+  }
+ },
+ "python_llm": {
+  "shared_with": "llm"
+ },
+ "llm_fast": {
+  "role": "fast mode — the small coder LLM (settings key llm_model = \"fast\")",
+  "name": "Qwen2.5-Coder-7B-Instruct (Q4_K_M, fast mode)",
+  "comment": "Downloadable add-on [R47]: the 8 GB tier's LLM until 2026-09-28. Selected with vibe.settings.set('llm_model', 'fast') — the kernel restarts llama-server on the selected model; when this add-on is not downloaded the default LLM keeps serving and /api/status reports the fallback. Fast (≈ 40 s per app, 51 tok/s, 5.5 GB VRAM, 4.8 GB RSS) but its generated apps mostly do not work (11/37 functional items in the feature test) — a speed/low-RAM option, not the default. sha256 computed from the local copy 2026-09-28 (the file this OS served since June).",
+  "file": "llm/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
+  "url": "https://huggingface.co/unsloth/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
+  "size_gb": 4.68,
+  "size_bytes": 4683073504,
+  "sha256": "9a961bb225cb2b9fd84b2297df0d53089895c049d7d9dc5f5f8aebbcd3247872",
+  "serve_args": [
+   "-ngl",
+   "99",
+   "-c",
+   "16384",
+   "--cache-ram",
+   "2048",
+   "--ctx-checkpoints",
+   "8",
+   "--jinja"
+  ],
+  "parallel": 2,
+  "parallel_comment": "2 llama-server slots, each with the full -c above (-c 2*C -np 2 --no-kv-unified) [R72]: two LLM requests at once; CPU-measured 2026-10-06 (docs/PARALLEL-LLM-2026-10-06.md), GPU validation follows the current GPU benchmark",
+  "addon": true
+ },
+ "llm_uncensored": {
+  "role": "the refusal fallback's last rung [R86] — the decensored coder LLM; settings key llm_model = \"uncensored\" makes it the primary",
+  "name": "Gemma 4 26B-A4B-it ultra-uncensored heretic (i1-IQ4_XS, MoE, experts partly in RAM)",
+  "comment": "Downloadable add-on [R86]: PROVISIONAL candidate (mradermacher's heretic/abliterated imatrix quant of the same Gemma 4 26B-A4B architecture; the integrator may swap the file after the benchmark — the kernel reads only this section, nothing is hard-coded). Serves two ways: (a) the refusal ladder's \"llm_uncensored\" rung — a request whose answer was a refusal (also after the 18+ preamble) is retried here, the model swap is the llm_fast kind (ModelManager keys llama-server by section; the next normal request swaps the default back); (b) vibe.settings.set('llm_model', 'uncensored') runs it as the primary LLM (not downloaded -> the default serves, /api/status says why). Download: vibe.models.download('llm_uncensored') — the alias 'uncensored' names the baked image model. Serve args, chat_template_kwargs and sampling are the llm section's (same architecture). Not on the v7.5-1 stick (2.2 GB free).",
+  "file": "llm/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf",
+  "url": "https://huggingface.co/mradermacher/gemma-4-26B-A4B-it-ultra-uncensored-heretic-i1-GGUF/resolve/main/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf",
+  "size_gb": 13.92,
+  "size_bytes": 13917722144,
+  "sha256": "e2f223775fa6e4e2129b7d7802fa7326b8da3fe261e8834baf65b722f9df3742",
+  "serve_args": [
+   "-c",
+   "16384",
+   "-fa",
+   "on",
+   "--cache-ram",
+   "4096",
+   "--ctx-checkpoints",
+   "8",
+   "--jinja",
+   "--reasoning",
+   "off"
+  ],
+  "parallel": 2,
+  "parallel_comment": "2 llama-server slots, each with the full -c above (-c 2*C -np 2 --no-kv-unified) [R72]: two LLM requests at once; CPU-measured 2026-10-06 (docs/PARALLEL-LLM-2026-10-06.md), GPU validation follows the current GPU benchmark",
+  "chat_template_kwargs": {
+   "enable_thinking": false
+  },
+  "sampling": {
+   "temperature": 1.0,
+   "top_k": 64,
+   "top_p": 0.95
+  },
+  "addon": true
+ },
+ "image": {
+  "name": "Muse (Krea 2 fine-tune by Stable Yogi, uncensored) — v3.5 Extended Q4_0",
+  "comment": "v7.5-1 default [R76 → Muse, docs/IMAGE-MODEL-MUSE-2026-10-10.md]: Muse by Stable Yogi v3.5 Extended, a Krea 2 fine-tune by Stable_Yogi (civitai model 2741166, version 3258948 'v3.5 Q4 Extended'), the author's Q4_0 GGUF (256 Q4_0 + 174 F32 tensors, arch qwen_image, city96-style names — loads on the shipped sd.cpp 3f8527a like the Krea GGUFs). It replaces Krea 2 Turbo Q4_K_M + the Kroma v0.3 LoRA (both files leave the image: −1.14 GB net). Owner 2026-10-09: 'catch the krea2 model from the download folder embedd it instead of the uncencored krea you made'. GPU A/B 2026-10-10 on the RTX 4070 (vibeos-cuda-next/results/muse-2026-10-09/REPORT.md, 9 prompts, seed 42, 1024², shipped engine): 8 steps / CFG 1.0 chosen — median 51.6 s per sd-cli picture vs 67.6 s for the old default. The author: 8–20 steps, CFG 1–2.5 (never above 3), euler/simple, 1024–2048, the Qwen3-VL encoder + the Qwen-Image VAE (already baked), no trigger words. Expander krea-neutral (people exactly as requested, every person an adult 25+ whenever nudity or sex is involved; krea-18plus on an explicit adult request). `image_safe` = the same files with the SFW expander. Krea 2's official settings and the encoder/VAE facts: docs/IMAGE-MODELS-2026-09.md §7.",
+  "expander": "krea-neutral",
+  "expander_parallel": 2,
+  "diffusion": {
+   "file": "image/museByStableYogi_v35Q4Extended.gguf",
+   "url": "https://civitai.com/api/download/models/3258948",
+   "size_gb": 8.32,
+   "size_bytes": 8316720160,
+   "sha256": "db3eceab8049b5ba7dbebeff297145698c5498d618db15b88fd1c7e0bfa4e6c5"
+  },
+  "licence": "Krea 2 community licence (base model) + civitai permissions of model 2741166 by Stable_Yogi: credit required (allowNoCredit false), no commercial use beyond RentCivit, no derivatives / relicensing — fine for the free, non-commercial kAIrOS; the file is redistributed unmodified",
+  "text_encoder": {
+   "file": "image/Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+   "url": "https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF/resolve/main/Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+   "size_gb": 2.5,
+   "size_bytes": 2497281664
+  },
+  "vae": {
+   "file": "image/qwen_image_vae.safetensors",
+   "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors",
+   "size_gb": 0.25,
+   "size_bytes": 253806246
+  },
+  "gen_args": [
+   "--steps",
+   "8",
+   "--cfg-scale",
+   "1.0",
+   "--sampling-method",
+   "euler",
+   "--scheduler",
+   "simple",
+   "-W",
+   "1024",
+   "-H",
+   "1024",
+   "--diffusion-fa",
+   "--vae-tiling"
+  ],
+  "max_pixels": 1048576
+ },
+ "image_safe": {
+  "name": "Muse SFW (the same model, SFW prompt rules) — v3.5 Extended Q4_0",
+  "comment": "Muse with SFW prompts [R76 → Muse]: the same files as `image` (nothing to download, 0 bytes) rendered through the SFW expander (Krea's expansion.txt rule 8 'Assume clothing covers…' + the kAIrOS medium line). The stock, safety-tuned Krea 2 DiT left the image on 2026-10-10 (space: the stick keeps ≥ 2 GB free), so the safety of this choice now comes from the prompt rewrite alone — a decensored fine-tune renders what the expanded prompt asks for. Kept so the `safe` setting, /api/models and the Settings app keep working.",
+  "expander": "krea",
+  "expander_parallel": 2,
+  "diffusion": {
+   "file": "image/museByStableYogi_v35Q4Extended.gguf",
+   "url": "https://civitai.com/api/download/models/3258948",
+   "size_gb": 8.32,
+   "size_bytes": 8316720160,
+   "sha256": "db3eceab8049b5ba7dbebeff297145698c5498d618db15b88fd1c7e0bfa4e6c5"
+  },
+  "text_encoder": {
+   "file": "image/Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+   "url": "https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF/resolve/main/Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+   "size_gb": 2.5,
+   "size_bytes": 2497281664
+  },
+  "vae": {
+   "file": "image/qwen_image_vae.safetensors",
+   "url": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/resolve/main/split_files/vae/qwen_image_vae.safetensors",
+   "size_gb": 0.25,
+   "size_bytes": 253806246
+  },
+  "gen_args": [
+   "--steps",
+   "8",
+   "--cfg-scale",
+   "1.0",
+   "--sampling-method",
+   "euler",
+   "--scheduler",
+   "simple",
+   "-W",
+   "1024",
+   "-H",
+   "1024",
+   "--diffusion-fa",
+   "--vae-tiling"
+  ],
+  "max_pixels": 1048576
+ },
+ "image_qwen": {
+  "name": "Qwen-Image-2.1 (Q8_0)",
+  "licence": "Qwen Research License — research or evaluation purposes only; redistribution allowed (a downloadable add-on, never baked into the image)",
+  "comment": "second image model [R42]: Alibaba Qwen-Image-2.1 (2026-09-14, 7B, best-ranked open model — LMArena 1228 / AA 1035), text rendering: poster, chalkboard, ß, 3-cat layout all correct in the 2026-09-28 A/B (docs/IMAGE-MODELS-2026-09.md §7). Needs sd.cpp >= 2026-09-27 (PR #1994 + fixes), its OWN VAE (qwen_image_2.1_vae — Qwen-Image-1's and Wan's are not interchangeable) and the Qwen3-VL-8B encoder. argv per sd.cpp docs/qwen_image_2.1.md: euler, NO --scheduler and NO --flow-shift (the engine's resolution-dependent flow schedule, #2048), sizes divisible by 32, --diffusion-fa --vae-tiling, never the CPU-offload flag (it switches --auto-fit off). Measured on the 8 GB 4070: 25 steps cfg 1.0 = 99 s/image, 7.3 GB peak (cfg 6 / 20 steps: 137–144 s). No prompt expander (Qwen's own rewriter is not shipped).",
+  "diffusion": {
+   "file": "image/qwen_image_2.1-Q8_0.gguf",
+   "url": "https://huggingface.co/leejet/Qwen-Image-2.1-GGUF/resolve/main/qwen_image_2.1-Q8_0.gguf",
+   "size_gb": 7.69,
+   "size_bytes": 7687155744,
+   "sha256": "f8b244b00937f0e444a40dbf7866460871b89b30142594973b6012d1b471dc0a"
+  },
+  "text_encoder": {
+   "file": "image/Qwen3VL-8B-Instruct-Q8_0.gguf",
+   "url": "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/Qwen3VL-8B-Instruct-Q8_0.gguf",
+   "size_gb": 8.71,
+   "size_bytes": 8709519456,
+   "sha256": "0d264b3941185d00a74f75c4245521dae088ff1efc90ab8d1754e83f5844adb0"
+  },
+  "vae": {
+   "file": "image/qwen_image_2.1_vae_bf16.safetensors",
+   "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
+   "size_gb": 0.68,
+   "size_bytes": 675509688,
+   "sha256": "bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9"
+  },
+  "gen_args": [
+   "--steps",
+   "25",
+   "--cfg-scale",
+   "1.0",
+   "--sampling-method",
+   "euler",
+   "-W",
+   "1024",
+   "-H",
+   "1024",
+   "--diffusion-fa",
+   "--vae-tiling"
+  ],
+  "max_pixels": 1048576,
+  "addon": true
+ },
+ "image_classic": {
+  "name": "Z-Image-Turbo (Q4_0)",
+  "diffusion": {
+   "file": "image/z_image_turbo-Q4_0.gguf",
+   "url": "https://huggingface.co/leejet/Z-Image-Turbo-GGUF/resolve/main/z_image_turbo-Q4_0.gguf",
+   "size_gb": 3.68,
+   "size_bytes": 3683370944,
+   "sha256": "2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5"
+  },
+  "text_encoder": {
+   "file": "image/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+   "url": "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+   "size_gb": 2.5,
+   "size_bytes": 2497281120,
+   "sha256": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597"
+  },
+  "vae": {
+   "file": "image/ae.safetensors",
+   "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
+   "size_gb": 0.34,
+   "size_bytes": 335304388,
+   "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38"
+  },
+  "gen_args": [
+   "--steps",
+   "8",
+   "--cfg-scale",
+   "1.0",
+   "--sampling-method",
+   "euler",
+   "-W",
+   "1024",
+   "-H",
+   "1024",
+   "--diffusion-fa"
+  ],
+  "comment": "Z-Image-Turbo (Apache-2.0, LMArena 1084): the fast path — 26.6 s/image at 1024², 4.65 GB on the RTX 4070 (2026-09-28); explicit nudity in 4/5 of the 18+ proof prompts, so also the fastest adult route. Previous default image model — swap back to 'image' if the Krea 2 engine misbehaves.",
+  "max_pixels": 1048576,
+  "addon": true
+ },
+ "image_chroma": {
+  "name": "Chroma1-HD (Q4_K_S, uncensored, FLUX family)",
+  "diffusion": {
+   "file": "image/Chroma1-HD-Q4_K_S.gguf",
+   "url": "https://huggingface.co/silveroxides/Chroma1-HD-GGUF/resolve/main/Chroma1-HD-Q4_K_S.gguf",
+   "size_gb": 5.43,
+   "size_bytes": 5432053920,
+   "sha256": "4443db48850a45bb7f163a0582ea0e9f9d449db1aa56632c8572515e8e83acc8"
+  },
+  "t5xxl": {
+   "file": "image/t5-v1_1-xxl-encoder-Q4_K_M.gguf",
+   "url": "https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf/resolve/main/t5-v1_1-xxl-encoder-Q4_K_M.gguf",
+   "size_gb": 2.9,
+   "size_bytes": 2896123072
+  },
+  "vae": {
+   "file": "image/ae.safetensors",
+   "url": "https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors",
+   "size_gb": 0.34,
+   "size_bytes": 335304388,
+   "sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38"
+  },
+  "gen_args": [
+   "--steps",
+   "26",
+   "--cfg-scale",
+   "4.0",
+   "--sampling-method",
+   "euler",
+   "-W",
+   "768",
+   "-H",
+   "768",
+   "--diffusion-fa",
+   "--vae-tiling",
+   "--clip-on-cpu",
+   "--model-args",
+   "chroma_use_dit_mask=false"
+  ],
+  "max_pixels": 1048576,
+  "addon": true,
+  "comment": "kept reachable as the second uncensored model [R29]: Chroma1-HD has no safety alignment (Apache-2.0) but is 9x slower than Kroma/Z-Image on the 8 GB card (244.5 s/image at 26 steps cfg 4, 6.5 GB, 2026-09-28) and frames nudity modestly. T5-XXL encoder + FLUX VAE. --model-args chroma_use_dit_mask=false per sd.cpp docs/chroma.md (needs sd.cpp >= 2026-09-27); --clip-on-cpu keeps the 4.7B T5 in RAM (sd.cpp's deprecated spelling of --backend te=cpu, still accepted)."
+ },
+ "video": {
+  "name": "Wan2.2-TI2V-5B (Q4_K_M)",
+  "diffusion": {
+   "file": "video/Wan2.2-TI2V-5B-Q4_K_M.gguf",
+   "url": "https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF/resolve/main/Wan2.2-TI2V-5B-Q4_K_M.gguf",
+   "size_gb": 3.43
+  },
+  "t5xxl": {
+   "file": "video/umt5-xxl-encoder-Q4_K_M.gguf",
+   "url": "https://huggingface.co/city96/umt5-xxl-encoder-gguf/resolve/main/umt5-xxl-encoder-Q4_K_M.gguf",
+   "size_gb": 3.66
+  },
+  "vae": {
+   "file": "video/Wan2.2_VAE.safetensors",
+   "url": "https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF/resolve/main/VAE/Wan2.2_VAE.safetensors",
+   "size_gb": 1.41
+  },
+  "gen_args": [
+   "--cfg-scale",
+   "6.0",
+   "--sampling-method",
+   "euler",
+   "-W",
+   "480",
+   "-H",
+   "480",
+   "--diffusion-fa",
+   "--video-frames",
+   "33",
+   "--flow-shift",
+   "3.0",
+   "--vae-tiling",
+   "--vae-tile-size",
+   "128x128"
+  ],
+  "addon": true,
+  "comment": "Wan2.2-TI2V-5B — downloadable add-on. 33 frames (= 9 latent frames): with 17 the DiT collapsed into a colour mosaic on 5 of 8 seeds whatever the cfg/shift/steps/negative prompt, with 33 all 8 seeds converge (docs/ENGINES-CUDA-2026-09.md 9.2). The VAE decodes on the GPU in 128x128-PIXEL tiles = the same 8x8-latent tiles as before: sd.cpp master-929 reads --vae-tile-size in image pixels (minimum 64) — the old `8x8` was the latent-unit spelling of the 2026-09-14 engine and fails on this engine with 'VAE tile size must be at least 64 image pixels' (docs/FEATURE-TEST-2026-09-28.md D10). Verified 2026-09-28 on the RTX 4070: 33 frames in 102.7 s, 5.5 GB peak (the 256 px default: 98.7 s, 5.7 GB). Tiling stays: the old engine's default tile needed 13 GB and --vae-on-cpu spent 368 of a 402 s job on the RTX 4070 and 347 of 514 s on the 780M — same flags are the fast ones on CUDA and Vulkan/UMA. Boot animation falls back to the baked default clip when this is not installed."
+ },
+ "music": {
+  "name": "ACE-Step 1.5 turbo (Q8, acestep.cpp)",
+  "engine": "acestep.cpp",
+  "addon": true,
+  "comment": "downloadable add-on [R47]; needs the acestep.cpp engine (scripts/install-engines.sh builds ace-lm/ace-synth). Two-stage pipeline, request-JSON driven (acestep.cpp docs/ARCHITECTURE.md): cmd[0] ace-lm turns request.json into request0.json (metadata + lyrics + audio codes), cmd[1] ace-synth renders request0.json to request00.wav next to it. The kernel writes 'request' + caption/lyrics/duration/seed as the JSON; model names are exact GGUF filenames in {models}/music. turbo DiT = 8 steps (base/sft = 50).",
+  "cmd": [
+   [
+    "{bin}/ace-lm",
+    "--models",
+    "{models}/music",
+    "--request",
+    "{request}"
+   ],
+   [
+    "{bin}/ace-synth",
+    "--models",
+    "{models}/music",
+    "--request",
+    "{request_lm}"
+   ]
+  ],
+  "request": {
+   "lm_model": "acestep-5Hz-lm-1.7B-Q8_0.gguf",
+   "synth_model": "acestep-v15-turbo-Q8_0.gguf",
+   "vae": "vae-BF16.gguf",
+   "output_format": "wav16",
+   "inference_steps": 8,
+   "guidance_scale": 1.0,
+   "shift": 3.0
+  },
+  "dit": {
+   "file": "music/acestep-v15-turbo-Q8_0.gguf",
+   "url": "https://huggingface.co/Serveurperso/ACE-Step-1.5-GGUF/resolve/main/acestep-v15-turbo-Q8_0.gguf",
+   "size_gb": 2.55
+  },
+  "lm": {
+   "file": "music/acestep-5Hz-lm-1.7B-Q8_0.gguf",
+   "url": "https://huggingface.co/Serveurperso/ACE-Step-1.5-GGUF/resolve/main/acestep-5Hz-lm-1.7B-Q8_0.gguf",
+   "size_gb": 1.97
+  },
+  "text_encoder": {
+   "file": "music/Qwen3-Embedding-0.6B-Q8_0.gguf",
+   "url": "https://huggingface.co/Serveurperso/ACE-Step-1.5-GGUF/resolve/main/Qwen3-Embedding-0.6B-Q8_0.gguf",
+   "size_gb": 0.78
+  },
+  "vae": {
+   "file": "music/vae-BF16.gguf",
+   "url": "https://huggingface.co/Serveurperso/ACE-Step-1.5-GGUF/resolve/main/vae-BF16.gguf",
+   "size_gb": 0.34
+  }
+ },
+ "vision": {
+  "name": "Qwen3-VL-4B-Instruct (Q4_K_M + Q8_0 mmproj, llama-server)",
+  "engine": "llama-server",
+  "addon": true,
+  "comment": "downloadable add-on [R70]: the image model's LLM text encoder (image.text_encoder, Qwen/Qwen3-VL-4B-Instruct-GGUF Q4_K_M, Apache-2.0, on disk in every tier — the same file the prompt expander runs under llama-server, docs/INTEGRATION-2026-09-28.md) IS a vision-language model — with its mmproj projector the already-built llama-server runs it (llama.cpp docs/multimodal.md: -m <weights> --mmproj <projector>; images go to /v1/chat/completions as OpenAI image_url content parts). Only the 454 MB projector is downloaded: 'weights' references the image model's file, never a copy. --image-max-tokens caps what one picture costs in the 8k context (the kernel also fits it to 1280 px).",
+  "weights": {
+   "shared_with": "image.text_encoder"
+  },
+  "mmproj": {
+   "file": "image/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf",
+   "url": "https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF/resolve/main/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf",
+   "size_gb": 0.45
+  },
+  "serve_args": [
+   "-ngl",
+   "99",
+   "-c",
+   "8192",
+   "--mmproj",
+   "{mmproj}",
+   "--image-max-tokens",
+   "1024",
+   "--jinja"
+  ]
+ },
+ "translation": {
+  "name": "Index-Translate (fast: 2B Q4_K_M on the CPU, quality: 9B Q4_K_M on the GPU, llama-server)",
+  "engine": "llama-server",
+  "addon": true,
+  "comment": "downloadable add-on [R71]: the translation layer's MT model (docs/TRANSLATION-LAYER-2026-10-06.md; research docs/TRANSLATION-2026-10-06.md). PROVISIONAL model choice until our own EN<->DE/ES/FR/IT/JA/RU benchmark (Hy-MT2 1.8B/7B are the A/B candidates, same llama.cpp): Bilibili IndexTeam Index-Translate (2026-09-30, Apache-2.0, 150 languages, qwen35 architecture; self-reported WMT24++ 0.849 for the 2B, 0.860 for the 9B). `fast` runs on its OWN llama-server on the CPU (-ngl 0 -dev none, port 8085, 4 slots): a UI-string batch never evicts the coder LLM or an image job under strategy swap; `quality` takes the coder LLM's GPU slot the way vision does (R70) and the coder comes back on the next LLM request. Prompt per the model card: one user message, no system message, temperature 0, thinking off (chat_template_kwargs; the kernel also strips <think>). Settings: translation off|on (default off = nothing runs), language en|de|es|fr|it|ja|ru, translation_quality fast|quality (a missing quality file falls back to fast). The 8 GB tier's quality file is the Q4_K_M (5.8 GB + KV fits the 8 GB card). vibe.models.download('translation') fetches both files; sha256/size_bytes from the Hugging Face API 2026-10-06. --cache-ram 0 on both [P3 fix 3, 2026-10-07]: llama-server's server-side prompt cache defaults to 8192 MiB and grew the fast server from 1.9 to 10.95 GB RSS over ~1 800 requests (docs/TRANSLATION-BENCH-2026-10-07.md); translation requests are single-shot, the kernel's own cache answers repeats.",
+  "languages": [
+   "en",
+   "de",
+   "es",
+   "fr",
+   "it",
+   "ja",
+   "ru"
+  ],
+  "chat_template_kwargs": {
+   "enable_thinking": false
+  },
+  "sampling": {
+   "temperature": 0
+  },
+  "fast": {
+   "bake": true,
+   "file": "translation/Index-Translate-2B.Q4_K_M.gguf",
+   "url": "https://huggingface.co/IndexTeam/Index-Translate-2B-GGUF/resolve/main/Index-Translate-2B.Q4_K_M.gguf",
+   "size_gb": 1.31,
+   "size_bytes": 1312164352,
+   "sha256": "044b313d29342bd3b2c77cbb64023ca0d209bd9b3247763f9d162767ef2d746a",
+   "serve_args": [
+    "-ngl",
+    "0",
+    "-dev",
+    "none",
+    "-c",
+    "8192",
+    "-np",
+    "4",
+    "--jinja",
+    "--reasoning",
+    "off",
+    "--cache-ram",
+    "0"
+   ]
+  },
+  "quality": {
+   "file": "translation/Index-Translate-9B.Q4_K_M.gguf",
+   "url": "https://huggingface.co/IndexTeam/Index-Translate-9B-GGUF/resolve/main/Index-Translate-9B.Q4_K_M.gguf",
+   "size_gb": 5.78,
+   "size_bytes": 5780090304,
+   "sha256": "9cc6758b0007f4cbf42ea3400768cbff91ae74ef8d640e467158348426d33713",
+   "serve_args": [
+    "-ngl",
+    "99",
+    "-c",
+    "4096",
+    "--jinja",
+    "--reasoning",
+    "off",
+    "--cache-ram",
+    "0"
+   ]
+  }
+ },
+ "dictionaries": {
+  "name": "Dictionaries: BEOLINGUS de-en + 37 FreeDict pairs among en/de/es/fr/it/ja/ru",
+  "addon": true,
+  "bake": true,
+  "kind": "dictionary",
+  "comment": "downloadable add-on [R71 P3, 2026-10-07]: word lookup for GET /api/dict?word=&from=&to= / vibe.dict(word, from?, to?) (docs/TRANSLATION-LAYER-2026-10-06.md 'P3 + fixes'; research docs/TRANSLATION-2026-10-06.md §3). Works with the translation setting off. The kernel (kernel/dictionary.py) builds a compact folded index per dictionary and direction under cache/dict on first use or right after the download and binary-searches it through mmap (nothing loaded into RAM). BEOLINGUS (TU Chemnitz Ding de-en.txt.gz, ~205k lines, indexed in both directions) first for de<->en, then the FreeDict dictd archives; a direction without a forward file (it->fr, ja->it, ru->ja) is served by the reverse of the opposite pair; es<->ja has no dictionary. Licences (each archive carries its COPYING): BEOLINGUS GPL-2+; FreeDict deu-eng/eng-deu 1.9-fd1 = the Ding data under GPL-3+/AGPL-3+; the 2025.11.23 pairs = WikDict, CC-BY-SA 3.0; jpn-deu/jpn-eng/jpn-fra/jpn-rus = JMdict, CC-BY-SA 3.0; deu-ita/ita-deu 0.2.1, eng-fra 0.1.6, fra-eng 0.4.1, spa-eng 0.3.1, spa-deu 0.1 = GPL-2+. Checksums: sha512 = FreeDict's published sums (pod/translation-2026-10-06.queue), sha256 computed 2026-10-07 from the sha512-verified downloads (the kernel verifies both); BEOLINGUS sha256 from the queue. 118 MB in all.",
+  "languages": [
+   "en",
+   "de",
+   "es",
+   "fr",
+   "it",
+   "ja",
+   "ru"
+  ],
+  "beolingus": {
+   "name": "BEOLINGUS de-en (TU Chemnitz)",
+   "format": "ding",
+   "pair": "deu-eng",
+   "bidirectional": true,
+   "version": "1.9 (2020-12-22)",
+   "licence": "GPL-2+",
+   "file": "dict/beolingus-de-en.txt.gz",
+   "url": "https://ftp.tu-chemnitz.de/pub/Local/urz/ding/de-en/de-en.txt.gz",
+   "size_gb": 0.008,
+   "size_bytes": 7804867,
+   "sha256": "229e6766dbff3fd4b9f97a27fa5df2c1df882388be118b4b990c4502f7015f94"
+  },
+  "freedict": {
+   "deu-eng": {
+    "format": "dictd",
+    "pair": "deu-eng",
+    "version": "1.9-fd1",
+    "licence": "GPL-3+/AGPL-3+ (Ding data)",
+    "file": "dict/freedict-deu-eng-1.9-fd1.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/deu-eng/1.9-fd1/freedict-deu-eng-1.9-fd1.dictd.tar.xz",
+    "size_gb": 0.021,
+    "size_bytes": 20967808,
+    "sha256": "8d30a9414a90bcaf657a55c349371b06c286add71275e5f3423b7a2df48748f1",
+    "sha512": "0e6b2f64a3fe201fca6932a7e5c71c027566cb2f73010fbf54e40681720da733243813224e844dd22e503a47b45d651282fd1a2f12f118c6b5b35bfd9905eca9"
+   },
+   "deu-fra": {
+    "format": "dictd",
+    "pair": "deu-fra",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-deu-fra-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/deu-fra/2025.11.23/freedict-deu-fra-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.004,
+    "size_bytes": 4155788,
+    "sha256": "92e1ef1b6927e7b28cdd5a0691f65505dd58b30a04045f86269f5ff80b854f6a",
+    "sha512": "5bbe3e7327ed6235e4d3e5179237cb7872ba6a715941cb13a84041e45a8016cb74087c320ae8e0175e4a9a4a9ae929c71c308f7f1d20a85d46512a5119d61127"
+   },
+   "deu-ita": {
+    "format": "dictd",
+    "pair": "deu-ita",
+    "version": "0.2.1",
+    "licence": "GPL-2+",
+    "file": "dict/freedict-deu-ita-0.2.1.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/deu-ita/0.2.1/freedict-deu-ita-0.2.1.dictd.tar.xz",
+    "size_gb": 0.0,
+    "size_bytes": 101032,
+    "sha256": "dafa58cf4e7c5469ac347019538f4299a71391044a1694da749b3a41f12d0410",
+    "sha512": "7be809598e4a4e329d3772a9f24b132b3034152f08b32902af3212b89d67b45c8eb3fdbc4a6036c8b58dd5bb31a199cc724b963d8b66f1d3b278ee43a71fd88e"
+   },
+   "deu-jpn": {
+    "format": "dictd",
+    "pair": "deu-jpn",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-deu-jpn-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/deu-jpn/2025.11.23/freedict-deu-jpn-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.001,
+    "size_bytes": 785532,
+    "sha256": "d8a3aa74e585ab3adbff26f4973ac5d5857baac5235d7090e1ba2aa7eea692f1",
+    "sha512": "36a4cca63be4ec5c26e48f6a3b2c088997ed6746b5155dd50d7b0fa28c2226890cce38317c27d8d55ecb58196ed6b637492c38b170e0d899c1ed611be4b2cea7"
+   },
+   "deu-rus": {
+    "format": "dictd",
+    "pair": "deu-rus",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-deu-rus-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/deu-rus/2025.11.23/freedict-deu-rus-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.002,
+    "size_bytes": 1995472,
+    "sha256": "1803e2acb87cae538cdf0fa9b68c9fb2c0e95164b71567171f58c0bd67cceab6",
+    "sha512": "b6fab0ded16a7edbf0d929bd4409fd845fc6f97e5b8a557b27a9110cbfa96d2514e2bebc97d47adfde09403c6dfb6cca279aba9ca8d7759a9ec1c140494e0683"
+   },
+   "deu-spa": {
+    "format": "dictd",
+    "pair": "deu-spa",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-deu-spa-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/deu-spa/2025.11.23/freedict-deu-spa-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.003,
+    "size_bytes": 2592668,
+    "sha256": "c2a6e376ecf910919933860e4a6551b6c448fe1b3c996b09bc0def8e6ce9fa8e",
+    "sha512": "39fd3fd0446cb7351bb9547ab149fbd1dd778028d7a65a0328f23381df9a0e95f8a6f66d97fe4f0ec086aea7aae1843aa3f479e5d4f0d83d021e0bf8f31f4982"
+   },
+   "eng-deu": {
+    "format": "dictd",
+    "pair": "eng-deu",
+    "version": "1.9-fd1",
+    "licence": "GPL-3+/AGPL-3+ (Ding data)",
+    "file": "dict/freedict-eng-deu-1.9-fd1.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/eng-deu/1.9-fd1/freedict-eng-deu-1.9-fd1.dictd.tar.xz",
+    "size_gb": 0.019,
+    "size_bytes": 19145688,
+    "sha256": "64c1ba7d6a0a4fc9f5742dc34415d0609d3a1f27845ad70310d6226e557145e2",
+    "sha512": "5b410a616d902af7c8610940938461ee7397e14aae363037bd3df3658e0c1e151b26e6eb1a3e1bd9fb389bddc465c09bef81d67232668d7f6cc2b5e2707f58fe"
+   },
+   "eng-fra": {
+    "format": "dictd",
+    "pair": "eng-fra",
+    "version": "0.1.6",
+    "licence": "GPL-2+",
+    "file": "dict/freedict-eng-fra-0.1.6.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/eng-fra/0.1.6/freedict-eng-fra-0.1.6.dictd.tar.xz",
+    "size_gb": 0.0,
+    "size_bytes": 203684,
+    "sha256": "c31d26ec21d7c12133637494726b0d9203fd6f12d8ee5059ede360daf63100e2",
+    "sha512": "ae83b68b0bf64436eb3bff28293357e57e1caa196397327cf72fdc6f725c9ed68329b5ef32d50ff3a4ff99590791c8eee289f9d9f5f48cf247c9802a042cd43a"
+   },
+   "eng-ita": {
+    "format": "dictd",
+    "pair": "eng-ita",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-eng-ita-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/eng-ita/2025.11.23/freedict-eng-ita-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.004,
+    "size_bytes": 4013528,
+    "sha256": "77b0bdbde2b20a3c06be3c50f4b48bea7cf5b6bf39aa72a405d5c35e684710a8",
+    "sha512": "1d5a200ed27948bac71de552f4cb32af9b3de3a9fdd7679e68addfd9a342eee1ed34c7a645bb86ddc801b4e8085f98c9925375cc2c7eddee70110bd4aa02497a"
+   },
+   "eng-jpn": {
+    "format": "dictd",
+    "pair": "eng-jpn",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-eng-jpn-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/eng-jpn/2025.11.23/freedict-eng-jpn-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.003,
+    "size_bytes": 3286780,
+    "sha256": "608bddd31773f774cfd67dea03fe21f2ba790a13a5428cf269536bd8b92e9735",
+    "sha512": "77ce6d64b7cc04c6236da8afdce35a20fea8d5493d2d0929509bb733f559ec6432801923136bf98fd87f49e20f02581e0f5a95f6adf13fc842626eadbbf33b03"
+   },
+   "eng-rus": {
+    "format": "dictd",
+    "pair": "eng-rus",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-eng-rus-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/eng-rus/2025.11.23/freedict-eng-rus-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.006,
+    "size_bytes": 5557216,
+    "sha256": "309126b19509fe3142383523d8b379c88564966e0672e3295bb797caee3542e5",
+    "sha512": "5b677711f86d8c618ef58a31099f76440e206695d65f69b8f231e3b5dae6b9d8f499f2f1720f8c282363ea2496239847a3c3b000fb7462f231879310e3a76579"
+   },
+   "eng-spa": {
+    "format": "dictd",
+    "pair": "eng-spa",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-eng-spa-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/eng-spa/2025.11.23/freedict-eng-spa-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.005,
+    "size_bytes": 5010204,
+    "sha256": "f43d6f2fbd8cf7c1a84df9028f5ef5b8108c449f2f4181e35fc6016d38fcf4a2",
+    "sha512": "d15378cb29d7acd7472cbf57ef7cd00f47c561d556b86f725a2277ed60f51c1522cd6adb217381eca84df9f5f777d1bdc85c8149feea665a1d67ab2d919666fe"
+   },
+   "fra-deu": {
+    "format": "dictd",
+    "pair": "fra-deu",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-fra-deu-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/fra-deu/2025.11.23/freedict-fra-deu-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.002,
+    "size_bytes": 2178228,
+    "sha256": "8f4348f993db7cd9de05b81fe80f3dd26bf7b7b9877ba0ffd253418d24c9c905",
+    "sha512": "0241ab68b6723dbe82be68eda67022a484084fd3ce081589949cb75756144683c21cb6f4853fb3b5517935e6603431b6957b3619840adb46d1639fed68b1a82a"
+   },
+   "fra-eng": {
+    "format": "dictd",
+    "pair": "fra-eng",
+    "version": "0.4.1",
+    "licence": "GPL-2+",
+    "file": "dict/freedict-fra-eng-0.4.1.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/fra-eng/0.4.1/freedict-fra-eng-0.4.1.dictd.tar.xz",
+    "size_gb": 0.0,
+    "size_bytes": 210100,
+    "sha256": "29779196b78e8863fad73392f8faed3d242aa4ae4230bd13b71cfb9fcbbff4bb",
+    "sha512": "bced60180ef936b54093d753250cb813038b3e0bee7757832130268548326660587e1cdd68d44a75730a0610f5654d1bc7061fed5c4744cb952586b62647cc24"
+   },
+   "fra-ita": {
+    "format": "dictd",
+    "pair": "fra-ita",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-fra-ita-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/fra-ita/2025.11.23/freedict-fra-ita-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.002,
+    "size_bytes": 2395768,
+    "sha256": "bbc19ddecd1ce4bf150d753050a9f56b6b03baaeba1228b5530a0f5dcd1f52f9",
+    "sha512": "358ca6ad4ecc9c34e55035ae1e51126f870b7519948ba36104a35712ec8158a6f5847d106f047c4b29d2f8112c618420b72ce3b35966163b155dceb4d2273a4c"
+   },
+   "fra-jpn": {
+    "format": "dictd",
+    "pair": "fra-jpn",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-fra-jpn-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/fra-jpn/2025.11.23/freedict-fra-jpn-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.001,
+    "size_bytes": 792712,
+    "sha256": "46852880a473e2e29251ee87d508dd02d3e173c4bf5b060fb9cc0cee79aba43a",
+    "sha512": "9038d94f9a721f44e48d8774a06d42b846dbe5bb0ab80f64d35bb5a6e6758f0f772416a7d1784188799e16425d42122ece1ce69d39fb55215569a8e13c318620"
+   },
+   "fra-rus": {
+    "format": "dictd",
+    "pair": "fra-rus",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-fra-rus-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/fra-rus/2025.11.23/freedict-fra-rus-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.001,
+    "size_bytes": 1130140,
+    "sha256": "26a0e9fa4b01d6a8d499da5e4874e8dc44ae392527425d9a20ffd41b39dcd538",
+    "sha512": "118697b9fdcd026ca3076f8ed792af83f07fbe553fba28a30b5a36c6490999f728d079e34a44e1edc00a21129f283b35a668d432bca20bc47ff0928ef05f45bd"
+   },
+   "fra-spa": {
+    "format": "dictd",
+    "pair": "fra-spa",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-fra-spa-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/fra-spa/2025.11.23/freedict-fra-spa-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.002,
+    "size_bytes": 2019380,
+    "sha256": "a7911a010fcd453f1f6131fe23cc4f24137f2d3edf06b6c17d4552b043e77355",
+    "sha512": "bac3582aa0ee731c48be5b05e250ca02d991655f8327d9f9ad0bb200e0832b6ed75b79e8e647882ebee8404e635691fd96f8bbd9ca8c3f86e6f6c83c3d68baba"
+   },
+   "ita-deu": {
+    "format": "dictd",
+    "pair": "ita-deu",
+    "version": "0.2.1",
+    "licence": "GPL-2+",
+    "file": "dict/freedict-ita-deu-0.2.1.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/ita-deu/0.2.1/freedict-ita-deu-0.2.1.dictd.tar.xz",
+    "size_gb": 0.0,
+    "size_bytes": 78088,
+    "sha256": "af43d51707524224e24369c21e0c9f51fb7fc535858258e770757b2a6b711c3f",
+    "sha512": "bbe5510e2b9335202c695decd11f0c5a910cf574e0e96cd9d49b69996c7c17969d11d4188f2967e7d9e9ed0efbf08c7bbfd58a9535605e6ae010f6248076eefa"
+   },
+   "ita-eng": {
+    "format": "dictd",
+    "pair": "ita-eng",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-ita-eng-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/ita-eng/2025.11.23/freedict-ita-eng-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.002,
+    "size_bytes": 1550996,
+    "sha256": "ba2b0a060e6bd21f436febf6dce42166c5fdf4a79a81e7b32de5f198df974e9f",
+    "sha512": "9ca96a0c55256e8b060537a09848f0a62105f42fd37c50d0e7f6058dea01cdcc23ad4a6f4f7e3b6a2c4edc54274dedceb88694f836da8b39b6b0e093b15606fa"
+   },
+   "ita-jpn": {
+    "format": "dictd",
+    "pair": "ita-jpn",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-ita-jpn-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/ita-jpn/2025.11.23/freedict-ita-jpn-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.001,
+    "size_bytes": 1091872,
+    "sha256": "a37662ae6db3ba19195af3c73fd77c96c9e49f8579dc3ebf04538706abfbaeaa",
+    "sha512": "5afeabb2b8444eb07c63b947ddcc167fca1ec20568699976313f980fe96d6aae1a3c94622c866170bcae8e3ad64a4755cd889dab06fdc21874d8e2a5c1dfbc1b"
+   },
+   "ita-rus": {
+    "format": "dictd",
+    "pair": "ita-rus",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-ita-rus-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/ita-rus/2025.11.23/freedict-ita-rus-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.001,
+    "size_bytes": 801032,
+    "sha256": "506422a4b4c51a32d214b2aed330bde616f7cd159d09bcffd5aecefe181e8441",
+    "sha512": "506ed8039008b0f5bc6a6e696d81289841dab05a34a84b28a22b4a0e95c98bb832987f1f2268fbaf1c439793594f4eb506caf2f9a71d7f343ae22d00df03cbaf"
+   },
+   "ita-spa": {
+    "format": "dictd",
+    "pair": "ita-spa",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-ita-spa-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/ita-spa/2025.11.23/freedict-ita-spa-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.001,
+    "size_bytes": 736024,
+    "sha256": "4b66737a57837cd5b171947d860346b565e774f3eb08269aef64b1127c36254e",
+    "sha512": "496a58e4faaaa68998a37886ab5a308d22c67e8702be5310fd0e7e7b8511917c273e1ec79c43f0c882061766caf8888c0d073eaf895dec53a5fbd1eeedc47a25"
+   },
+   "jpn-deu": {
+    "format": "dictd",
+    "pair": "jpn-deu",
+    "version": "0.2.0",
+    "licence": "CC-BY-SA 3.0 (JMdict)",
+    "file": "dict/freedict-jpn-deu-0.2.0.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/jpn-deu/0.2.0/freedict-jpn-deu-0.2.0.dictd.tar.xz",
+    "size_gb": 0.008,
+    "size_bytes": 8019132,
+    "sha256": "3a9007c049d93ce402a0b924c2852620b4aa205c2069adec8a18b6cd9174b0eb",
+    "sha512": "e07bd8031e891c1481520423978b628b0f7450f77090be73939a6e82921aea870ac1f7ba6e7e150330ed9cff806825c2a0f1e64a178cbefca7427a9577570d37"
+   },
+   "jpn-eng": {
+    "format": "dictd",
+    "pair": "jpn-eng",
+    "version": "0.1",
+    "licence": "CC-BY-SA 3.0 (JMdict)",
+    "file": "dict/freedict-jpn-eng-0.1.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/jpn-eng/0.1/freedict-jpn-eng-0.1.dictd.tar.xz",
+    "size_gb": 0.012,
+    "size_bytes": 11525204,
+    "sha256": "81d102ebcde1497ab3fa86b8ab31539a9410bb1f7483f597ae5906f7d4d61bdf",
+    "sha512": "c9d9f92f75a26aef4f236d49a7921e246fa96f06e91a391138633ab409443ee25acf735eba733586f70a3c107af28e11744ec41478d84d325bff7be082692821"
+   },
+   "jpn-fra": {
+    "format": "dictd",
+    "pair": "jpn-fra",
+    "version": "0.1",
+    "licence": "CC-BY-SA 3.0 (JMdict)",
+    "file": "dict/freedict-jpn-fra-0.1.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/jpn-fra/0.1/freedict-jpn-fra-0.1.dictd.tar.xz",
+    "size_gb": 0.001,
+    "size_bytes": 922888,
+    "sha256": "becedfc04654522e5a6a66617313a3984c9bc92b046a9e08e8a4c9571ee37fd7",
+    "sha512": "b0b392b17f3f4f114e65f14569f2ce67fbea95d752fe2bbb9bbd21c52b0da8c478d7940757ef78f4fa96440a2cd8fc66bb0bd544f6a8034eafc64ba0795d4705"
+   },
+   "jpn-rus": {
+    "format": "dictd",
+    "pair": "jpn-rus",
+    "version": "0.1",
+    "licence": "CC-BY-SA 3.0 (JMdict)",
+    "file": "dict/freedict-jpn-rus-0.1.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/jpn-rus/0.1/freedict-jpn-rus-0.1.dictd.tar.xz",
+    "size_gb": 0.0,
+    "size_bytes": 413336,
+    "sha256": "c8c99d7bea34214201caa5ddb8fb5b4d296a96c7581466ffe474ec3b871fa046",
+    "sha512": "fe39c6ddec3729476ad0fc25ee37d7cf7d5677fb489dcb88a3fd9039788d5745376710c5d4bf2de496e8ddcde63e71679ebbe08b7a05203be40cafe7791b036a"
+   },
+   "rus-deu": {
+    "format": "dictd",
+    "pair": "rus-deu",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-rus-deu-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/rus-deu/2025.11.23/freedict-rus-deu-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.001,
+    "size_bytes": 1130844,
+    "sha256": "41d4ef08d31e06184cc0633612402dfe2fc8b4fea62213121048a6354245aa3e",
+    "sha512": "0c15d45c366d5da62ba68df98364104facd780906636a55b2b4bbe7d787c72027e1e47bbf4b2c9c85cc6bd4c208461d0feacf293ebbe4a03b7282b137816a5cd"
+   },
+   "rus-eng": {
+    "format": "dictd",
+    "pair": "rus-eng",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-rus-eng-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/rus-eng/2025.11.23/freedict-rus-eng-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.002,
+    "size_bytes": 1948668,
+    "sha256": "32da2c3c2b2aabb4d68e7affec26af00889536fa1743ecbbb99c2fc37e7f9af7",
+    "sha512": "57c7368d960ee3999249c517ea6895cb908bffcf14ac35d3d64b47afae1e758e3e7fcbb46decbdc02192966418cba41984a173c2adeb379d577d63c8f9510614"
+   },
+   "rus-fra": {
+    "format": "dictd",
+    "pair": "rus-fra",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-rus-fra-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/rus-fra/2025.11.23/freedict-rus-fra-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.001,
+    "size_bytes": 1246056,
+    "sha256": "95b08743ad170f7257a710b2f8d3eb6d9cab8435582a646cdec5c1548d974ccd",
+    "sha512": "d6642addf6027881229575c3b22b610f65fe80a64b10ea291fa16296c9bad1d9dea3dca2c7ba54106213397e548b99f104778a7e3422fbee72c034f5462cc4ee"
+   },
+   "rus-ita": {
+    "format": "dictd",
+    "pair": "rus-ita",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-rus-ita-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/rus-ita/2025.11.23/freedict-rus-ita-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.001,
+    "size_bytes": 765080,
+    "sha256": "9319ddf9dc2c78f9b45bea413443dfa0501bfda50c6073b83d800f5898ddc266",
+    "sha512": "460f55ea8128da46d30de3485347fd33fc85822bfd864bbcf8c9a30660228eabc6e3b43970bbac51578050ec92716a5bdb9fb663281b6a2e6bb26b8c4a82a8db"
+   },
+   "rus-spa": {
+    "format": "dictd",
+    "pair": "rus-spa",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-rus-spa-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/rus-spa/2025.11.23/freedict-rus-spa-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.001,
+    "size_bytes": 917564,
+    "sha256": "14bb6dffcd4161f67da44117680f50f11d47248eba82a3ddd9a4a4f4a079dc2f",
+    "sha512": "3ad8dd32881a1274dc9aea8dd84625f181e0dc93723f43f978ff0e3582780f991bf0acd7c916ae08710a2aedea4e18c61a8cd1978fe75410bb32389a6ffd90b9"
+   },
+   "spa-deu": {
+    "format": "dictd",
+    "pair": "spa-deu",
+    "version": "0.1",
+    "licence": "GPL-2+",
+    "file": "dict/freedict-spa-deu-0.1.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/spa-deu/0.1/freedict-spa-deu-0.1.dictd.tar.xz",
+    "size_gb": 0.0,
+    "size_bytes": 461356,
+    "sha256": "06841370e80b5457f0b2c6b7885c3dbf36c38a8e083a2f9c1c7bd423295a89ea",
+    "sha512": "9e33dd3294c8a24cfa21b75b7ba231fc81b7e4eb56b55b3bcfc43d0077d3309352d80916b2a982daf45b284c5045bd62a26b186d2d8d674f98e48d19f8a40cc8"
+   },
+   "spa-eng": {
+    "format": "dictd",
+    "pair": "spa-eng",
+    "version": "0.3.1",
+    "licence": "GPL-2+",
+    "file": "dict/freedict-spa-eng-0.3.1.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/spa-eng/0.3.1/freedict-spa-eng-0.3.1.dictd.tar.xz",
+    "size_gb": 0.0,
+    "size_bytes": 118276,
+    "sha256": "dc1677832e4ffade077ec39a71da770a043c84df9d0c59a6c1e4ca3ff387ab1d",
+    "sha512": "ce4dcabadc33dd08a653920c4da4a88256cb018836d029992f5e65e597ca281a9954fec7aade13cb8cff0371a65d8e3d1b042bffcea9da80e238fc787b79d482"
+   },
+   "spa-fra": {
+    "format": "dictd",
+    "pair": "spa-fra",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-spa-fra-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/spa-fra/2025.11.23/freedict-spa-fra-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.001,
+    "size_bytes": 950512,
+    "sha256": "18a725fa2965e406923699d79155fb9bbfc2bf5474a375ad53245c8062ead9cc",
+    "sha512": "546786fe65d6a55ec0f585ab8d02f2de5cd5b63b4f20255ade72b37de6eff253a21381756c7a335e807e8e96c288d81140ad6e0d6a8da5755e27cbf6fbe11a8c"
+   },
+   "spa-ita": {
+    "format": "dictd",
+    "pair": "spa-ita",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-spa-ita-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/spa-ita/2025.11.23/freedict-spa-ita-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.001,
+    "size_bytes": 656656,
+    "sha256": "d3f0cbcd48581ac5f6f679e63def42d13920912e60d3514274d07d3a41f047c8",
+    "sha512": "215d19e1305b7c028e28f37e4a2508e692f912c6af3b36e15e2f3c61d9c07430245c68ebc35ae730432a0a0672392bc35658bce6abe407a1873772e65821a186"
+   },
+   "spa-rus": {
+    "format": "dictd",
+    "pair": "spa-rus",
+    "version": "2025.11.23",
+    "licence": "CC-BY-SA 3.0 (WikDict)",
+    "file": "dict/freedict-spa-rus-2025.11.23.dictd.tar.xz",
+    "url": "https://download.freedict.org/dictionaries/spa-rus/2025.11.23/freedict-spa-rus-2025.11.23.dictd.tar.xz",
+    "size_gb": 0.001,
+    "size_bytes": 783008,
+    "sha256": "4708fd0c80cc1c3a3bf4596192915ab10f03ca769c771e6af93bf91aa601d831",
+    "sha512": "76c42c3ec6e7b5e465cc9b3ac24193f1a83fa8d6512fa6e515ae9e96912693137fcbc38319db9e6a5b43a200c1ce3fb08872df6bf84b804aeb20377bcb1dd609"
+   }
+  }
+ },
+ "wiktionary_en": {
+  "name": "Wiktionary English (all entries, no pictures, ZIM 2026-08)",
+  "kind": "knowledge",
+  "language": "en",
+  "addon": true,
+  "store": "knowledge",
+  "comment": "downloadable knowledge add-on [R71 P3, 2026-10-07]: the English Wiktionary (definitions, translation tables; CC-BY-SA 4.0 text, openZIM build) served next to Wikipedia by the kernel's ZIM reader (kernel/knowledge.py, kiwix-serve). store: knowledge = the file lands in VIBEOS_DIR/knowledge, not models/; kiwix-serve is restarted after the download. One section per language so a user fetches theirs + English (vibe.models.download('wiktionary_en')). vibe.search() hits name their source ('Wiktionary (en)'); with the translation layer on, the Wiktionary of the OS language is queried in that language (the English books get the English query) and its hits are not re-translated. sha256/size from download.kiwix.org via pod/translation-2026-10-06.queue.",
+  "file": "wiktionary_en_all_nopic_2026-08.zim",
+  "url": "https://download.kiwix.org/zim/wiktionary/wiktionary_en_all_nopic_2026-08.zim",
+  "size_gb": 9.16,
+  "size_bytes": 9156425592,
+  "sha256": "5276f63a2e451518ec5b7c4452ca9a4f72fae48991da3fe7ebc47df74bae760a"
+ },
+ "wiktionary_de": {
+  "name": "Wiktionary German (all entries, no pictures, ZIM 2026-07)",
+  "kind": "knowledge",
+  "language": "de",
+  "addon": true,
+  "store": "knowledge",
+  "comment": "downloadable knowledge add-on [R71 P3, 2026-10-07]: the German Wiktionary (definitions, translation tables; CC-BY-SA 4.0 text, openZIM build) served next to Wikipedia by the kernel's ZIM reader (kernel/knowledge.py, kiwix-serve). store: knowledge = the file lands in VIBEOS_DIR/knowledge, not models/; kiwix-serve is restarted after the download. One section per language so a user fetches theirs + English (vibe.models.download('wiktionary_de')). vibe.search() hits name their source ('Wiktionary (de)'); with the translation layer on, the Wiktionary of the OS language is queried in that language (the English books get the English query) and its hits are not re-translated. sha256/size from download.kiwix.org via pod/translation-2026-10-06.queue.",
+  "file": "wiktionary_de_all_nopic_2026-07.zim",
+  "url": "https://download.kiwix.org/zim/wiktionary/wiktionary_de_all_nopic_2026-07.zim",
+  "size_gb": 1.3,
+  "size_bytes": 1304532358,
+  "sha256": "9e4efc048330fa072365a022f7ff5734f06f97615fd68689cced39bbb5851536"
+ },
+ "wiktionary_es": {
+  "name": "Wiktionary Spanish (all entries, no pictures, ZIM 2026-09)",
+  "kind": "knowledge",
+  "language": "es",
+  "addon": true,
+  "store": "knowledge",
+  "comment": "downloadable knowledge add-on [R71 P3, 2026-10-07]: the Spanish Wiktionary (definitions, translation tables; CC-BY-SA 4.0 text, openZIM build) served next to Wikipedia by the kernel's ZIM reader (kernel/knowledge.py, kiwix-serve). store: knowledge = the file lands in VIBEOS_DIR/knowledge, not models/; kiwix-serve is restarted after the download. One section per language so a user fetches theirs + English (vibe.models.download('wiktionary_es')). vibe.search() hits name their source ('Wiktionary (es)'); with the translation layer on, the Wiktionary of the OS language is queried in that language (the English books get the English query) and its hits are not re-translated. sha256/size from download.kiwix.org via pod/translation-2026-10-06.queue.",
+  "file": "wiktionary_es_all_nopic_2026-09.zim",
+  "url": "https://download.kiwix.org/zim/wiktionary/wiktionary_es_all_nopic_2026-09.zim",
+  "size_gb": 0.66,
+  "size_bytes": 655846102,
+  "sha256": "8942ade424ee61e9d8ba83fdb16eddd3475033519495d56bacc0d565fe3408ae"
+ },
+ "wiktionary_fr": {
+  "name": "Wiktionary French (all entries, no pictures, ZIM 2026-08)",
+  "kind": "knowledge",
+  "language": "fr",
+  "addon": true,
+  "store": "knowledge",
+  "comment": "downloadable knowledge add-on [R71 P3, 2026-10-07]: the French Wiktionary (definitions, translation tables; CC-BY-SA 4.0 text, openZIM build) served next to Wikipedia by the kernel's ZIM reader (kernel/knowledge.py, kiwix-serve). store: knowledge = the file lands in VIBEOS_DIR/knowledge, not models/; kiwix-serve is restarted after the download. One section per language so a user fetches theirs + English (vibe.models.download('wiktionary_fr')). vibe.search() hits name their source ('Wiktionary (fr)'); with the translation layer on, the Wiktionary of the OS language is queried in that language (the English books get the English query) and its hits are not re-translated. sha256/size from download.kiwix.org via pod/translation-2026-10-06.queue.",
+  "file": "wiktionary_fr_all_nopic_2026-08.zim",
+  "url": "https://download.kiwix.org/zim/wiktionary/wiktionary_fr_all_nopic_2026-08.zim",
+  "size_gb": 4.94,
+  "size_bytes": 4935856722,
+  "sha256": "d44f79ef836f8bbc464f9369e1b8b8bdfced95968b42d15813579975c03f785b"
+ },
+ "wiktionary_it": {
+  "name": "Wiktionary Italian (all entries, no pictures, ZIM 2026-08)",
+  "kind": "knowledge",
+  "language": "it",
+  "addon": true,
+  "store": "knowledge",
+  "comment": "downloadable knowledge add-on [R71 P3, 2026-10-07]: the Italian Wiktionary (definitions, translation tables; CC-BY-SA 4.0 text, openZIM build) served next to Wikipedia by the kernel's ZIM reader (kernel/knowledge.py, kiwix-serve). store: knowledge = the file lands in VIBEOS_DIR/knowledge, not models/; kiwix-serve is restarted after the download. One section per language so a user fetches theirs + English (vibe.models.download('wiktionary_it')). vibe.search() hits name their source ('Wiktionary (it)'); with the translation layer on, the Wiktionary of the OS language is queried in that language (the English books get the English query) and its hits are not re-translated. sha256/size from download.kiwix.org via pod/translation-2026-10-06.queue.",
+  "file": "wiktionary_it_all_nopic_2026-08.zim",
+  "url": "https://download.kiwix.org/zim/wiktionary/wiktionary_it_all_nopic_2026-08.zim",
+  "size_gb": 0.4,
+  "size_bytes": 402950479,
+  "sha256": "f44f3dfeeb8c5e0ed7e7d0e31d510e6662dd80245c118f28f95c3cf198b0ea60"
+ },
+ "wiktionary_ja": {
+  "name": "Wiktionary Japanese (all entries, no pictures, ZIM 2026-07)",
+  "kind": "knowledge",
+  "language": "ja",
+  "addon": true,
+  "store": "knowledge",
+  "comment": "downloadable knowledge add-on [R71 P3, 2026-10-07]: the Japanese Wiktionary (definitions, translation tables; CC-BY-SA 4.0 text, openZIM build) served next to Wikipedia by the kernel's ZIM reader (kernel/knowledge.py, kiwix-serve). store: knowledge = the file lands in VIBEOS_DIR/knowledge, not models/; kiwix-serve is restarted after the download. One section per language so a user fetches theirs + English (vibe.models.download('wiktionary_ja')). vibe.search() hits name their source ('Wiktionary (ja)'); with the translation layer on, the Wiktionary of the OS language is queried in that language (the English books get the English query) and its hits are not re-translated. sha256/size from download.kiwix.org via pod/translation-2026-10-06.queue.",
+  "file": "wiktionary_ja_all_nopic_2026-07.zim",
+  "url": "https://download.kiwix.org/zim/wiktionary/wiktionary_ja_all_nopic_2026-07.zim",
+  "size_gb": 0.52,
+  "size_bytes": 516808258,
+  "sha256": "97be99e6970f5dd370dadea2eb5c0561e4b5c363e6d9be02e5447c902a71d891"
+ },
+ "wiktionary_ru": {
+  "name": "Wiktionary Russian (all entries, no pictures, ZIM 2026-09)",
+  "kind": "knowledge",
+  "language": "ru",
+  "addon": true,
+  "store": "knowledge",
+  "comment": "downloadable knowledge add-on [R71 P3, 2026-10-07]: the Russian Wiktionary (definitions, translation tables; CC-BY-SA 4.0 text, openZIM build) served next to Wikipedia by the kernel's ZIM reader (kernel/knowledge.py, kiwix-serve). store: knowledge = the file lands in VIBEOS_DIR/knowledge, not models/; kiwix-serve is restarted after the download. One section per language so a user fetches theirs + English (vibe.models.download('wiktionary_ru')). vibe.search() hits name their source ('Wiktionary (ru)'); with the translation layer on, the Wiktionary of the OS language is queried in that language (the English books get the English query) and its hits are not re-translated. sha256/size from download.kiwix.org via pod/translation-2026-10-06.queue.",
+  "file": "wiktionary_ru_all_nopic_2026-09.zim",
+  "url": "https://download.kiwix.org/zim/wiktionary/wiktionary_ru_all_nopic_2026-09.zim",
+  "size_gb": 2.15,
+  "size_bytes": 2146353166,
+  "sha256": "ee32465ee8f8456826331b50ba26a66ee1d733d2ad62b71086d056abaa5403ea"
+ }
+}

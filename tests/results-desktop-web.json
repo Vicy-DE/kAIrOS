@@ -1,0 +1,84 @@
+{
+ "at": "2026-10-10 11:39:56",
+ "tests": {
+  "desktop_pointer_swcursor_nocursor": {
+   "reqs": [
+    "R28",
+    "R51",
+    "R79"
+   ],
+   "status": "pass",
+   "detail": "startx without -nocursor; amdgpu = hardware cursor (no active SWcursor match, .disabled fallback + one-line re-enable); modesetting (i915|xe|virtio_gpu|bochs) keeps Driver + SWcursor; diag lines OK"
+  },
+  "desktop_clock_menu_static": {
+   "reqs": [
+    "R74",
+    "R52",
+    "R66"
+   ],
+   "status": "pass",
+   "detail": "clock button (aria) + menu Sleep/Restart\u2026/Shut down\u2026/Install\u2026/About; /api/hw confirm:true; keyboard + outside click"
+  },
+  "desktop_clock_menu_browser": {
+   "reqs": [
+    "R74"
+   ],
+   "status": "skip",
+   "detail": "needs Chromium + node 22+ (the Playwright image) \u2014 see the module docstring"
+  },
+  "web_oppenheimer_referer": {
+   "reqs": [
+    "R75",
+    "R57"
+   ],
+   "status": "pass",
+   "detail": "bulk-orders prompt: brand, premise, nav \u00d75, palette, link \u201cBULK DEALS\u201d, header markup (1918 chars)"
+  },
+  "web_no_referer_fallbacks": {
+   "reqs": [
+    "R75"
+   ],
+   "status": "pass",
+   "detail": "shown+links (BULK DEALS) -> cached sibling linking here (SHIPPING) -> newest; legacy: root, slug-found page; new site: none"
+  },
+  "web_site_profile_written": {
+   "reqs": [
+    "R75"
+   ],
+   "status": "pass",
+   "detail": "oppenheimer-com-fd42bb14.site.json: brand, title, headlines, premise, nav \u00d75, palette (4 vars, colours), font, pages; anchored on the first page"
+  },
+  "web_prompt_budget": {
+   "reqs": [
+    "R75",
+    "R11"
+   ],
+   "status": "pass",
+   "detail": "block 3209 \u2264 3600, prompt 3264 \u2264 32009; tiny budget: prompt 2052 \u2264 4000"
+  },
+  "web_browse_same_site": {
+   "reqs": [
+    "R75",
+    "R57"
+   ],
+   "status": "pass",
+   "detail": "vibe.browse: profile written; last shown page links here; explicit from -> referer path"
+  },
+  "game_exit_with_the_session": {
+   "reqs": [
+    "R45",
+    "R68"
+   ],
+   "status": "pass",
+   "detail": "X gone/system or kernel stopping = ended with the session (no record); XIO while X answers = crash (recorded)"
+  },
+  "esp_automount_fstab_units_scripts": {
+   "reqs": [
+    "R51",
+    "R48"
+   ],
+   "status": "pass",
+   "detail": "fstab automount in build+installer; units ordered; early ESP: {'automount': '(none)', 'direct': 'mount $ESP', 'label': 'mount $ESP ; mount /dev/sdz1 $ESP'}; guest fstab script idempotent"
+  }
+ }
+}

@@ -1,0 +1,26 @@
+[Unit]
+Description=kAIrOS boot diagnostics -> readable EFI partition (KAIROS-LOGS) [R51]
+After=multi-user.target network-online.target
+Wants=network-online.target
+# run even when other units failed — this is the debug capture
+DefaultDependencies=no
+Conflicts=shutdown.target
+Before=shutdown.target
+# v7.5: the ESP is an automount — at power-off the shutdown capture (ExecStop) runs BEFORE
+# the ESP mount and its automount are stopped (stop order = reverse After=); if it was idle-
+# unmounted, kairos-bootlog mounts it directly (the shutdown refuses a new mount job)
+After=boot-efi.automount boot-efi.mount
+
+[Service]
+# simple, not oneshot: the script waits up to 2 min for the kernel + kiosk to
+# come up before judging the boot; the start job completes immediately so that
+# wait never counts as boot time or holds back "startup finished"
+Type=simple
+RemainAfterExit=yes
+ExecStart=-/usr/local/sbin/kairos-bootlog boot
+# also capture at shutdown (a boot that got far then hung/was rebooted)
+ExecStop=-/usr/local/sbin/kairos-bootlog shutdown
+TimeoutStopSec=150
+
+[Install]
+WantedBy=multi-user.target

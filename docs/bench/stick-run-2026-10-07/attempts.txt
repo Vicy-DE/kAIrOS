@@ -1,0 +1,6 @@
+#1  started 2026-10-06 21:42:12  kernel 6.12.90+deb13.1-amd64  root /dev/sda2  esp /dev/sda1
+#1  boot log written 2026-10-06 21:44:29  verdict WARN
+#1  shutdown log written 2026-10-06 21:57:09  verdict WARN
+#2  started 2026-10-06 21:59:08  kernel 6.12.90+deb13.1-amd64  root /dev/sda2  esp /dev/sda1
+#2  boot log written 2026-10-06 22:01:58  verdict WARN
+#2  shutdown log written 2026-10-06 22:05:35  verdict WARN

@@ -1,0 +1,16 @@
+[Unit]
+Description=kAIrOS: read the desktop's and the LLM's files ahead into memory on a USB stick
+# Sequential read-ahead for slow boot media (see the script). Never blocks or fails anything:
+# no default deps, Type=simple, ExecStart=- ; ends by itself (or at shutdown).
+DefaultDependencies=no
+After=local-fs.target
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=simple
+ExecStart=-/usr/local/sbin/kairos-prewarm
+Nice=10
+
+[Install]
+WantedBy=sysinit.target

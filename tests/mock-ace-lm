@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+"""Mock ace-lm (acestep.cpp stage 1): --models <dir> --request <r.json> -> <r>0.json.
+
+Mirrors tools/ace-lm.cpp: the output is the input request enriched with the
+metadata/lyrics/codes the LM would fill, written next to it as <base>0<ext>."""
+import json
+import os
+import sys
+
+args = sys.argv[1:]
+arglog = os.environ.get("MOCK_ACE_ARGLOG")
+if arglog:
+    with open(arglog, "a") as f:
+        f.write("ace-lm\t" + "\t".join(args) + "\n")
+if "--models" not in args or "--request" not in args:
+    print("[CLI] ERROR: --models and --request required", file=sys.stderr)
+    sys.exit(1)
+models = args[args.index("--models") + 1]
+if not os.path.isdir(models):
+    print(f"[Ace-LM] FATAL: cannot scan --models {models}", file=sys.stderr)
+    sys.exit(1)
+req_path = args[args.index("--request") + 1]
+with open(req_path) as f:
+    req = json.load(f)
+if not req.get("caption"):
+    print("[Ace-LM] FATAL: caption is empty", file=sys.stderr)
+    sys.exit(1)
+if "__mockfail__" in req["caption"]:
+    print("mock ace-lm: simulated engine failure", file=sys.stderr)
+    sys.exit(3)
+if arglog:
+    with open(arglog, "a") as f:
+        f.write("ace-lm-request\t" + json.dumps(req, sort_keys=True) + "\n")
+out = dict(req)
+# vocal_language exactly as acestep daf7644 merges it [R69]: "[Instrumental]" lyrics are
+# forced to "unknown" by the request parser (src/request.cpp:221-224); a concrete code is
+# kept (metadata-fsm.h:656 only overwrites "" / "unknown"; pipeline-lm.cpp:801 forces it
+# into the CoT); "" / "unknown" get the LM's guess — "zh" is what the real Q8 LM answered
+# for English lyrics on the 780M (docs/ENGINES-VULKAN-2026-09.md 9.4).
+got = req.get("vocal_language", "")
+if req.get("lyrics") == "[Instrumental]":
+    out["vocal_language"] = "unknown"
+elif got in ("", "unknown"):
+    out["vocal_language"] = "zh"
+if arglog:
+    with open(arglog, "a") as f:
+        f.write(f"ace-lm-language\t{json.dumps(got)}\t{json.dumps(out['vocal_language'])}\n")
+out.setdefault("bpm", 120)
+out.setdefault("keyscale", "C major")
+out.setdefault("timesignature", "4")
+out["duration"] = out.get("duration") or 60
+if not out.get("lyrics"):
+    out["lyrics"] = "[Verse]\nmock lyrics"
+out["audio_codes"] = "1,2,3,4"
+base, ext = os.path.splitext(req_path)
+with open(f"{base}0{ext}", "w") as f:
+    json.dump(out, f)
+print(f"mock-ace-lm: wrote {base}0{ext}", file=sys.stderr)

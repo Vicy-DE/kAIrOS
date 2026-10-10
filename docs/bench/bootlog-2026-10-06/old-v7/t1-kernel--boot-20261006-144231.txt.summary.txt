@@ -1,0 +1,24 @@
+==================== kAIrOS boot log (failure kairos.service) ====================
+############ SUMMARY / VERDICT ############
+VERDICT: FAIL — 2 check(s) failed, 1 warning(s) — first failure: failed_units: kairos.service 
+ PASS boot_history  attempt #4; early breadcrumb ran (root + EFI partition mounted)
+ WARN boot_target   graphical.target reached but system is degraded (see failed / activating units)
+ FAIL failed_units  kairos.service 
+ PASS hung_units    nothing stuck in activating
+ PASS rootfs_grow   root grown on first boot (58G total, 7.1G free)
+ PASS gpu_driver    0000:00:05.0 0x1af4 driver=virtio-pci boot_vga=1; 
+ PASS firmware      no firmware load failures in dmesg
+ PASS modules       no module load failures in the journal
+ PASS xorg          X server up on :0 (attempts this boot: 1)
+ FAIL kernel_api    no answer on :1337 (kairos.service failed, restarts this boot: 12) — see KAIROS KERNEL LOG
+ PASS kiosk         1 kiosk Chromium instance(s) alive
+ PASS network       enp0s4 10.0.2.15/24; 
+ PASS esp           EFI partition mounted at /boot/efi via fstab
+boot attempts (early breadcrumb, newest last):
+   #4  started 2026-10-06 14:38:30  kernel 6.12.90+deb13.1-amd64  root /dev/nvme0n1p2  esp /dev/nvme0n1p1
+   #4  failure kairos.service log written 2026-10-06 14:38:32  verdict FAIL (kernel_api: no answer on :1337 (kairos.service activating, restarts this boot: 0) — see KAIROS KERNEL LOG)
+   #4  failure kairos.service log written 2026-10-06 14:39:10  verdict FAIL (kernel_api: no answer on :1337 (kairos.service activating, restarts this boot: 5) — see KAIROS KERNEL LOG)
+   #4  failure kairos.service log written 2026-10-06 14:40:01  verdict FAIL (kernel_api: no answer on :1337 (kairos.service activating, restarts this boot: 7) — see KAIROS KERNEL LOG)
+   #4  failure kairos.service log written 2026-10-06 14:40:31  verdict FAIL (kernel_api: no answer on :1337 (kairos.service activating, restarts this boot: 8) — see KAIROS KERNEL LOG)
+   #4  boot log written 2026-10-06 14:40:33  verdict FAIL (kernel_api: no answer on :1337 (kairos.service activating, restarts this boot: 8) — see KAIROS KERNEL LOG)
+###########################################

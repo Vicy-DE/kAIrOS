@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Mock llama-server shim: ignores model args, serves the OpenAI-compatible mock.
+port=8081
+[ -n "${MOCK_LLAMA_ARGLOG:-}" ] && echo "$*" >> "$MOCK_LLAMA_ARGLOG"   # the kernel's argv, per launch [R70]
+args=("$@")
+model=""
+for ((i = 0; i < ${#args[@]}; i++)); do
+    if [ "${args[$i]}" = "--port" ]; then port="${args[$((i + 1))]}"; fi
+    if [ "${args[$i]}" = "-m" ]; then model="${args[$((i + 1))]}"; fi     # [R86] which GGUF this server "serves"
+done
+export MOCK_LLAMA_MODEL="$model"
+exec python3 "$(dirname "$(readlink -f "$0")")/mock_llama.py" "$port"

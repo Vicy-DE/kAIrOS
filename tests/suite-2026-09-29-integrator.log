@@ -1,0 +1,145 @@
+== setting up mock environment at /tmp/kairos-test ==
+engine stamp /tmp/kairos-test/bin/ENGINES.json: mock — llama.cpp mock (2026-09-29), stable-diffusion.cpp mock (2026-09-29), acestep.cpp mock (2026-09-29)
+  touched 33 placeholder model files
+== booting kernel (mock engines, forced offline) ==
+== js syntax gate parser: /usr/bin/qjsc ==
+== running test suite ==
+kAIrOS test suite — 112 tests against http://127.0.0.1:1338
+  ✓ unit_prompts_style_mandate [R13] 6 UI prompts carry the mandate; 6 media prompts are free of it
+  ✓ unit_validate_html [R12] 5 defect classes detected, clean doc passes
+  ✓ unit_jsfix_await_rewrite [R12] sync-fn async insertion + TLA wrap with window re-exports, idempotent, module scripts untouched; prompt()/confirm() flag
+  ✓ http_app_dialog_check_code_only [R12, R45, R5] prompt() app → one D5 repair round → clean; placeholder-only image app → delivered as generated, no repair round
+  ✓ unit_bridge_shims_theme_static [R12, R13, R66] theme (zero specificity) + storage shims + aliases/guard in BRIDGE_SRC; sandbox unchanged
+  ✓ unit_image_dims_and_seed_script [R12, R58] junk dims ignored, real dims kept; seed escaped; validate_html flags fetch('/api/…')
+  ✓ unit_strip_thinking_blocks [R5, R12] think blocks stripped on html+python, stump/survivor flagged, plain output untouched
+  ✓ unit_chat_template_kwargs_manifest [R3, R5] field absent -> unchanged body; present -> passed through for llm and python_llm
+  ✓ unit_vfs_android_partitions [R16, R17] write/read/delete OK; /system read-only; traversal blocked; format wipes
+  ✓ unit_no_cloud_ai [R2] kernel talks only to local engines (DDG used for search facts, not generation)
+  ✓ unit_identity [R19] kAIrOS by mAIer present in README + shell; ≤8 letters; AI+OS contained
+  ✓ unit_slim_base_builder [R8, R3] minbase builder present; 4 tier manifests complete (integration build = manual)
+  ✓ http_status_tier [R3] tier=8gb llm=Gemma 4 26B-A4B-it (UD-IQ4_XS, MoE, experts partly in RAM) engine=cuda
+  ✓ http_app_generate [R1, R5] v1 generated, 659 bytes
+  ✓ http_app_reopen_is_instant_cached [R24, R35] reopen served v1 from disk in 0.00s, no evolution
+  ✓ http_app_host_page_same_sandbox_same_bridge [R66, R5] host page 21306 bytes, sandbox intact, bridge identical (80 call sites), 404 for unknown
+  ✓ http_app_evolves_on_improve_only [R24, R25, R35] ✨ improve evolved to v2; v1 in history; prompt persisted
+  ✓ http_sse_client_disconnect_safe [R62] client disconnect mid-SSE: no kernel crash, app still generated + saved
+  ✓ http_app_icon_and_menu [R60] app listed in /api/apps with a real generated PNG icon
+  ✓ http_app_forge_generates_resources [R36, R69] dev cycle forged app + 1 image, 1 track (sung, en), 1 clip
+  ✓ http_image_with_random_seed [R4, R22] 2 Krea-2 images generated, seeds differ (1381430005 vs 1403239326); engine crash -> error + idle
+  ✓ http_video [R6] mp4 produced and served: /files/videos/0749de8d529d.mp4
+  ✓ unit_finish_video_drops_intermediate [R6] avi + frame intermediates transcoded to mp4 and removed; empty job -> clean error
+  ✓ unit_video_argv_converges [R6] 4 tiers + 3 variants: 33 frames, GPU VAE 128x128 px (8x8 latent) tiles, no --vae-on-cpu; identical argv on cuda and vulk
+<frozen importlib._bootstrap>:488: RuntimeWarning: Your system is avx2 capable but pygame was not built with support for it. The performance of some of your blits could be adversely affected. Consider enabling compile time detection with environment variables like PYGAME_DETECT_AVX2=1 if you are compiling without cross compilation.
+pygame 2.6.1 (SDL 2.32.4, Python 3.13.5)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+  ✓ http_game_forge [R7, R11] game launched (running=True, attempt 1); crash-retry loop exercised structurally
+  ✓ http_fs_api [R16, R17] partitions listed; CRUD on /data; /system 403; format wipes
+  ✓ http_settings_api [R15] set/get works; stored on /data (factory reset resets it)
+  ✓ http_api_docs [R14] 15547 bytes of self-documentation served
+  ✓ http_search_offline_mode [R9, R10, R20] offline search returned 4 encyclopedia results
+  ✓ http_browser_imaginary_web [R21, R57] page AI-generated with real /web/ prompt-links; revisit served from cache
+  ✓ http_virtual_web_loading_flow [R57] loading→refresh→site flow works; links/forms/imgs rewritten; sub-page spawns
+  ✓ http_genimg_picture_tool [R58] /genimg/ rendered a real PNG (177 B) and cached it
+  ✓ http_browser_images [R21, R29, R37, R58] 4 imgs → on-demand /genimg/; first one rendered as real PNG
+  ✓ http_desktop_search_always_finds [R23] never empty; create-actions present; 4 distinct sparks in 6 calls
+  ✓ http_first_boot_setup [R18] vram=0MB recommended=8gb tiers listed
+  ✓ http_music [R31] ace-lm -> request0.json -> ace-synth (turbo DiT, wav) served: /files/music/e100640fc61b.wav
+[kernel] music (cuda): p
+[kernel] music (cuda): p
+[kernel] music (cuda): p
+[kernel] music (cuda): p
+[kernel] music (cuda): p
+[kernel] music (cuda): p
+[kernel] music (cuda): p
+  ✓ unit_music_language_default_en [R69, R31] absent/empty/null -> en; code lower-cased; auto -> '' (LM guesses); instrumental -> unknown; garbage -> ValueError
+  ✓ http_music_language [R69, R31] en by default, de kept, auto -> engine guess, instrumental unknown, garbage 400 + no job
+  ✓ http_music_engine_missing [R31, R47] engine absent -> 400 'not installed' (no traceback), /api/models reports it; music is an add-on
+  ✓ unit_manifest_cmd_matches_built_engines [R31, R8] install-engines.sh builds ['ace-lm', 'ace-server', 'ace-synth', 'llama-cli', 'llama-server', 'sd-cli', 'sd-server']; eve
+  ✓ unit_cuda_engine_build [R41, R50, R31, R8] CUDA_ARCH default ['120', '89']; debian13 repo, 4 packages, no meta; 6 binaries link ['libcublas.so.13', 'libcublasLt.so
+  ✓ unit_vulkan_engine_build [R30, R33] Vulkan build (llama/sd/ace, static, bin/vulkan) + runtime packages + cuda/vulkan auto-selection
+  ✓ http_image_uncensored [R29] uncensored -> Kroma v0.2 turbo (Qwen3-VL encoder, 10 steps) via the 18+ expander; model=chroma -> Chroma1-HD (T5-XXL, --
+  ✓ http_bootanim [R27] boot avg 30.0s; scene: {"headlines": ["Mock LLM Answers Everything", "Loc
+  ✓ unit_hidden_linux_image [R28, R30, R33] silent boot + bootanim units + AMD/Vulkan drivers + UMA GTT in the image config
+  ✓ unit_boot_chain_never_shows_console [R27, R28, R63] cmdline silent, agetty --skip-login, bootanim early+before getty, exit 0 on 5 paths, fallbacks present, kiosk-before-kil
+  ✓ unit_bootlog_capture_wired [R51, R63] 8 unit exec paths present+executable; capture units boot-safe; build quotes the chroot heredoc + enables/asserts bootlog
+  ✓ unit_appliance_boot_hardening [R48, R51, R63] console order ['console=ttyS0,115200', 'console=tty1'] (+serial entry), ESP nofail pass 2 in both, initramfs 13 modules 
+  ✓ unit_hw_deps_and_kiosk_reload [R38, R53, R55, R56] flag /run/kairos/kiosk-reload (kairos-owned dir) shared by kernel+.xinitrc; 7 tools packaged; timeout kills child in 0.5
+  ✓ unit_multiscreen_kiosk_hint_roundtrip [R52, R63] primary-first numbering, mirror=1/identical-extended=2 kiosks, PID liveness sees a dead browser, hint read by shell
+[bootanim] WARN cache dir /tmp/tmpn1ughz4m/cache/bootanim unusable: [Errno 17] File exists: '/tmp/tmpn1ughz4m/cache/bootanim'
+[bootanim] WARN boot-time history not written: [Errno 20] Not a directory: '/tmp/tmpn1ughz4m/cache/bootanim/boot-times.json'
+[bootanim] WARN config not persisted: [Errno 20] Not a directory: '/tmp/tmpn1ughz4m/cache/bootanim/config.json'
+[vfs] WARN cannot create /tmp/tmpn1ughz4m/fs/system: [Errno 20] Not a directory: '/tmp/tmpn1ughz4m/fs/system'
+[vfs] WARN cannot create /tmp/tmpn1ughz4m/fs/data: [Errno 20] Not a directory: '/tmp/tmpn1ughz4m/fs/data'
+[vfs] WARN /system not (fully) populated: os-release: [Errno 20] Not a directory: '/tmp/tmpn1ughz4m/fs/system'
+  ✓ unit_kernel_startup_survives_bad_cache [R63] bootanim init/history/config, VFS dirs + /system population degrade with warnings; no bare module-level writes
+[kernel] cache: evicted 6 old file(s), 0 MB (test)
+[kernel] cache: evicted 4 old file(s), 0 MB (test)
+[kernel] WARN POST /api/store: [Errno 28] No space left on device
+  ✓ unit_cache_bound_and_disk_full [R67, R63] oldest-first to cap/floor, fresh file kept, clean disk-full error, 507 JSON middleware
+  ✓ http_hw_api_laptop_setup [R38] wifi scan/connect/status + battery 73% + brightness set + power guard all OK
+  ✓ http_display_datetime_bluetooth [R53, R54, R55, R56] display list/arrange/set (+kiosk reload) · datetime tz/ntp · bluetooth status all OK
+  ✓ http_categorized_api_docs [R59] 8 short API sheets served + keyword-matched (display→display.md, wifi→network.md)
+  ✓ http_wiki_for_coding_llm [R39] 6 wiki pages served, matched to prompts, mounted read-only on /system
+  ✓ http_app_research_spec_step [R40, R9] offline research → OS-written spec (123 chars) → app coded from it
+  ✓ unit_krea2_image_model [R34, R42] all tiers: Krea 2 (euler/simple, 1024², Qwen VAE, expander) + Qwen-Image-2.1 (25 steps, own schedule) + Z-Image 1024² + 
+  ✓ http_image_model_settings_and_clamp [R42, R43] model list (5 keys, expander/licence/files) + per-call/settings switching + step override + 2048²→1024² clamp
+  ✓ http_addon_models_downloadable [R47] default baked; 4 add-ons downloadable; tier set excludes add-ons
+  ✓ unit_vision_manifest_and_argv [R70, R47] 4 tiers: vision addon, weights = image.text_encoder by reference, download = mmproj only, argv -m/--mmproj/--image-max-t
+[kernel] add-on model 'vision' downloaded
+  ✓ http_vision_addon_download [R70, R47] extras[vision] listed; download = projector only (weights shared); projector missing -> clean 400
+  ✓ http_vision_sees_images [R70, R66] 2000x1500 -> 1280x960, 300x200 kept; /files + /genimg ok; 10 bad paths 400, missing 404; remote 172.17.0.2: screen 403 w
+  ✓ http_vision_ffmpeg_still_images_only [R70, R66] hls/concat -> 400, marker never named or read; nut refused ('not on whitelist'); png/jpeg/gif/bmp + rawvideo screen path
+  ✓ unit_vision_screen_capture [R70, R52, R68] two monitors: all = 2304x768 bbox -> 1280x427 PNG, screen:1 = 1280x720, screen:2 + no X = clean errors
+  ✓ http_install_targets [R48] install targets endpoint present (available=False); confirm-guard enforced
+  ✓ http_bug_report_self_repair [R12, R45] SyntaxError bug report (type/loc/stack/excerpt) formatted + LLM rework OK
+  ✓ http_wallpaper_paints_the_session [R44] 3 session-painted wallpapers; random keep/discard differs per run (e.g. 5 fragments kept)
+  ✓ http_remote_needs_token [R66] remote 172.17.0.2: 14 machine-changing calls 403, reads open, wrong token 403; token 0640 + loopback-only; with token 20
+  ✓ unit_network_hardening_static [R66] default bind refuses 172.17.0.2, answers 127.0.0.1; unit exposure opt-in only; sshd key-only; no PSK in tree; shell send
+  ✓ unit_systemd_ordering_acyclic [R63, R28] 30 units modelled (incl. 3 heredoc/drop-in), no cycle; detector proven on the D7 unit
+  ✓ unit_loader_default_single_entry [R28, R48] default kairos.conf everywhere, exactly the kAIrOS entries asserted, layout=other before update-initramfs, esp-sync hook
+  ✓ unit_image_fonts_emoji [R13, R60] 11 emoji dock icons; fonts-noto-color-emoji + fonts-noto-core in the image; CSS stack ends with the emoji font
+  ✓ unit_nvidia_persistenced_conditional [R63, R41] persistenced disabled by build-img/patch-img/0100 hook, started by kairos-gpu-setup only with a bound device (4 sysfs ca
+  ✓ unit_bootlog_verdict_accuracy [R51] no echo on captured data, X files resolved after the wait, taint notice excluded (pipeline run), degraded -> WARN
+  ✓ unit_failure_capture_bounded [R51, R63] Restart=on-failure, 12 starts/600s with 3s..30s backoff -> failed at ~238s; per-trigger template; capture cap proven (3 
+  ✓ unit_x_retry_chain_consistent [R51, R53, R63] paced retries (sleep 3s to attempt 5, 30s after; flag at #6) vs getty limit 20/60s: max 6 starts per window; x11 handler
+  ✓ unit_bootlog_paced_and_preliminary [R51, R63] N1 WARN 'boot still in progress' while starting; N2 paced (skip < FAILPACE s), 1 uncounted early look, budget from multi
+  ✓ unit_wm_ewmh_fake_display [R68, R7, R61] 3 kiosk + dock + mpv windows filtered, game attributed to its app + monitor; raise/minimize/restore/move/resize/place/cl
+  ✓ http_windows_api_gated [R68, R66] no X: available:false on GET + stream, 503 on POST; ids/ops validated; remote 172.17.0.2: POST 403 without token, 503 wi
+  ✓ unit_wm_x_restart_recovery [R68, R63] restart on :0 -> same call answers from the new server (ops + list, 3 reconnects), generation bump, BadWindow stays beni
+  ✓ unit_wm_minimized_game_frozen [R68, R7, R61] minimize -> T, raise/close/re-map -> S, unknown pid untouched, group vs pid signalling, shutdown thaws + ends in 0.05 s
+  ✓ http_kernel_stops_with_open_streams [R68, R63, R62] SIGTERM with 2 open SSE streams -> exit 0 in 1.37 s, no traceback, app told, engine gone
+  ✓ unit_r68_fixes_static [R68, R63, R28] TimeoutStopSec bounded, shutdown hook + 5 s handler grace, games own group, taskbar layout, root cursor, flag files, rig
+  ✓ unit_desktop_hidden_linux_r68_static [R68, R28] rc.xml decor off/no menu/no keys + openbox-session; contextmenu on 4 page classes; F11 flags; python3-xlib; home owned; 
+  ✓ unit_requirements_traceability [R26] 70 requirements, no holes, all cited ids documented, 6 without a test so far this run
+  ✓ unit_game_launch_gate_mapped_window [R7, R11, R68] mapped in 0.2 s / exited / no-window at the bound / iconified ignored / no WM and no X -> survival probe; record: exit 0
+  ✓ http_game_crash_after_running_is_recorded [R7, R11, R45, R68] in-gate crash repaired with its traceback (attempt 2); post-success crash 8.2 s in -> journal + meta.json + job + /api/a
+[knowledge] no ZIM archives / kiwix-serve — offline search disabled
+[knowledge] kiwix-serve up on :8090 with 1 archive(s)
+  ✓ unit_knowledge_base_wikipedia_mini [R32] 4 tiers: wikipedia_en_all_mini ~12 GB; downloader resolves it; Knowledge serves <dir>/knowledge/*.zim via kiwix-serve
+  ✓ unit_gpu_setup_boot_vga_display_logic [R41, R50] boot_vga decides: laptop/iGPU-display compute-only, NVIDIA boot VGA (+Intel iGPU) modeset, no GPU exit 0, persistenced w
+  ✓ http_api_docs_are_llm_only [R46] no 📖 dock app; /api/docs + /api/docs/{category} served and matched into generation; vibe.docs() in the bridge
+  ✓ http_wifi_api_fully_documented [R49] status/scan/connect/disconnect/forget documented (API.md + network.md, examples + flow) and implemented + routed; sheet 
+  ✓ unit_testrig_real_pc_and_gpu_desktop_traceable [R64, R65] /images/pod/testrig: vm.sh q35/SMBIOS/NVMe/e1000e/xHCI/HDA; gpu-display-setup.sh nvidia Xorg pinning + x11vnc :5900 unit
+  ✓ unit_engine_stamp_manifest_pairing [R3, R47, R41] stamp shape ok (UTC dates, tag build numbers, none for acestep); rule newer/equal/older/missing/unstamped/unchecked; {'s
+  ✓ http_engine_mismatch_clean_error [R3, R4, R31] mock stamp ok; July stamp -> mismatch (3 engines named), /api/image one clean job error (sd-cli not run), /api/music 400
+  ✓ unit_testrig_sync_guest_ships_engines [R64, R65, R3] sync-guest.sh ships bin+lib (build-iso bundle rule) + stamp over $SSH, size printed, guest ldd/--version/stamp check, ke
+  ✓ unit_manifest_image_sections_2026_09 [R34, R42, R29, R47, R3] 4 tiers: Kroma 18+ (10 steps, sha256), Chroma via image_chroma (--model-args), Qwen-2.1 sha/sizes, floors 2026-09-27; 3 
+  ✓ unit_prompt_expansion_helpers [R34, R42] clean() strips think/brackets/keeps last paragraph; expander per section/setting/adult; encoder spec shared; prompts = b
+  ✓ http_image_prompt_expansion [R34, R42, R29] auto: expanded prompt rendered (no brackets/think/hint, encoder under llama-server); adult -> 18+ rules; expand:false / 
+  ✓ http_images_batch_one_session [R42, R22, R4] 3 prompts = 1 sd-server launch + 3 txt2img (fresh seeds, expanded, 1024²); partial failure kept; validation; without the
+  ✓ http_genimg_batch_window [R58, R42] 3 same-size /genimg within the window -> 1 sd-server session (+1 for the other size); cache hit instant
+  ✓ unit_llm_sampling_merge_and_variants [R3, R5] sampling merged (temperature override, per-call wins, messages/stream protected); variants: qwen35 0.7/0.8/20/1.5, gemma
+  ✓ unit_engine_stamp_next_set_and_sd_server [R3, R47, R41] next set stamped: sd.cpp 929 (sd-cli+sd-server), llama.cpp b11223, acestep daf7644; satisfies all tiers; 7 binaries reso
+  ✓ unit_manifests_gemma4_and_fast_mode [R3, R5, R47] 8/16 GB: Gemma 4 (sha256, --fit, thinking off, 1.0/64/0.95) + llm_fast add-on (coder7b, sha256); 24/32 GB untouched; var
+  ✓ unit_r47_baked_set_and_build_scripts [R47, R3] baked set = 4 files / 23.57 GB (old 14.65 GB); music/video/vision/llm_fast + 4 image models are add-ons; 3 build paths u
+  ✓ http_llm_fast_mode [R3, R5, R47] models.llm default/fast + llm_setting; fast → llama-server on coder7b; add-on missing → default + reason; download keys 
+  ✓ http_settings_validation [R15, R42] 16 bad values → 400 (nothing stored), 10 good ones → 200; unknown keys kept
+  ✓ http_music_addon_absent_hint [R31, R47] music absent → 400 with vibe.models.download('music') hint; present again → available
+  ✓ unit_js_syntax_gate [R12, R45] gate on (qjsc 2025-04-26): broken/TLA/return/truncated caught with document lines; modern syntax + module/json skipped; 
+  ✓ http_app_js_gate_repairs_before_done [R12, R45, R5] broken script → gate issue in the stream → repaired before done; unfixable → done + broken verdict (stream note, meta, c
+  ✓ unit_shell_fixes_static [R45, R12, R61, R13] D1 cap + D2 dock room + D3 parity + D4 undefined/hint + D5 shims + D6/D5 prompt rules + D9 confirms + D11 shapes documen
+  ✓ unit_n6_docs_reach_the_model [R39, R59, R43, R45] dock prompt: api sheet 4361 + recipe 9048 chars injected whole; 21799 of 28400 budget chars used (-c 16384)
+
+112 passed, 0 failed, 0 skipped -> tests/results.json
+== regenerating docs/PROGRESS.md ==
+docs/PROGRESS.md regenerated: 68/70 implemented, 70 tested, 0 untested, 0 unclaimed, 0 failing

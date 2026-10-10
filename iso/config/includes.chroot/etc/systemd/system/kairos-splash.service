@@ -1,0 +1,21 @@
+[Unit]
+Description=kAIrOS boot screen: userspace milestone + expected boot time for the painter [R73]
+# The painter itself (/usr/local/sbin/kairos-splash) is started from the initramfs and is
+# not a unit: it is already on the screen when systemd starts. This unit only tells it
+# that userspace is up (progress jumps forward) and hands it the kernel's measured boot
+# time if the initramfs could not. Never blocks or fails anything: no default deps,
+# ExecStart=- , the script exits 0 [R63]. At shutdown it archives the painter's log if
+# the painter never handed over (no kiosk ever came up) [R51].
+DefaultDependencies=no
+After=local-fs.target
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=-/usr/local/sbin/kairos-splash-ctl userspace
+ExecStop=-/usr/local/sbin/kairos-splash-ctl archive
+
+[Install]
+WantedBy=sysinit.target

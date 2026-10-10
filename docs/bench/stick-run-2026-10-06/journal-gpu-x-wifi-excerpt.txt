@@ -1,0 +1,104 @@
+2026-10-06T20:28:07.645930+02:00 localhost.localdomain kernel: [drm] initializing kernel modesetting (IP DISCOVERY 0x1002:0x15BF 0x103C:0x8BD4 0xC2).
+2026-10-06T20:28:07.645936+02:00 localhost.localdomain kernel: [drm] register mmio base: 0x61700000
+2026-10-06T20:28:07.645942+02:00 localhost.localdomain kernel: [drm] register mmio size: 524288
+2026-10-06T20:28:07.645952+02:00 localhost.localdomain kernel: [drm] add ip block number 0 <soc21_common>
+2026-10-06T20:28:07.645957+02:00 localhost.localdomain kernel: [drm] add ip block number 1 <gmc_v11_0>
+2026-10-06T20:28:07.645962+02:00 localhost.localdomain kernel: [drm] add ip block number 2 <ih_v6_0>
+2026-10-06T20:28:07.645967+02:00 localhost.localdomain kernel: [drm] add ip block number 3 <psp>
+2026-10-06T20:28:07.645972+02:00 localhost.localdomain kernel: [drm] add ip block number 4 <smu>
+2026-10-06T20:28:07.645977+02:00 localhost.localdomain kernel: [drm] add ip block number 5 <dm>
+2026-10-06T20:28:07.645983+02:00 localhost.localdomain kernel: [drm] add ip block number 6 <gfx_v11_0>
+2026-10-06T20:28:07.645988+02:00 localhost.localdomain kernel: [drm] add ip block number 7 <sdma_v6_0>
+2026-10-06T20:28:07.645993+02:00 localhost.localdomain kernel: [drm] add ip block number 8 <vcn_v4_0>
+2026-10-06T20:28:07.645998+02:00 localhost.localdomain kernel: [drm] add ip block number 9 <jpeg_v4_0>
+2026-10-06T20:28:07.646004+02:00 localhost.localdomain kernel: [drm] add ip block number 10 <mes_v11_0>
+2026-10-06T20:28:07.646323+02:00 localhost.localdomain kernel: [drm] vm size is 262144 GB, 4 levels, block size is 9-bit, fragment size is 9-bit
+2026-10-06T20:28:07.646526+02:00 localhost.localdomain kernel: [drm] Detected VRAM RAM=512M, BAR=512M
+2026-10-06T20:28:07.646531+02:00 localhost.localdomain kernel: [drm] RAM width 128bits DDR5
+2026-10-06T20:28:07.646536+02:00 localhost.localdomain kernel: [drm] amdgpu: 512M of VRAM memory ready
+2026-10-06T20:28:07.646541+02:00 localhost.localdomain kernel: [drm] amdgpu: 15686M of GTT memory ready.
+2026-10-06T20:28:07.646546+02:00 localhost.localdomain kernel: [drm] GART: num cpu pages 131072, num gpu pages 131072
+2026-10-06T20:28:07.646552+02:00 localhost.localdomain kernel: [drm] PCIE GART of 512M enabled (table at 0x000000801FD00000).
+2026-10-06T20:28:07.646557+02:00 localhost.localdomain kernel: [drm] Loading DMUB firmware via PSP: version=0x08004E00
+2026-10-06T20:28:07.646562+02:00 localhost.localdomain kernel: [drm] Found VCN firmware Version ENC: 1.23 DEC: 9 VEP: 0 Revision: 15
+2026-10-06T20:28:07.647102+02:00 localhost.localdomain kernel: [drm] Seamless boot condition check passed
+2026-10-06T20:28:07.647107+02:00 localhost.localdomain kernel: [drm] Display Core v3.2.301 initialized on DCN 3.1.4
+2026-10-06T20:28:07.647113+02:00 localhost.localdomain kernel: [drm] DP-HDMI FRL PCON supported
+2026-10-06T20:28:07.647119+02:00 localhost.localdomain kernel: [drm] DMUB hardware initialized: version=0x08004E00
+2026-10-06T20:28:07.647124+02:00 localhost.localdomain kernel: [drm] PSR support 1, DC PSR ver 0, sink PSR ver 3 DPCD caps 0x7b su_y_granularity 4
+2026-10-06T20:28:07.648690+02:00 localhost.localdomain kernel: [drm] ring gfx_1.1.1 was added
+2026-10-06T20:28:07.648695+02:00 localhost.localdomain kernel: [drm] ring compute_1.2.2 was added
+2026-10-06T20:28:07.648700+02:00 localhost.localdomain kernel: [drm] ring sdma_1.3.3 was added
+2026-10-06T20:28:07.648705+02:00 localhost.localdomain kernel: [drm] ring gfx_1.1.1 ib test pass
+2026-10-06T20:28:07.648712+02:00 localhost.localdomain kernel: [drm] ring compute_1.2.2 ib test pass
+2026-10-06T20:28:07.648717+02:00 localhost.localdomain kernel: [drm] ring sdma_1.3.3 ib test pass
+2026-10-06T20:28:07.648819+02:00 localhost.localdomain kernel: [drm] Initialized amdgpu 3.61.0 for 0000:05:00.0 on minor 0
+2026-10-06T20:28:07.648830+02:00 localhost.localdomain kernel: [drm] pre_validate_dsc:1629 MST_DSC dsc precompute is not needed
+2026-10-06T20:28:07.649706+02:00 localhost.localdomain kernel: amdgpu 0000:05:00.0: [drm] fb0: amdgpudrmfb frame buffer device
+2026-10-06T20:28:08.615754+02:00 localhost.localdomain systemd[1]: Starting kairos-bootanim.service - kAIrOS boot animation (the OS dreams its own boot screen) [R27/R28]...
+2026-10-06T20:28:08.742324+02:00 localhost.localdomain systemd[1]: Started kairos-bootanim.service - kAIrOS boot animation (the OS dreams its own boot screen) [R27/R28].
+2026-10-06T20:28:17.834758+02:00 localhost.localdomain kernel: iwlwifi 0000:02:00.0 wlo1: renamed from wlan0
+2026-10-06T20:28:36.678223+02:00 localhost.localdomain systemd[1]: Starting nvidia-load.service - Load NVIDIA modules for CUDA/display (non-critical) [R41/R50]...
+2026-10-06T20:28:37.341944+02:00 localhost.localdomain systemd[1]: Starting wpa_supplicant.service - WPA supplicant...
+2026-10-06T20:28:38.331705+02:00 localhost.localdomain systemd[1]: Started wpa_supplicant.service - WPA supplicant.
+2026-10-06T20:28:38.331710+02:00 localhost.localdomain wpa_supplicant[945]: Successfully initialized wpa_supplicant
+2026-10-06T20:28:40.516364+02:00 localhost.localdomain NetworkManager[944]: <info>  [1791311320.5163] device (wlo1): driver supports Access Point (AP) mode
+2026-10-06T20:28:40.516592+02:00 localhost.localdomain NetworkManager[944]: <info>  [1791311320.5165] manager: (wlo1): new 802.11 Wi-Fi device (/org/freedesktop/NetworkManager/Devices/3)
+2026-10-06T20:28:40.516672+02:00 localhost.localdomain NetworkManager[944]: <info>  [1791311320.5166] device (wlo1): state change: unmanaged -> unavailable (reason 'managed', managed-type: 'external')
+2026-10-06T20:28:40.837195+02:00 localhost.localdomain NetworkManager[944]: <info>  [1791311320.8371] device (wlo1): set-hw-addr: set MAC address to EE:15:B2:D6:3E:94 (scanning)
+2026-10-06T20:28:51.283963+02:00 localhost.localdomain NetworkManager[944]: <error> [1791311331.2839] device (wlo1): Couldn't initialize supplicant interface: Timeout was reached
+2026-10-06T20:29:01.536149+02:00 localhost.localdomain NetworkManager[944]: <warn>  [1791311341.5360] device (wlo1): re-acquiring supplicant interface (#1).
+2026-10-06T20:29:02.306317+02:00 localhost.localdomain NetworkManager[944]: <info>  [1791311342.3062] device (wlo1): supplicant interface state: internal-starting -> disconnected
+2026-10-06T20:29:02.306373+02:00 localhost.localdomain NetworkManager[944]: <info>  [1791311342.3063] Wi-Fi P2P device controlled by interface wlo1 created
+2026-10-06T20:29:02.306482+02:00 localhost.localdomain NetworkManager[944]: <info>  [1791311342.3064] manager: (p2p-dev-wlo1): new 802.11 Wi-Fi P2P device (/org/freedesktop/NetworkManager/Devices/4)
+2026-10-06T20:29:02.306576+02:00 localhost.localdomain NetworkManager[944]: <info>  [1791311342.3065] device (p2p-dev-wlo1): state change: unmanaged -> unavailable (reason 'managed', managed-type: 'external')
+2026-10-06T20:29:02.306831+02:00 localhost.localdomain NetworkManager[944]: <info>  [1791311342.3068] device (wlo1): state change: unavailable -> disconnected (reason 'supplicant-available', managed-type: 'full')
+2026-10-06T20:29:02.307279+02:00 localhost.localdomain NetworkManager[944]: <info>  [1791311342.3072] device (p2p-dev-wlo1): state change: unavailable -> disconnected (reason 'none', managed-type: 'full')
+2026-10-06T20:29:05.051305+02:00 localhost.localdomain wpa_supplicant[945]: wlo1: CTRL-EVENT-REGDOM-CHANGE init=DRIVER type=COUNTRY alpha2=DE
+2026-10-06T20:29:08.050784+02:00 localhost.localdomain kernel: nvidia: loading out-of-tree module taints kernel.
+2026-10-06T20:29:08.050951+02:00 localhost.localdomain kernel: nvidia: module license 'NVIDIA' taints kernel.
+2026-10-06T20:29:08.051007+02:00 localhost.localdomain kernel: nvidia: module verification failed: signature and/or required key missing - tainting kernel
+2026-10-06T20:29:08.051037+02:00 localhost.localdomain kernel: nvidia: module license taints kernel.
+2026-10-06T20:29:08.418743+02:00 localhost.localdomain kernel: nvidia-nvlink: Nvlink Core is being initialized, major device number 234
+2026-10-06T20:29:08.426865+02:00 localhost.localdomain kernel: nvidia 0000:01:00.0: enabling device (0000 -> 0003)
+2026-10-06T20:29:08.427384+02:00 localhost.localdomain kernel: nvidia 0000:01:00.0: vgaarb: VGA decodes changed: olddecodes=io+mem,decodes=none:owns=none
+2026-10-06T20:29:08.538739+02:00 localhost.localdomain kernel: nvidia_uvm: module uses symbols nvUvmInterfaceDisableAccessCntr from proprietary module nvidia, inheriting taint.
+2026-10-06T20:29:08.542736+02:00 localhost.localdomain kernel: nvidia-modeset: Loading NVIDIA Kernel Mode Setting Driver for UNIX platforms  610.43.02  Tue May 19 11:09:25 UTC 2026
+2026-10-06T20:29:08.566738+02:00 localhost.localdomain kernel: [drm] [nvidia-drm] [GPU ID 0x00000100] Loading driver
+2026-10-06T20:29:08.573673+02:00 localhost.localdomain systemd[1]: Starting nvidia-persistenced.service - NVIDIA Persistence Daemon...
+2026-10-06T20:29:08.575137+02:00 localhost.localdomain systemd[1]: Finished nvidia-load.service - Load NVIDIA modules for CUDA/display (non-critical) [R41/R50].
+2026-10-06T20:29:08.577213+02:00 localhost.localdomain systemd[1]: Started getty@tty1.service - Getty on tty1.
+2026-10-06T20:29:08.631020+02:00 localhost.localdomain nvidia-persistenced[1048]: Started (1048)
+2026-10-06T20:29:09.765349+02:00 localhost.localdomain systemd[1]: kairos-bootanim.service: Killing process 1030 (worker) with signal SIGKILL.
+2026-10-06T20:29:10.550987+02:00 localhost.localdomain systemd[1]: kairos-bootanim.service: Deactivated successfully.
+2026-10-06T20:29:10.551303+02:00 localhost.localdomain systemd[1]: kairos-bootanim.service: Consumed 1.185s CPU time, 240.4M memory peak.
+2026-10-06T20:29:33.702758+02:00 localhost.localdomain kernel: [drm] Initialized nvidia-drm 0.0.0 for 0000:01:00.0 on minor 1
+2026-10-06T20:29:33.706758+02:00 localhost.localdomain kernel: nvidia 0000:01:00.0: [drm] Cannot find any crtc or sizes
+2026-10-06T20:29:34.652509+02:00 localhost.localdomain systemd[1]: Started nvidia-persistenced.service - NVIDIA Persistence Daemon.
+2026-10-06T20:29:54.653964+02:00 localhost.localdomain systemd[1]: Starting kairos-bootanim-gen.service - kAIrOS: dream next boot's animation at shutdown (if not already done)...
+2026-10-06T20:29:54.657422+02:00 localhost.localdomain systemd[1]: Finished kairos-bootanim-gen.service - kAIrOS: dream next boot's animation at shutdown (if not already done).
+2026-10-06T20:33:14.255328+02:00 localhost.localdomain systemd[1]: Stopping nvidia-persistenced.service - NVIDIA Persistence Daemon...
+2026-10-06T20:33:14.256234+02:00 localhost.localdomain systemd[1]: getty@tty1.service: Deactivated successfully.
+2026-10-06T20:33:14.256363+02:00 localhost.localdomain systemd[1]: Stopped getty@tty1.service - Getty on tty1.
+2026-10-06T20:33:16.947918+02:00 localhost.localdomain nvidia-persistenced[1048]: Shutdown (1048)
+2026-10-06T20:33:16.989275+02:00 localhost.localdomain systemd[1]: nvidia-persistenced.service: Deactivated successfully.
+2026-10-06T20:33:16.989448+02:00 localhost.localdomain systemd[1]: Stopped nvidia-persistenced.service - NVIDIA Persistence Daemon.
+2026-10-06T20:33:48.786957+02:00 localhost.localdomain systemd[1]: Stopping kairos-bootanim-gen.service - kAIrOS: dream next boot's animation at shutdown (if not already done)...
+2026-10-06T20:33:48.786972+02:00 localhost.localdomain systemd[1]: nvidia-load.service: Deactivated successfully.
+2026-10-06T20:33:48.787044+02:00 localhost.localdomain systemd[1]: Stopped nvidia-load.service - Load NVIDIA modules for CUDA/display (non-critical) [R41/R50].
+2026-10-06T20:33:48.840014+02:00 localhost.localdomain systemd[1]: kairos-bootanim-gen.service: Deactivated successfully.
+2026-10-06T20:33:48.840135+02:00 localhost.localdomain systemd[1]: Stopped kairos-bootanim-gen.service - kAIrOS: dream next boot's animation at shutdown (if not already done).
+2026-10-06T20:33:48.865210+02:00 localhost.localdomain systemd[1]: Stopping wpa_supplicant.service - WPA supplicant...
+2026-10-06T20:33:48.865407+02:00 localhost.localdomain wpa_supplicant[945]: p2p-dev-wlo1: CTRL-EVENT-DSCP-POLICY clear_all
+2026-10-06T20:33:48.865533+02:00 localhost.localdomain NetworkManager[944]: <info>  [1791311628.8655] device (wlo1): state change: disconnected -> unmanaged (reason 'unmanaged-quitting', managed-type: 'full')
+2026-10-06T20:33:48.916991+02:00 localhost.localdomain NetworkManager[944]: <info>  [1791311628.9169] device (wlo1): set-hw-addr: reset MAC address to A0:B3:39:FD:52:0A (unmanage)
+2026-10-06T20:33:48.917474+02:00 localhost.localdomain wpa_supplicant[945]: p2p-dev-wlo1: CTRL-EVENT-DSCP-POLICY clear_all
+2026-10-06T20:33:48.919811+02:00 localhost.localdomain wpa_supplicant[945]: nl80211: deinit ifname=p2p-dev-wlo1 disabled_11b_rates=0
+2026-10-06T20:33:48.987350+02:00 localhost.localdomain wpa_supplicant[945]: p2p-dev-wlo1: CTRL-EVENT-TERMINATING
+2026-10-06T20:33:48.987621+02:00 localhost.localdomain wpa_supplicant[945]: wlo1: CTRL-EVENT-DSCP-POLICY clear_all
+2026-10-06T20:33:48.989771+02:00 localhost.localdomain NetworkManager[944]: <info>  [1791311628.9897] device (p2p-dev-wlo1): state change: disconnected -> unmanaged (reason 'unmanaged-link-not-init', managed-type: 'removed')
+2026-10-06T20:33:49.040064+02:00 localhost.localdomain wpa_supplicant[945]: wlo1: CTRL-EVENT-DSCP-POLICY clear_all
+2026-10-06T20:33:49.040071+02:00 localhost.localdomain wpa_supplicant[945]: nl80211: deinit ifname=wlo1 disabled_11b_rates=0
+2026-10-06T20:33:49.040164+02:00 localhost.localdomain wpa_supplicant[945]: wlo1: CTRL-EVENT-TERMINATING
+2026-10-06T20:33:49.042885+02:00 localhost.localdomain systemd[1]: wpa_supplicant.service: Deactivated successfully.
+2026-10-06T20:33:49.043188+02:00 localhost.localdomain systemd[1]: Stopped wpa_supplicant.service - WPA supplicant.

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- kAIrOS bench openbox config [R28]: no decorations, no root menu, click-to-focus -->
+<openbox_config xmlns="http://openbox.org/3.4/rc">
+  <focus><focusNew>yes</focusNew><followMouse>no</followMouse><raiseOnFocus>no</raiseOnFocus></focus>
+  <placement><policy>Smart</policy><center>no</center></placement>
+  <theme><titleLayout>N</titleLayout><keepBorder>no</keepBorder></theme>
+  <desktops><number>1</number></desktops>
+  <resize><drawContents>yes</drawContents><popupShow>Never</popupShow></resize>
+  <margins><top>0</top><bottom>0</bottom><left>0</left><right>0</right></margins>
+  <keyboard></keyboard>
+  <mouse>
+    <dragThreshold>3</dragThreshold>
+    <context name="Client"><mousebind button="Left" action="Press"><action name="Focus"/><action name="Raise"/></mousebind>
+      <mousebind button="Middle" action="Press"><action name="Focus"/><action name="Raise"/></mousebind>
+      <mousebind button="Right" action="Press"><action name="Focus"/><action name="Raise"/></mousebind></context>
+    <context name="Root"></context>
+    <context name="Desktop"></context>
+  </mouse>
+  <menu></menu>
+  <applications>
+    <application class="*"><decor>no</decor><focus>yes</focus></application>
+  </applications>
+</openbox_config>

@@ -1,0 +1,7 @@
+#!/bin/sh
+# kAIrOS [D4]: after a kernel or initramfs update, refresh the kAIrOS loader
+# entry's kernel + initrd on the EFI partition (/usr/local/sbin/kairos-esp-sync).
+# kernel-install is off (layout=other), so this is the only path that keeps an
+# apt kernel upgrade bootable. Never fails the package install.
+[ -x /usr/local/sbin/kairos-esp-sync ] && /usr/local/sbin/kairos-esp-sync "$@" || true
+exit 0

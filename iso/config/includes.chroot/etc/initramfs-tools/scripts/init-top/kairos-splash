@@ -1,0 +1,19 @@
+#!/bin/sh
+# kAIrOS boot screen, phase 1 [R73/R28]: start the framebuffer painter as the very first
+# init-top step — before udev's coldplug loads the GPU driver (amdgpu is in the initrd) —
+# so the firmware logo (ACPI BGRT) is redrawn with the kAIrOS lockup while efifb is still
+# fb0, and the switch to amdgpudrmfb (~1 s) is repainted at once. The painter daemonizes
+# (argv[0] '@kairos-splash': spared across switch_root) and lives until the kiosk is up.
+# Only on the silent default entry: the "kairos-serial" debug entry has no `quiet` and
+# wants its console visible; kairos.splash=0 on the cmdline is the explicit off switch.
+# Cosmetic: every path exits 0 [R63].
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0 ;; esac
+[ -x /sbin/kairos-splash ] || exit 0
+cmdline=$(cat /proc/cmdline 2>/dev/null)
+case " $cmdline " in *" kairos.splash=0 "*) exit 0 ;; esac
+case " $cmdline " in *" quiet "*) ;; *) exit 0 ;; esac
+mkdir -p /run/kairos-splash 2>/dev/null
+/sbin/kairos-splash --daemon >/dev/null 2>&1 || true
+exit 0

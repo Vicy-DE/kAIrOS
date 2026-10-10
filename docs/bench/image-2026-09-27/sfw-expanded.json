@@ -1,0 +1,37 @@
+{
+ "sfw1": {
+  "short": "cat astronaut drinking coffee on the moon",
+  "raw": "A whimsical, cartoon-style illustration of a fluffy orange cat dressed as an astronaut, complete with a white space helmet and a small jetpack, sitting cross-legged on the barren, gray lunar surface while sipping from a steaming cup of coffee; the cat’s paws rest on the mug, one paw slightly raised as if mid-sip, with a tiny coffee steam curling upward; behind the cat, a vast, cratered moon landscape stretches under a deep black sky dotted with distant stars; the scene is softly lit by a pale, diffuse lunar glow, casting gentle shadows and highlighting the cat’s fur texture and the metallic sheen of its suit; no other characters or objects are present, keeping the focus on the serene, surreal moment of cosmic coffee-drinking.",
+  "expanded": "A whimsical, cartoon-style illustration of a fluffy orange cat dressed as an astronaut, complete with a white space helmet and a small jetpack, sitting cross-legged on the barren, gray lunar surface while sipping from a steaming cup of coffee; the cat’s paws rest on the mug, one paw slightly raised as if mid-sip, with a tiny coffee steam curling upward; behind the cat, a vast, cratered moon landscape stretches under a deep black sky dotted with distant stars; the scene is softly lit by a pale, diffuse lunar glow, casting gentle shadows and highlighting the cat’s fur texture and the metallic sheen of its suit; no other characters or objects are present, keeping the focus on the serene, surreal moment of cosmic coffee-drinking.",
+  "seconds": 3.3,
+  "tokens": 157
+ },
+ "sfw2": {
+  "short": "old fisherman mending nets at sunrise",
+  "raw": "An old fisherman, weathered and quiet, sits on a weather-beaten wooden dock at dawn, his hands deftly repairing fishing nets with a worn tool; golden sunrise light spills across the water, casting long shadows and illuminating the mist rising from the sea; the scene is rendered in soft, painterly realism with muted coastal tones—grays, blues, and warm amber—evoking a tranquil, timeless moment; the fisherman wears a faded wool coat and a knitted cap, his posture bent slightly as he works, surrounded by the stillness of early morning; gentle ripples disturb the surface of the calm sea behind him, and the horizon glows with the first blush of day.",
+  "expanded": "An old fisherman, weathered and quiet, sits on a weather-beaten wooden dock at dawn, his hands deftly repairing fishing nets with a worn tool; golden sunrise light spills across the water, casting long shadows and illuminating the mist rising from the sea; the scene is rendered in soft, painterly realism with muted coastal tones—grays, blues, and warm amber—evoking a tranquil, timeless moment; the fisherman wears a faded wool coat and a knitted cap, his posture bent slightly as he works, surrounded by the stillness of early morning; gentle ripples disturb the surface of the calm sea behind him, and the horizon glows with the first blush of day.",
+  "seconds": 2.8,
+  "tokens": 144
+ },
+ "sfw3": {
+  "short": "neon sign in a rainy alley that says \"kAIrOS\"",
+  "raw": "A glowing neon sign reading \"kAIrOS\" in stylized uppercase letters, with the 'k' and 'A' in vibrant electric blue and the 'I', 'r', 'O', 'S' in pulsing magenta and cyan, casting sharp reflections on wet pavement below as rain falls heavily in a narrow urban alleyway; the sign is mounted on a weathered brick wall with dripping water and puddles pooling around its base, ambient streetlights flicker dimly overhead, creating a moody, cinematic atmosphere with soft bokeh in the background, rendered as a high-detail photograph of an atmospheric night scene.",
+  "expanded": "A glowing neon sign reading \"kAIrOS\" in stylized uppercase letters, with the 'k' and 'A' in vibrant electric blue and the 'I', 'r', 'O', 'S' in pulsing magenta and cyan, casting sharp reflections on wet pavement below as rain falls heavily in a narrow urban alleyway; the sign is mounted on a weathered brick wall with dripping water and puddles pooling around its base, ambient streetlights flicker dimly overhead, creating a moody, cinematic atmosphere with soft bokeh in the background, rendered as a high-detail photograph of an atmospheric night scene.",
+  "seconds": 2.5,
+  "tokens": 128
+ },
+ "sfw4": {
+  "short": "cozy log cabin interior during a snowstorm",
+  "raw": "A warmly lit cozy log cabin interior during a snowstorm, with thick wooden beams and rustic stone walls, soft blankets draped over a fireplace mantel, a steaming mug on a wooden table beside a book, and snowflakes gently falling outside the large windows, casting a hazy glow through frosted glass; a quilted armchair invites relaxation near the hearth, the air smelling of woodsmoke and cinnamon, all bathed in golden candlelight and ambient warmth, with no visible people but the quiet presence of comfort and stillness.",
+  "expanded": "A warmly lit cozy log cabin interior during a snowstorm, with thick wooden beams and rustic stone walls, soft blankets draped over a fireplace mantel, a steaming mug on a wooden table beside a book, and snowflakes gently falling outside the large windows, casting a hazy glow through frosted glass; a quilted armchair invites relaxation near the hearth, the air smelling of woodsmoke and cinnamon, all bathed in golden candlelight and ambient warmth, with no visible people but the quiet presence of comfort and stillness.",
+  "seconds": 2.2,
+  "tokens": 111
+ },
+ "sfw5": {
+  "short": "red sports car drifting on a mountain road",
+  "raw": "A sleek red sports car, low and aggressive in profile, is mid-drift on a winding mountain road, tires smoking slightly as they screech against the asphalt, kicking up a spray of gravel and dust; the car leans sharply into the curve, its body angled dramatically with visible motion blur around the wheels and chassis, emphasizing speed and control; the road curves steeply through a forested hillside with misty peaks in the background under a moody twilight sky, golden hour light casting long shadows and warm glows along the car’s glossy paint; the scene is captured as a dynamic photograph of the car in motion, with shallow depth of field blurring the trees and distant mountains to isolate the vehicle’s powerful, athletic movement, conveying adrenaline, precision, and raw mechanical beauty.",
+  "expanded": "A sleek red sports car, low and aggressive in profile, is mid-drift on a winding mountain road, tires smoking slightly as they screech against the asphalt, kicking up a spray of gravel and dust; the car leans sharply into the curve, its body angled dramatically with visible motion blur around the wheels and chassis, emphasizing speed and control; the road curves steeply through a forested hillside with misty peaks in the background under a moody twilight sky, golden hour light casting long shadows and warm glows along the car’s glossy paint; the scene is captured as a dynamic photograph of the car in motion, with shallow depth of field blurring the trees and distant mountains to isolate the vehicle’s powerful, athletic movement, conveying adrenaline, precision, and raw mechanical beauty.",
+  "seconds": 3.1,
+  "tokens": 159
+ }
+}

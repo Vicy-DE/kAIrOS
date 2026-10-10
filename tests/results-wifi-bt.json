@@ -1,0 +1,203 @@
+{
+ "at": "2026-10-10 11:43:18",
+ "tests": {
+  "wifi_nmcli_escapes_roundtrip": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "':' and '\\' survive scan/connect/status/forget; BSSID rows split right"
+  },
+  "wifi_needs_bars_band": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "13 security strings (OWE/OWE-TM = none, 802.1X = login) \u00b7 bars 0-4 \u00b7 bands 2.4/5/6"
+  },
+  "wifi_status_real_ssid_disconnect_forget": {
+   "reqs": [
+    "R78",
+    "R38"
+   ],
+   "status": "pass",
+   "detail": "ssid HomeNet (profile 'Home profile 1'), strongest BSS 91 on 5 GHz, disconnect w/o ssid, forget 2 profiles + by name"
+  },
+  "wifi_owe_transition_no_password": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "OWE-TM listed once (needs none), joined without a password, the hidden owe.* twin folded into it"
+  },
+  "wifi_wrong_password_no_stale_profile": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "3x wrong password: wrong_password, 0 stale profiles, back on OpenAP, password not logged; right one joins"
+  },
+  "wifi_saved_profile_password_rollback": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "saved psk reused, wrong new psk rolled back, re-join via `con up` of the same profile"
+  },
+  "wifi_error_codes": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "needs_password / not_in_range / unsupported / ssid_required / wrong_password (invalid psk), 0 profiles"
+  },
+  "wifi_restore_previous_network": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "previous network re-joined after the failed join; a newer connect() is never undone"
+  },
+  "wifi_radio_supplicant_nm_states": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "radio off/on, supplicant starting (starting:true), NM down (reason), hardware switch, old nmcli fallback"
+  },
+  "wifi_scan_dedupe_rescan_cache": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "dedupe/hidden/sort/6 GHz OK; fresh scan finds 'Late'; age_s 12; cached status (1 spawns once); write clears + notifies"
+  },
+  "wifi_portal_signin_window": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "portal per device; signin -> 302 Location into the open-url flag (0666), close flag once online; no portal -> http://neverssl.com"
+  },
+  "wifi_connectivity_conf_precedence": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "usr/lib < etc by basename, masking, enabled=false; the shipped conf = Debian's check URI + response + 300 s"
+  },
+  "knowledge_online_follows_nm": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "full -> online (no probe), none -> offline, portal -> probe; 30-s cache + reset_online(); nm_connectivity full/None"
+  },
+  "bt_status_shapes": {
+   "reqs": [
+    "R55",
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "connected = names, devices with kind/trusted/battery; no adapter (sysfs, no spawn) / no bluetoothd -> reasons; kinds from Icon"
+  },
+  "bt_scan_only_this_scan": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "2 of 5 listed (paired, out-of-range cache, unnamed dropped), sorted by RSSI; off/blocked: no power-on"
+  },
+  "bt_pair_trust_connect": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "mouse paired+trusted+connected, phone code 314159 confirmed, auth_failed / not_in_range / bad_mac; disconnect by name"
+  },
+  "bt_pair_keyboard_code": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "enter_code + 482913 at once, busy while waiting, status().pairing -> paired, trusted keyboard"
+  },
+  "bt_agent_refuses_unsolicited": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "unarmed: no/no; armed: yes; displayed passkey surfaced"
+  },
+  "bt_rfkill_on_off": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "off = rfkill block (status blocked), on = unblock + power on, hard block refused"
+  },
+  "bt_audio_sink_default": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "sink bluez_output.C0_FF_EE_00_00_02.1: set by kairos when WirePlumber had not, reported as wireplumber when it had"
+  },
+  "airplane_mode": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "on: radio off + bt blocked (get/summary agree); off: both back, WiFi re-joined"
+  },
+  "static_server_read_write_split": {
+   "reqs": [
+    "R78",
+    "R66"
+   ],
+   "status": "pass",
+   "detail": "7 reads open, 13 writes guarded; online() hooks wired; h_hw logs no password"
+  },
+  "static_bridge_and_host_pages": {
+   "reqs": [
+    "R78",
+    "R12"
+   ],
+   "status": "pass",
+   "detail": "bridge members + inert literal; ok+error answers resolve in shell.js and host.js; parsed by qjsc"
+  },
+  "static_docs_for_the_coder_llm": {
+   "reqs": [
+    "R78",
+    "R59",
+    "R39",
+    "R43"
+   ],
+   "status": "pass",
+   "detail": "fields + flows in network.md / wiki / API.md / dock prompt; dock pack 28263 of 28400 chars (137 spare)"
+  },
+  "static_xinitrc_signin_window": {
+   "reqs": [
+    "R78",
+    "R52"
+   ],
+   "status": "pass",
+   "detail": "flag -> one chromium --app (own profile, not a kiosk), flag removed; close flag -> pkill; non-http refused"
+  },
+  "static_bootlog_wifi_bt_capture": {
+   "reqs": [
+    "R78",
+    "R51"
+   ],
+   "status": "pass",
+   "detail": "connectivity + conf, profiles with SSIDs, radio, paired devices + trust, rfkill state, default sink, kernel lines"
+  },
+  "static_requirement_and_doc": {
+   "reqs": [
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "R78 in REQUIREMENTS.md (scope + tests), the log with API / VM proof / hotfix sections"
+  }
+ }
+}

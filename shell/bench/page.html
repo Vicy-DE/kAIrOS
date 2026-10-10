@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>kairos-page</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#0d0d18}</style>
+<link rel="stylesheet" href="/shell/shell.css">
+<link rel="stylesheet" href="/shell/bench/host.css">
+</head>
+<body>
+<!-- bench candidates 2/3a: a /web/ page window (C36) — the imagined page stays in a
+     sandboxed iframe (allow-scripts allow-forms, NO allow-same-origin), exactly as
+     shell.js openPage() mounts it: a top-level /web/ document would be same-origin [R66] -->
+<div class="win focused no-improve" id="win">
+  <div class="win-bar">
+    <div class="win-title">🌐</div>
+    <button class="win-btn win-improve" title="">✨</button>
+    <button class="win-btn win-min" title="Minimize">_</button>
+    <button class="win-btn win-max" title="Maximize">▢</button>
+    <button class="win-btn win-close" title="Close">✕</button>
+  </div>
+  <div class="win-body"><iframe sandbox="allow-scripts allow-forms"></iframe></div>
+  <div class="win-resize"></div>
+</div>
+<div id="toasts"></div>
+<script src="/shell/bench/page.js"></script>
+</body>
+</html>

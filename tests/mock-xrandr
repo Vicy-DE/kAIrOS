@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+"""Mock xrandr: --query prints two connected displays; set-calls are logged."""
+import os, sys
+a = sys.argv[1:]
+log = os.environ.get("MOCK_XRANDR_LOG")
+if log:
+    open(log, "a").write("\t".join(a) + "\n")
+if "--query" in a or not a:
+    print("""Screen 0: minimum 320 x 200, current 3840 x 1080, maximum 16384 x 16384
+eDP-1 connected primary 1920x1080+0+0 (normal left inverted right) 344mm x 194mm
+   1920x1080     60.01*+  48.00
+   1600x900      60.00
+HDMI-1 connected 1920x1080+1920+0 (normal left inverted right) 527mm x 296mm
+   1920x1080     60.00*+
+   2560x1440     59.95
+DP-1 disconnected (normal left inverted right)""")

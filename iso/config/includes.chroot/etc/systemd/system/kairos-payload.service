@@ -1,0 +1,21 @@
+[Unit]
+Description=Mount kAIrOS model/knowledge payload partition (KAIROS_DATA)
+DefaultDependencies=no
+After=local-fs.target
+Before=kairos.service
+# only relevant to the lean split-payload ISO; the flattened appliance bakes the
+# models into root and has no KAIROS_DATA partition, so skip cleanly there [R63]
+ConditionPathExists=/dev/disk/by-label/KAIROS_DATA
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# The lean ISO ships no models; they live on a second USB partition labelled KAIROS_DATA
+# (models/ + knowledge/). Mount it and bind those dirs where kAIrOS expects them.
+ExecStartPre=/bin/mkdir -p /run/kairos-data /opt/vibeos/models /opt/vibeos/knowledge
+ExecStart=/bin/sh -c 'mount -L KAIROS_DATA -o ro /run/kairos-data 2>/dev/null || mount /dev/disk/by-label/KAIROS_DATA -o ro /run/kairos-data'
+ExecStartPost=/bin/sh -c 'mountpoint -q /run/kairos-data && mount --bind /run/kairos-data/models /opt/vibeos/models'
+ExecStartPost=/bin/sh -c 'mountpoint -q /run/kairos-data && [ -d /run/kairos-data/knowledge ] && mount --bind /run/kairos-data/knowledge /opt/vibeos/knowledge || true'
+
+[Install]
+WantedBy=multi-user.target

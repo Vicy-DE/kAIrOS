@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Futuristic Pomodoro Timer</title>
+    <style>
+        body {
+            background-color: #0a0a14;
+            color: #ffffff;
+            font-family: 'system-ui', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            background-color: rgba(255, 255, 255, 0.06);
+            border: 1px rgba(255, 255, 255, 0.08) solid;
+            border-radius: 16px;
+            backdrop-filter: blur(8px);
+            padding: 20px;
+            box-sizing: border-box;
+            width: 300px;
+            text-align: center;
+        }
+        .timer {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        .controls {
+            display: flex;
+            justify-content: space-around;
+        }
+        button {
+            background-color: rgba(255, 255, 255, 0.12);
+            border: 1px rgba(255, 255, 255, 0.08) solid;
+            border-radius: 16px;
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+        button:hover {
+            background-color: rgba(255, 255, 255, 0.18);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="timer">25:00</div>
+        <div class="controls">
+            <button id="start">Start</button>
+            <button id="reset">Reset</button>
+        </div>
+    </div>
+    <script>
+        let interval;
+        let timeLeft = 25 * 60;
+        let isRunning = false;
+
+        document.getElementById('start').addEventListener('click', () => {
+            if (!isRunning) {
+                isRunning = true;
+                interval = setInterval(() => {
+                    timeLeft--;
+                    updateTimerDisplay();
+                    if (timeLeft <= 0) {
+                        timeLeft = 25 * 60;
+                        updateTimerDisplay();
+                        vibe.notify('Time is up!');
+                    }
+                }, 1000);
+            }
+        });
+
+        document.getElementById('reset').addEventListener('click', () => {
+            if (isRunning) {
+                clearInterval(interval);
+                isRunning = false;
+                timeLeft = 25 * 60;
+                updateTimerDisplay();
+            }
+        });
+
+        function updateTimerDisplay() {
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            document.querySelector('.timer').textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+    </script>
+</body>
+</html>

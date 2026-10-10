@@ -1,0 +1,18 @@
+[Unit]
+Description=kAIrOS boot diagnostics on a drop to emergency/rescue mode -> EFI partition [R51]
+# A failed root/ESP mount or fsck drops systemd to emergency.target (sulogin on a
+# black kiosk screen, nothing else runs) — write the breadcrumb + full log first
+# so the reason is readable from the stick. No default deps (sysinit/basic are
+# never reached in emergency); ordered before the sulogin shell.
+DefaultDependencies=no
+Before=emergency.service rescue.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=-/usr/local/sbin/kairos-bootlog-early
+ExecStart=-/usr/local/sbin/kairos-bootlog emergency
+TimeoutStartSec=120
+
+[Install]
+WantedBy=emergency.target rescue.target

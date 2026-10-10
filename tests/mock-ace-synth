@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+"""Mock ace-synth (acestep.cpp stage 2): --models <dir> --request <r0.json> -> <r0>0.wav.
+
+Mirrors tools/ace-synth.cpp: no -o flag — the audio lands next to the request
+as <basename-without-.json><synth_index><.wav|.mp3> per output_format."""
+import json
+import os
+import struct
+import sys
+
+args = sys.argv[1:]
+arglog = os.environ.get("MOCK_ACE_ARGLOG")
+if arglog:
+    with open(arglog, "a") as f:
+        f.write("ace-synth\t" + "\t".join(args) + "\n")
+if "--models" not in args or "--request" not in args:
+    print("[CLI] ERROR: --models and --request required", file=sys.stderr)
+    sys.exit(1)
+req_path = args[args.index("--request") + 1]
+with open(req_path) as f:
+    req = json.load(f)
+if not req.get("caption"):
+    print(f"[Ace-Synth] FATAL: caption is empty in {req_path}", file=sys.stderr)
+    sys.exit(1)
+fmt = req.get("output_format", "mp3")
+ext = ".mp3" if fmt == "mp3" else ".wav"
+base = req_path[:-5] if req_path.endswith(".json") else req_path
+out = f"{base}0{ext}"
+
+rate, secs = 8000, 1
+n = rate * secs
+data = b"".join(struct.pack("<h", (i * 37) % 8192 - 4096) for i in range(n))
+hdr = (b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVE"
+       + b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+       + b"data" + struct.pack("<I", len(data)))
+with open(out, "wb") as f:
+    f.write(hdr + data)
+print(f"[Ace-Synth] wrote {out}\n[Ace-Synth] All done", file=sys.stderr)

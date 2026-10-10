@@ -1,0 +1,10 @@
+# kairos-langs:2 = kairos-langs:local (g++ 14.2, OpenJDK 21, Go 1.24, rustc 1.85, Python 3.13 + pyflakes 3.2)
+# + the TypeScript/JavaScript and mypy toolchain, Debian trixie packages only (2026-09-30):
+#   nodejs 20.19.2, node-typescript 4.9.5 (tsc), mypy 1.15.0. Debian trixie ships no @types/node package, so the
+#   benchmark frame passes its own tiny Node.js declaration file to tsc (see ../sandbox/node-globals.d.ts).
+FROM kairos-langs:local
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      nodejs node-typescript mypy \
+    && rm -rf /var/lib/apt/lists/*
+RUN node --version && tsc --version && mypy --version && g++ --version | head -1 && javac -version \
+    && rustc --version && python3 --version && python3 -m pyflakes --version

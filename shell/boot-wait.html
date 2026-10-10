@@ -1,0 +1,90 @@
+<!doctype html>
+<!-- kAIrOS boot page [R73/R28]: the X-side half of the boot screen. The framebuffer painter
+     (scripts/splash/kairos-splash) drew the thick kAIrOS logo + loading bar until X took the
+     display; .xinitrc opens this LOCAL page (file://) in the kiosk right away with the
+     painter's last progress, the expected boot time and the uptime in the URL
+     (?boot=1&up=&now=&expected=&p=), so the same logo and bar continue seamlessly. It polls
+     the kernel and replaces itself with the shell (same ?screen=… hint) the moment
+     /api/status answers — never a Chromium network-error page. Without boot params
+     (a kiosk relaunch) it shows the logo alone and hands over as soon as the kernel answers.
+     Layout = the painter's reference canvas 1920x1080 scaled by min(vw/1920, vh/1080):
+     wordmark 606 px wide centred at 40 % height, bar 540x12 px centred at 65.5 % (see
+     LAYOUT_* in kairos-splash.c; tests/test_splash.py keeps the two in step). -->
+<html lang="en"><head><meta charset="utf-8"><title>kAIrOS</title>
+<style>
+  :root { --accent: #7c5cff; --accent2: #41e2ff; --s: min(calc(100vw / 1920), calc(100vh / 1080));
+          --logo-cy: 40%; --bar-cy: 65.5%; --logo-w: calc(var(--s) * 606); --bar-w: calc(var(--s) * 540);
+          --bar-h: max(4px, calc(var(--s) * 12)); }
+  html, body { height: 100%; margin: 0; overflow: hidden; background: #0a0a14; color: #e8e8f2;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif, "Noto Color Emoji"; cursor: none; }
+  #wallpaper { position: absolute; inset: 0; background:
+    radial-gradient(calc(var(--s) * 1200) calc(var(--s) * 700) at 75% 15%, #1b1340 0%, transparent 60%),
+    radial-gradient(calc(var(--s) * 900) calc(var(--s) * 600) at 15% 85%, #0a2a38 0%, transparent 55%),
+    linear-gradient(160deg, #0a0a14 0%, #11101f 50%, #0a0d16 100%); }
+  #logo { position: absolute; left: 50%; top: var(--logo-cy); width: var(--logo-w); transform: translate(-50%, -50%);
+    image-rendering: auto; user-select: none; -webkit-user-drag: none; }
+  #bar { position: absolute; left: 50%; top: var(--bar-cy); width: var(--bar-w); height: var(--bar-h);
+    transform: translate(-50%, -50%); border-radius: 999px; background: rgba(255, 255, 255, .09); overflow: visible; }
+  #fill { position: absolute; left: 0; top: 0; height: 100%; width: 0%; min-width: var(--bar-h); border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2)); background-size: var(--bar-w) 100%;
+    box-shadow: 0 0 calc(var(--s) * 14) rgba(124, 92, 255, .55), 0 0 calc(var(--s) * 4) rgba(65, 226, 255, .35);
+    transition: width .35s ease-out; overflow: hidden; }
+  #shine { position: absolute; top: 0; bottom: 0; width: 32%; left: -32%;
+    background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.38), rgba(255,255,255,0));
+    animation: sweep 2.2s linear infinite; }
+  @keyframes sweep { from { left: -32%; } to { left: 100%; } }
+  body.relaunch #bar { display: none; }
+  body.ready #fill { transition: width .45s ease-in; }
+</style></head>
+<body><div id="wallpaper"></div>
+<img id="logo" src="splash/logo-thick.png" alt="kAIrOS by mAIer" draggable="false">
+<div id="bar"><div id="fill"><div id="shine"></div></div></div>
+<script>
+  document.addEventListener("contextmenu", (e) => e.preventDefault(), true);   // [R28] no Chromium menu
+  const KERNEL = "http://localhost:1337/";
+  const Q = new URLSearchParams(location.search);
+  // the progress model, identical to the painter's (kairos-splash.c): 86 % at the expected
+  // time, asymptote 97 %, milestone floors; "x" (0.60) is where this page always starts
+  const P_AT_EXPECTED = 0.86, P_MAX = 0.97, P_X = 0.60, P_KERNEL = 0.90;
+  function curve(t, expected) {
+    const u = t / Math.max(1, expected);
+    return u <= 1 ? P_AT_EXPECTED * u : P_AT_EXPECTED + (P_MAX - P_AT_EXPECTED) * (1 - Math.exp(-(u - 1) * 2));
+  }
+  const boot = Q.get("boot") === "1";
+  const up0 = parseFloat(Q.get("up")) || 0, now0 = parseFloat(Q.get("now")) || Date.now();
+  const expected = Math.min(900, Math.max(10, parseFloat(Q.get("expected")) || 120));
+  let shown = Math.min(P_MAX, Math.max(0, parseFloat(Q.get("p")) || 0)), floor = P_X;
+  const fill = document.getElementById("fill");
+  if (!boot) document.body.classList.add("relaunch");
+  function uptime() { return up0 + (Date.now() - now0) / 1000; }
+  function tick() {
+    const target = Math.max(floor, Math.min(P_MAX, curve(uptime(), expected)));
+    if (target > shown) shown += (target - shown) * 0.25;
+    fill.style.width = (shown * 100).toFixed(2) + "%";
+  }
+  fill.style.width = (shown * 100).toFixed(2) + "%";
+  const ticker = setInterval(tick, 250);
+  // the shell gets the kiosk hint (?screen=&x=&y=&w=&h=) and nothing of this page's own params
+  function shellUrl() {
+    const keep = new URLSearchParams();
+    for (const [k, v] of Q) if (!["boot", "up", "now", "expected", "p", "relaunch"].includes(k)) keep.set(k, v);
+    const qs = keep.toString();
+    return KERNEL + (qs ? "?" + qs : "");
+  }
+  // file:// -> http://localhost: a no-cors fetch resolves (opaque) as soon as the
+  // kernel listens and rejects while it does not — exactly the signal we need.
+  let handing = false;
+  async function poll() {
+    if (handing) return;
+    try {
+      await fetch(KERNEL + "api/status", { mode: "no-cors", cache: "no-store" });
+    } catch (e) { setTimeout(poll, 500); return; }
+    handing = true;
+    clearInterval(ticker);
+    document.body.classList.add("ready");
+    floor = P_KERNEL; shown = 1.0;
+    fill.style.width = "100%";                       // the bar completes, then the desktop
+    setTimeout(() => location.replace(shellUrl()), boot ? 480 : 120);
+  }
+  poll();
+</script></body></html>

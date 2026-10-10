@@ -1,0 +1,26 @@
+[1;36m[testrig][0m GPU passthrough: OFF (boot/service verification only)
+[1;36m[testrig][0m booting VM headless (console -> /images/testrig-console.log)…
+[1;36m[testrig][0m waiting for SSH (root@127.0.0.1:2222, up to 420s)…
+[1;36m[testrig][0m exposing the kAIrOS API to the host (expose-ui.sh -> kairos.service drop-in)…
+  expose-ui: already exposed (kairos listens on 0.0.0.0)
+  expose-ui: token for remote machine-changing calls: /run/kairos/token
+[1;36m[testrig][0m ═══ guest verification ═══
+  [1;32m✔[0m boot (kernel)                6.12.90+deb13.1-amd64
+  [1;32m✔[0m root fs                      /dev/nvme0n1p2 ext4
+  [1;32m✔[0m auto-resize                  108G
+  [1;32m✔[0m ssh host keys                present
+  [1;32m✔[0m kairos.service               active
+  [1;32m✔[0m kairos HTTP :1337            HTTP 200
+  [1;32m✔[0m kairos trust boundary        bind VIBEOS_HOST=0.0.0.0 · token ok
+  [1;32m✔[0m engines match manifests      ok - llama.cpp 4da6337 (2026-09-27), stable-diffusion.cpp 3f8527a (2026-09-27), acestep.cpp daf7644 (2026-09-11)
+  [1;32m✔[0m nvidia module state          via nvidia-load.service (hybrid-safe, before getty): idle
+  [1;32m✔[0m no ordering cycle            0 "ordering cycle" journal line(s)
+  [1;32m✔[0m kAIrOS loader entry          kairos.conf booted: initrd=\kairos\initrd root=PARTUUID=baab6cd6-68d2-4400-aa53-29cf7cc2d3…
+  [1;32m✔[0m failed units                 0 failed unit(s) 
+  [1;32m✔[0m getty@tty1                   active (success 0 )
+  [1;32m✔[0m Xorg on :0                   Xorg up on :0 (1049 /usr/lib/xorg/Xorg :0 -nocursor -background none vt1 -k), attempts: 1
+  [1;32m✔[0m kiosk Chromium               1 kiosk instance(s)
+  [1;32m✔[0m bootlog verdict              verdict PASS (attempt #32): VERDICT: PASS — all checks passed
+[1;36m[testrig][0m ═══ result: 16/16 checks passed ═══
+[1;36m[testrig][0m powering off guest…
+[1;36m[testrig][0m ALL CHECKS PASSED

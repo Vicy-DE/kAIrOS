@@ -1,0 +1,50 @@
+===== X attempt 1  Tue Oct  6 22:00:23 UTC 2026  uptime 94.72s =====
+xauth: (stdin):1:  bad display name "localhost.localdomain:0" in "add" command
+
+
+waiting for X server to begin accepting connections .
+..
+..
+
+X.Org X Server 1.21.1.16
+X Protocol Version 11, Revision 0
+Current Operating System: Linux localhost.localdomain 6.12.90+deb13.1-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.90-2 (2026-05-27) x86_64
+Kernel command line: initrd=\kairos\initrd root=PARTUUID=baab6cd6-68d2-4400-aa53-29cf7cc2d321 rw rootwait quiet loglevel=0 systemd.show_status=false rd.udev.log_level=3 vt.global_cursor_default=0 systemd.getty_auto=0 console=ttyS0,115200 console=tty1
+xorg-server 2:21.1.16-1.3+deb13u2 (https://www.debian.org/support) 
+Current version of pixman: 0.44.0
+	Before reporting problems, check http://wiki.x.org
+	to make sure that you have the latest version.
+Markers: (--) probed, (**) from config file, (==) default setting,
+	(++) from command line, (!!) notice, (II) informational,
+	(WW) warning, (EE) error, (NI) not implemented, (??) unknown.
+(==) Log file: "/home/kairos/.local/share/xorg/Xorg.0.log", Time: Tue Oct  6 22:00:45 2026
+(==) Using config directory: "/etc/X11/xorg.conf.d"
+(==) Using system config directory "/usr/share/X11/xorg.conf.d"
+xf86EnableIO: failed to enable I/O ports 0000-03ff (Operation not permitted)
+xinitrc: started (pid 1223, uptime 166.86s)
+xinitrc: X answers (xset/xsetroot done), openbox launched
+xinitrc: displays: eDP connected primary 1920x1080+0+0 (normal left inverted right x axis y axis) 355mm x 199mm;
+xinitrc: kernel answered on :1337 after 0s
+xinitrc: launching kiosks for: 1920x1080+0+0
+xinitrc: kiosk pids: 1256
+xinitrc: boot animation ends 6s after the kiosk launch
+
+ERROR: openbox-xdg-autostart requires PyXDG to be installed
+[1802:1802:1006/220208.287561:ERROR:media/gpu/vaapi/vaapi_wrapper.cc:1756] vaInitialize failed: unknown libva error
+[1256:1256:1006/220210.859525:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.Properties.GetAll: object_path= /org/freedesktop/UPower/devices/DisplayDevice: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.UPower was not provided by any .service files
+Warning: maxDynamicUniformBuffersPerPipelineLayout artificially reduced from 1000000 to 16 to fit dynamic offset allocation limit.
+Warning: maxDynamicStorageBuffersPerPipelineLayout artificially reduced from 1000000 to 16 to fit dynamic offset allocation limit.
+[2214:2214:1006/220509.912984:ERROR:services/on_device_model/ml/gpu_blocklist.cc:117] Unable to get gpu adapter
+[2214:2225:1006/220509.915353:ERROR:services/on_device_model/ml/gpu_blocklist.cc:117] Unable to get gpu adapter
+xinit: connection to X server lost
+XIO:  fatal IO error 4 (Interrupted system call) on X server ":0"
+
+waiting for X server to shut down [1256:1256:1006/220532.127125:ERROR:content/common/zygote/zygote_communication_linux.cc:291] Failed to send GetTerminationStatus message to zygote
+      after 2881 requests (2881 known processed) with 0 events remaining.
+(II) Server terminated successfully (0). Closing log file.
+..........
+xinit: X server slow to shut down, sending KILL signal
+
+waiting for server to die 
+xinit: unexpected signal 15
+xauth: (argv):1:  bad display name "localhost.localdomain:0" in "remove" command

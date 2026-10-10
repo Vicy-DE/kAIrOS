@@ -1,0 +1,161 @@
+{
+ "base": "http://127.0.0.1:1338",
+ "token_len": 64,
+ "cases": [
+  {
+   "body": {
+    "key": "accent",
+    "value": "blueish"
+   },
+   "status": 400,
+   "error": "accent needs a CSS colour (e.g. #7c5cff, rgb(124,92,255) or a colour name); got 'blueish'",
+   "key": "accent"
+  },
+  {
+   "body": {
+    "key": "accent"
+   },
+   "status": 400,
+   "error": "accent needs a CSS colour (e.g. #7c5cff, rgb(124,92,255) or a colour name); got None",
+   "key": "accent"
+  },
+  {
+   "body": {
+    "key": "image_expand",
+    "value": "maybe"
+   },
+   "status": 400,
+   "error": "image_expand must be one of auto, on, off; got 'maybe'",
+   "key": "image_expand"
+  },
+  {
+   "body": {
+    "key": "llm_model",
+    "value": "turbo"
+   },
+   "status": 400,
+   "error": "llm_model must be one of default, fast; got 'turbo'",
+   "key": "llm_model"
+  },
+  {
+   "body": {
+    "key": "image_steps",
+    "value": "12"
+   },
+   "status": 400,
+   "error": "image_steps must be an integer 1–150 or null (the model's tuned default); got '12'",
+   "key": "image_steps"
+  },
+  {
+   "body": {
+    "os_name": ""
+   },
+   "status": 400,
+   "error": "os_name needs a non-empty text of at most 40 characters; got ''",
+   "key": "os_name"
+  },
+  {
+   "body": {
+    "key": "image_model",
+    "value": "flux"
+   },
+   "status": 400,
+   "error": "image_model must be one of default, classic, qwen, uncensored, chroma; got 'flux'",
+   "key": "image_model"
+  },
+  {
+   "body": {
+    "key": "image_cfg",
+    "value": 99
+   },
+   "status": 400,
+   "error": "image_cfg must be a number 0–30 or null (the model's tuned default); got 99",
+   "key": "image_cfg"
+  }
+ ],
+ "no_token": {
+  "status": 403,
+  "error": "this operation changes the machine: remote callers must send X-Kairos-Token (this boot's token is in /run/kairos/token on the machine)"
+ },
+ "stored_nothing": {
+  "accent": [
+   "#7c5cff",
+   "#7c5cff"
+  ],
+  "image_expand": [
+   "auto",
+   "auto"
+  ],
+  "llm_model": [
+   "default",
+   "default"
+  ],
+  "image_steps": [
+   null,
+   null
+  ],
+  "os_name": [
+   "kAIrOS",
+   "kAIrOS"
+  ],
+  "image_model": [
+   "default",
+   "default"
+  ],
+  "image_cfg": [
+   null,
+   null
+  ]
+ },
+ "good": {
+  "status": 200,
+  "accent": "#7c5cff"
+ },
+ "fast_set": {
+  "status": 200,
+  "llm_model": "fast"
+ },
+ "fast_status": {
+  "llm": "Gemma 4 26B-A4B-it (UD-IQ4_XS, MoE, experts partly in RAM)",
+  "llm_options": {
+   "setting": "fast",
+   "effective": "default",
+   "section": "llm",
+   "fallback": "the fast LLM is an add-on that isn't downloaded — serving the default (vibe.models.download('fast'), 4.68 GB)"
+  }
+ },
+ "models_llm": [
+  {
+   "key": "default",
+   "present": true,
+   "addon": false,
+   "download_gb": 0,
+   "selected": false,
+   "active": true
+  },
+  {
+   "key": "fast",
+   "present": false,
+   "addon": true,
+   "download_gb": 4.68,
+   "selected": true,
+   "active": false
+  }
+ ],
+ "models_llm_setting": {
+  "setting": "fast",
+  "effective": "default",
+  "fallback": "the fast LLM is an add-on that isn't downloaded — serving the default (vibe.models.download('fast'), 4.68 GB)",
+  "modes": [
+   "default",
+   "fast"
+  ],
+  "note": "vibe.settings.set('llm_model', 'fast') switches to the small fast coder LLM (an add-on: vibe.models.download('fast') first); 'default' = the tier's brain"
+ },
+ "back_to_default": {
+  "status": 200,
+  "setting": "default",
+  "effective": "default",
+  "fallback": null
+ }
+}
