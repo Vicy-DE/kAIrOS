@@ -345,9 +345,9 @@ class Kernel:
         shutil.rmtree(self.tmp, ignore_errors=True)
 
 
-async def game_job(ctx, prompt, timeout=200):
+async def game_job(ctx, prompt, timeout=200, **extra):
     s = ctx["session"]
-    async with s.post(f"{BASE}/api/game", json={"prompt": prompt}) as r:
+    async with s.post(f"{BASE}/api/game", json=dict({"prompt": prompt}, **extra)) as r:
         j = await r.json()
     assert "job" in j, j
     t0 = time.time()
@@ -477,7 +477,7 @@ async def t_http_identical(ctx):
 
 @run_test("http_forge_game_failed_evolution_keeps_working_version", ["R77", "R35", "R45", "R7"], needs="http")
 async def t_http_evolution(ctx):
-    """v1 runs; every candidate of the next evolution crashes. main.py is never touched (it is
+    """v1 runs; every candidate of the next evolution (✨ improve: evolve, R82) crashes. main.py is never touched (it is
     written only for a version that passed), the 6 attempts are spent, the attempt goes to
     history/failed-v2.py (+ .log), meta.json keeps version 1 + failed_evolution, the previous
     version is launched and the job says so honestly (fallback, evolution_failed, message)."""
@@ -488,7 +488,7 @@ async def t_http_evolution(ctx):
     gdir = slug_dir(ctx, p)
     v1 = (gdir / "main.py").read_text()
     await stop_game(d1["result"]["pid"])
-    d2 = await game_job(ctx, p, timeout=230)
+    d2 = await game_job(ctx, p, timeout=230, evolve=True)
     r = d2["result"]
     assert d2["status"] == "done" and r["fallback"] is True and r["running"] and r["version"] == 1, d2
     ev = r["evolution_failed"]

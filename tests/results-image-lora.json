@@ -1,5 +1,5 @@
 {
- "at": "2026-10-10 11:40:26",
+ "at": "2026-10-15 13:24:58",
  "tests": {
   "unit_muse_manifest_pins": {
    "reqs": [
@@ -47,7 +47,7 @@
     "R42"
    ],
    "status": "pass",
-   "detail": "sd-cli exec only in ['_sd_cli_each', 'sd_job']; image callers ['\"image\"', '\"video\"', 'kind'] all via render_images/sd_job -> sd_batch"
+   "detail": "sd-cli exec only in ['_sd_cli_each', 'sd_job']; image callers ['\"image\"', '\"video\"', 'kind'] all via render_images/sd_job -> sd_batch; the editor's own sd_batch call"
   },
   "http_image_lora_sd_cli": {
    "reqs": [

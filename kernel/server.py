@@ -3,7 +3,7 @@
 
 Orchestrates local AI engines into an operating system:
   - llama.cpp (llama-server)        -> app/LLM brain (HTML apps, Python games, vibe.ask)
-  - stable-diffusion.cpp (sd-cli)   -> image generation (Krea 2 default; add-ons) + video (Wan 2.2 add-on)
+  - stable-diffusion.cpp (sd-cli)   -> image generation (Muse default; add-ons) + video (Wan 2.2 add-on)
     sd-server (same tree)           -> one loaded image model for a whole batch of pictures
                                        (/api/images, /genimg batches, forge pages); sd-cli = fallback
   - the kiosk X display (:0)        -> generated pygame games open as real windows
@@ -27,6 +27,7 @@ import re
 import secrets
 import shutil
 import signal
+import struct
 import sys
 import time
 import uuid
@@ -47,7 +48,7 @@ import hw
 import jscheck
 import jsfix
 import prompts
-import refusal      # [R86] refusal detection + the minors guard (docs/REFUSAL-FALLBACK-2026-10-09.md)
+import refusal      # [R86] refusal detection + the narrow minors block (docs/REFUSAL-FALLBACK-2026-10-09.md)
 import wm
 from knowledge import Knowledge
 from vfs import VFS, ReadOnlyError
@@ -165,6 +166,53 @@ def engine_env() -> dict:
         # ggml-vulkan hangs when RADV and llvmpipe are both visible: pin the iGPU [R30]
         env.setdefault("GGML_VK_VISIBLE_DEVICES", "0")
     return env
+
+
+# ---- [2026-10-14] a missing engine binary is a clean 503, never an unhandled FileNotFoundError -----------
+# VERIFY 2026-10-10: a desk without the engine set answered POST /api/ask with aiohttp's bare HTTP 500 ("Server
+# got itself in trouble", a FileNotFoundError for bin/llama-server out of create_subprocess_exec). Every exec of
+# an engine checks the binary first (require_engine) and raises EngineMissingError; the generation routes check
+# it up front where the answer is a stream, a job or an HTML page (engine_missing), and engine_missing_middleware
+# turns one that escapes a JSON route into {"error", "engine", "missing": true} with ENGINE_MISSING_STATUS.
+ENGINE_MISSING_STATUS = 503
+ENGINE_ROLE = {"llama-server": "the LLM engine", "sd-cli": "the image engine", "sd-server": "the image engine",
+               "ace-lm": "the music engine", "ace-synth": "the music engine"}
+
+
+class EngineMissingError(RuntimeError):
+    """[2026-10-14] engine `binary` is not installed — the message is a plain sentence for the user"""
+
+    def __init__(self, binary: str, message: str):
+        super().__init__(message)
+        self.binary = binary
+
+
+def engine_missing(binary: str):
+    """None when engine `binary` is installed (an executable file for the selected backend), else the
+    sentence the user gets ("the LLM engine is not installed (llama-server missing in …)")."""
+    p = engine_path(binary)
+    if p.is_file() and os.access(p, os.X_OK):
+        return None
+    return (f"{ENGINE_ROLE.get(binary, 'the ' + binary + ' engine')} is not installed ({binary} missing in "
+            f"{p.parent} — scripts/install-engines.sh builds the engines)")
+
+
+def require_engine(binary: str):
+    """Before exec'ing an engine: EngineMissingError instead of create_subprocess_exec's FileNotFoundError"""
+    why = engine_missing(binary)
+    if why:
+        raise EngineMissingError(binary, why)
+
+
+def image_engine_missing():
+    """None when a picture can be rendered (sd-server or sd-cli installed), else the sentence"""
+    return None if engine_missing("sd-server") is None else engine_missing("sd-cli")
+
+
+def engine_missing_response(binary: str, why: str = None):
+    """The JSON answer of a generation route whose engine is missing"""
+    return web.json_response({"error": why or engine_missing(binary), "engine": binary, "missing": True},
+                             status=ENGINE_MISSING_STATUS)
 
 
 def music_engine_env() -> dict:
@@ -362,7 +410,9 @@ SD_PORT = int(os.environ.get("VIBEOS_SD_PORT", "8082"))         # sd-server, per
 TRANSLATE_PORT = int(os.environ.get("VIBEOS_TRANSLATE_PORT", "8085"))   # the fast MT server (CPU) [R71]
 SD_SERVER_LOAD_TIMEOUT = int(os.environ.get("VIBEOS_SD_LOAD_TIMEOUT", "900"))   # s until it answers (model load)
 SD_SERVER_JOB_TIMEOUT = 1800                                     # s per picture
-# [R76] an image section's `lora` (v7.5: Kroma v0.3 on Krea 2) is applied per step at runtime —
+# [R76] an image section's `lora` (v7.5 shipped Kroma v0.3 on Krea 2; since 2026-10-10 no shipped section
+# carries one — the Muse default needs no LoRA, docs/IMAGE-MODEL-MUSE-2026-10-10.md — the data-driven
+# mechanism stays for add-ons) is applied per step at runtime —
 # sd.cpp's `immediately` merge aborts on a quantised GGUF base (#2083); sd-cli takes it as a
 # <lora:stem:m> prompt tag, sd-server only via the request's "lora" field after GET /sdapi/v1/loras
 SD_LORA_APPLY_MODE = "at_runtime"
@@ -422,6 +472,7 @@ MEDIA_CACHE_MAX = int(float(os.environ.get("VIBEOS_MEDIA_CACHE_GB", "8")) * 1e9)
 DISK_FREE_MIN = int(float(os.environ.get("VIBEOS_DISK_FREE_MIN_MB", "1024")) * 1e6)
 EVICTABLE_DIRS = (FILES_DIR / "images", FILES_DIR / "videos", FILES_DIR / "music", CACHE_DIR / "web")
 EVICT_GRACE_S = 60          # never delete what a running job may still be writing
+_IMAGE_CHAIN_LOCKS = {}     # [R85] root -> asyncio.Lock of a picture's version chain (an edit job holds it; eviction skips it)
 DISK_FULL_ERRNOS = {errno.ENOSPC, errno.EDQUOT, errno.EROFS}
 
 
@@ -449,11 +500,41 @@ def _cache_files():
                         if e.is_file(follow_symlinks=False):
                             st = e.stat(follow_symlinks=False)
                             out.append((st.st_mtime, st.st_size, Path(e.path)))
+                        elif e.name == "versions" and e.is_dir(follow_symlinks=False):
+                            out.extend(_version_chains(Path(e.path)))     # [R85] a picture's versions: one unit each
                     except OSError:
                         pass
         except OSError:
             pass
     return sorted(out)          # oldest first
+
+
+def _version_chains(vdir: Path) -> list:
+    """[R85] the picture version chains under images/versions/ as cache units (newest file's mtime, total size,
+    the chain dir): eviction takes a WHOLE chain (v0 = the original, v1…, versions.json), never one version of it;
+    a chain an edit job is working on (its lock is held) is never a candidate"""
+    out = []
+    try:
+        chains = list(os.scandir(vdir))
+    except OSError:
+        return out
+    for c in chains:
+        try:
+            if not c.is_dir(follow_symlinks=False):
+                continue
+            lock = _IMAGE_CHAIN_LOCKS.get(c.name)
+            if lock is not None and lock.locked():
+                continue
+            newest, size = c.stat(follow_symlinks=False).st_mtime, 0
+            with os.scandir(c.path) as it:
+                for f in it:
+                    if f.is_file(follow_symlinks=False):
+                        st = f.stat(follow_symlinks=False)
+                        newest, size = max(newest, st.st_mtime), size + st.st_size
+            out.append((newest, size, Path(c.path)))
+        except OSError:
+            pass
+    return out
 
 
 def evict_cache(reason: str = "") -> dict:
@@ -471,7 +552,10 @@ def evict_cache(reason: str = "") -> dict:
             if now - mtime < EVICT_GRACE_S:
                 continue
             try:
-                path.unlink()
+                if path.is_dir():                    # [R85] a picture's whole version chain
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
                 total -= size; freed += size; n += 1
             except OSError:
                 pass
@@ -547,8 +631,15 @@ def peer_is_loopback(request) -> bool:
     return ip.is_loopback
 
 
+def sandboxed_caller(request) -> bool:
+    """[review v7.5-2] a request a sandboxed frame sends by itself (a generated app or /web/ page: fetch, sendBeacon, a
+    form) carries Origin: null (its opaque origin) or Sec-Fetch-Site cross-site — on loopback too, since the kiosk
+    Chromium is loopback. The shell's own requests are same-origin; curl and kairos-bootlog send neither header."""
+    return request.headers.get("Origin") == "null" or request.headers.get("Sec-Fetch-Site") in ("cross-site", "same-site")
+
+
 def authorized(request) -> bool:
-    if peer_is_loopback(request):
+    if peer_is_loopback(request) and not sandboxed_caller(request):
         return True
     tok = request.headers.get(TOKEN_HEADER, "")
     return bool(API_TOKEN) and hmac.compare_digest(tok, API_TOKEN)
@@ -686,16 +777,20 @@ LANGUAGES = {"en": "English", "de": "German", "es": "Spanish", "fr": "French",
 TRANSLATION_MODES = ("off", "on")
 TRANSLATION_QUALITY = ("fast", "quality")
 
-# settings alias -> manifest section for the image model choice. [R76, v7.5] default = Krea 2 + the
-# Kroma v0.3 LoRA (uncensored); safe = the stock Krea 2 (same files, safety-tuned, faster); uncensored
-# = the default (the Kroma v0.2 add-on it used to name is retired — a stored setting or an
-# {"uncensored": true} request keeps working). /api/models lists a section once (aliases attached).
+# settings alias -> manifest section for the image model choice. [R76 → Muse, 2026-10-10] default = Muse
+# v3.5 Extended Q4_0 (an uncensored Krea 2 fine-tune, no LoRA, krea-neutral expander); safe = image_safe =
+# the SAME files through the SFW expander (the stock Krea 2 DiT left the image — v7.5 shipped Krea 2 + the
+# Kroma v0.3 LoRA as the default); uncensored = the default (the Kroma v0.2 add-on it used to name is
+# retired — a stored setting or an {"uncensored": true} request keeps working). /api/models lists a
+# section once (aliases attached).
 IMAGE_MODEL_KEYS = {"default": "image", "safe": "image_safe", "classic": "image_classic",
                     "qwen": "image_qwen", "uncensored": "image", "chroma": "image_chroma"}
 # settings alias -> manifest section for the coder LLM choice (llm_fast is an add-on). [R86] "uncensored" =
-# the decensored add-on `llm_uncensored` (the refusal ladder's last rung) as the PRIMARY LLM; not downloaded
+# a tier's `llm_uncensored` add-on section (the refusal ladder's last rung) as the PRIMARY LLM; not downloaded
 # → the default serves, like `fast`. Its download key is the section name (vibe.models.download
 # ('llm_uncensored')): the alias "uncensored" already names the baked image model for downloads [R76].
+# [R86 round 4] the 8/16 GB tiers have no such section any more: their default `llm` IS the uncensored heretic
+# Gemma 4 ("uncensored": true on the section) — llm_modes() then offers default and fast only.
 LLM_MODEL_KEYS = {"default": "llm", "fast": "llm_fast", "uncensored": "llm_uncensored"}
 
 
@@ -797,9 +892,10 @@ def validate_setting(key, value):
 # cleaned like docs/bench/image-2026-09-27/expand.py: think block dropped, last paragraph kept,
 # ( ) [ ] stripped because sd.cpp reads them as A1111 attention weights. An expanded prompt is
 # complete — IMAGE_PROMPT_HINT is not appended to it. Measured 2026-09-28: 2–3 s per prompt.
-# [R76] "krea-neutral" = the v7.5 default's rule set (uncensored model): rule 8 keeps people as
-# requested instead of "assume clothing covers …" (that line re-censored every prompt); "krea" stays
-# the stock (safe) Krea 2's SFW set; an explicit adult request takes "krea-18plus" on either.
+# [R76] "krea-neutral" = the uncensored default's rule set (Muse since 2026-10-10, before that Krea 2 + the
+# Kroma LoRA): rule 8 keeps people as requested instead of "assume clothing covers …" (that line re-censored
+# every prompt); "krea" stays image_safe's SFW set (since Muse the same DiT, SFW prompts — the only guard);
+# an explicit adult request takes "krea-18plus" on either.
 EXPANDERS = {"krea": prompts.KREA_EXPAND_SYSTEM, "krea-neutral": prompts.KREA_EXPAND_SYSTEM_NEUTRAL,
              "krea-18plus": prompts.KREA_EXPAND_SYSTEM_ADULT}
 EXPAND_ADULT = {"krea": "krea-18plus", "krea-neutral": "krea-18plus"}   # the adult variant of a family's expander
@@ -894,35 +990,42 @@ def expander_llm_spec(kind: str, manifest=None, fallback: bool = False) -> dict:
 
 
 # ------------------------------------------------ [R86] the refusal fallback (docs/REFUSAL-FALLBACK-2026-10-09.md)
-# kAIrOS is 18+ without content filters, but the default LLM (Gemma 4) refuses adult requests and the
-# kernel shipped the refusal as the result (owner's test 2026-10-09: a cached "website" reading "I cannot
-# fulfill this request…" with an empty site profile, and a picture rendered FROM the expander's refusal
-# text). Now every user-facing generation goes through llm_generate() / llm_stream(): kernel/refusal.py
-# judges the answer (is_refusal, kind html|text|prompt — precision first: a missed refusal is today's
-# behaviour, a false positive costs a retry and maybe a model swap) and a refusal climbs the LADDER of
-# the tier manifest's top-level "refusal_fallback":
+# kAIrOS is 18+ without content filters, but a censored LLM refuses adult requests and the kernel used to
+# ship the refusal as the result (owner's test 2026-10-09: a cached "website" reading "I cannot fulfill
+# this request…" with an empty site profile, and a picture rendered FROM the expander's refusal text).
+# Every user-facing generation goes through llm_generate() / llm_stream(): kernel/refusal.py judges the
+# answer (is_refusal, kind html|text|prompt — per kind: precision first for text and pages, recall first
+# for an image-prompt expansion) and a refusal climbs the LADDER of the tier manifest's top-level
+# "refusal_fallback":
 #   "preamble"       — the SAME model again with prompts.ADULT_PREAMBLE prepended to the system prompt
-#                      (no model swap; the integrator measures whether Gemma honours it and may reorder
-#                      or drop the rung in the manifest);
-#   "llm_uncensored" — the decensored add-on section (addon: true, the same serve args as `llm`): a
-#                      request on that key swaps the LLM out like llm_fast, the next normal request swaps
-#                      it back. Skipped while its file is absent or EMPTY (v7.5-1 ships no new model
-#                      file — the stick has 2.2 GB free — so on the stick this rung waits for a download).
-# Every rung refused / none available → RefusalError with a plain sentence for the user (never the
-# refusal text, never cached). The image-prompt expander has its own cheap ladder (expand_fallback:
-# "expander_ladder", default the section's baked encoder with the 18+ rules, then the raw prompt). Every
-# fallback is one journal line and /api/status `last_fallback`.
-# THE MINORS GUARD comes first (integrator rule 2026-10-09, priority over the fallback itself):
-# refusal.minor_risk(request) — a sexual term together with a minor/childlike indicator — fails the
-# request with refusal.BLOCK_MESSAGE before any model runs: no rung, no cache, no picture. It is checked
-# again at render_images (before expansion) and at the sd_batch floor, so not even the expander's
-# raw-prompt fallback or an app icon's template renders such a prompt.
+#                      (no model swap);
+#   "llm_uncensored" — the uncensored LLM (uncensored_rung): a tier's `llm_uncensored` add-on section when
+#                      it has one (swapped in like llm_fast; skipped while its file is absent / empty /
+#                      incomplete or after a failed load), else the default `llm` when the manifest flags
+#                      it "uncensored": true — the owner's choice 2026-10-10: the heretic Gemma 4 IS the
+#                      8/16 GB default, so this rung serves the other primaries (fast mode) and is skipped
+#                      when the model that declined is that very model (compared by file).
+# Every rung refused / none available → the request is DECLINED: RefusalError with a plain sentence for
+# the user ("the model declined … — rephrase or ✨ improve"; never the refusal text), nothing cached,
+# nothing rendered, never a 502 (DECLINED_STATUS). The image-prompt expander has its own cheap ladder
+# (expand_fallback: "expander_ladder"); every rung refused → the picture is declined, never rendered from
+# the refusal or the raw prompt. Every fallback is one journal line and /api/status `last_fallback`.
+# THE NARROW MINORS BLOCK (round 4, 2026-10-10 — the owner's redirect; three rounds of a lexical guard
+# never converged): refusal.minor_block(text) fires only on an explicit under-18 age or word together with a
+# sexual term, or a known illegal-content term. It runs at exactly four points — block_check / block_check_primary
+# / block_check_refused: (1) every media render's entry on the user's prompt before anything, the expander
+# included (h_image, h_images, h_genimg, render_images, h_video, h_music, MM.music_job); (2) the final image /
+# video prompt right before sd renders it (MM.sd_batch, MM.sd_job for video); (3) a text request the primary
+# REFUSED, once before any rung (llm_generate / llm_stream); (4) a text request whose PRIMARY is an uncensored
+# model (the manifest flag or the llm_model setting), at the entry. A censored primary's answered request is
+# never checked; system prompts are never checked. A hit: BLOCK_MESSAGE as a 400, no model call, nothing cached,
+# nothing rendered.
 class RefusalError(RuntimeError):
-    """[R86] every rung declined (or none was available) — the message is for the user"""
+    """[R86] every rung declined (or none was available) — the request is declined; the message is for the user"""
 
 
-class MinorRiskError(RuntimeError):
-    """[R86] the minors guard blocked the request before any model ran"""
+class MinorBlockError(RuntimeError):
+    """[R86 round 4] the narrow minors block refused the request — no model ran, nothing is cached or rendered"""
 
 
 REFUSALS = {"last": None, "count": 0, "blocked": 0}   # /api/status `last_fallback` + `refusal_fallback`
@@ -934,9 +1037,58 @@ STREAM_DECIDE_CHARS = 400          # llm_stream buffers this much before the ear
 STREAM_VISIBLE_CHARS = 40          # [R86 r2, S2] … or, once a document tag is in, this much VISIBLE text
 UNCENSORED_RETRY_S = 600           # [R86 r2, N4] a failed load of the uncensored LLM is not retried sooner
 UNCENSORED_FAIL = {"at": 0.0, "error": ""}     # [R86 r2, N4] the negative cache of that load
-QUARANTINE_DIR = CACHE_DIR / "quarantine"      # [R86 r2, S4] blocked cached content goes here — no route serves it
 EXPANDER_DECLINED = "the prompt writer declined this picture on every rung — nothing was rendered"   # [R86 r3, X2]
-_APP_GUARD = {}                                # [R86 r3, Y3] (app_id, prompt) → minor_risk result, for the menu / status polls
+DECLINED_STATUS = 422                          # [R86 round 4] a declined request is never a 502 (an engine failure)
+
+
+# ---- [2026-10-14] a generation cut at the length limit is never cached ------------------------------------------
+# R86's GPU check: one web page ran 15 783 tokens / 456 s into the 16k context, and the truncated 1 KB result was
+# cached and served from then on. MM.chat / MM.chat_stream report how a generation ended (`gen_info`, see
+# finish_info): llama-server's finish_reason "length" = the reply hit max_tokens or the slot's context. A page, an
+# app (generate / evolve / modify / repair) or a game whose text came from such a generation — or from a repair of
+# one: it repairs a stump (R43) — is served for THIS request with a note that it was cut off, and is never written
+# to the cache (cache/web + the site profile, cache/apps/<id>/app.html, games/<slug>/main.py): ✨ improve, a reload
+# or the next summon generates a fresh one. One journal line per cut result (log_length_cut).
+def finish_info(finish_reason, data: dict, max_tokens, ctx=None, deltas=None) -> dict:
+    """How one generation ended -> {"finish", "tokens", "length"}. `length` is True on finish_reason "length";
+    a reply without any finish_reason (an older server, a stream that just ended) counts as cut when its
+    completion tokens (usage / timings, else the number of streamed deltas) reached max_tokens, or prompt +
+    completion reached the slot's context `ctx`."""
+    data = data if isinstance(data, dict) else {}
+    usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+    timings = data.get("timings") if isinstance(data.get("timings"), dict) else {}
+    tokens = usage.get("completion_tokens") or timings.get("predicted_n") or deltas
+    prompt_n = usage.get("prompt_tokens") or timings.get("prompt_n") or 0
+    length = finish_reason == "length"
+    if not finish_reason and isinstance(tokens, int):
+        length = bool((max_tokens and tokens >= max_tokens) or (ctx and prompt_n + tokens >= ctx))
+    return {"finish": finish_reason, "tokens": tokens, "length": bool(length)}
+
+
+def length_cut(gen_info) -> bool:
+    return isinstance(gen_info, dict) and bool(gen_info.get("length"))
+
+
+def length_note(gen_info) -> str:
+    """the sentence the user gets with a cut result"""
+    t = gen_info.get("tokens") if isinstance(gen_info, dict) else None
+    return (f"cut off: the model hit its length limit{f' ({t} tokens)' if t else ''} before it finished — "
+            "shown this once and not saved; ✨ improve or try again for a fresh one")
+
+
+def log_length_cut(what: str, label: str, gen_info) -> None:
+    gi = gen_info if isinstance(gen_info, dict) else {}
+    print(f"[kernel] length limit: {what} '{str(label)[:60]}' stopped at the length limit (finish_reason "
+          f"{gi.get('finish')}, {gi.get('tokens')} tokens) — served once with a note, not cached", flush=True)
+
+
+def length_banner(html: str, note: str) -> str:
+    """the cut page/app as served: a one-line notice at the top of its body (never written to the cache)"""
+    bar = ('<div class="kairos-length-cut" style="position:sticky;top:0;z-index:2147483647;background:#3a2a00;'
+           'color:#ffd479;font:13px system-ui;padding:6px 12px;border-bottom:1px solid #a67c00">&#9986; '
+           + html_escape(note) + "</div>")
+    m = re.search(r"<body[^>]*>", html, re.I)
+    return html[:m.end()] + bar + html[m.end():] if m else bar + html
 
 
 def _ladder(field: str, default: tuple, allowed: tuple) -> list:
@@ -957,118 +1109,91 @@ def expander_ladder() -> list:
     return _ladder("expander_ladder", EXPANDER_LADDER_DEFAULT, EXPANDER_RUNGS)
 
 
-def uncensored_status() -> tuple:
-    """(usable, reason): the llm_uncensored section exists, its GGUF is downloaded, not empty and — when the
-    manifest says how big it is — COMPLETE (aria2c's exit precedes the sha256 check by about a minute; a
-    file cut short is not a model) [R86 r2, N4]; and its last load did not fail within UNCENSORED_RETRY_S
-    (the negative cache, [N4])"""
+def uncensored_rung() -> tuple:
+    """[R86 round 4] (section, reason): the model the ladder's "llm_uncensored" rung runs on — a tier's own
+    `llm_uncensored` add-on section when it has one (downloaded, not empty and — when the manifest says how
+    big it is — COMPLETE: aria2c's exit precedes the sha256 check by about a minute, a file cut short is not
+    a model [R86 r2, N4]), else the default `llm` when the manifest flags it "uncensored": true (the heretic
+    Gemma 4 is the 8/16 GB default since 2026-10-10 — the rung then serves the other primaries, fast mode);
+    (None, why) when neither exists or the last load failed within UNCENSORED_RETRY_S (the negative cache)"""
     spec = MANIFEST.get("llm_uncensored")
-    if not isinstance(spec, dict) or "file" not in spec:
-        return False, "this tier has no uncensored LLM section"
-    if not section_present(spec):
-        return False, "the uncensored LLM is not downloaded"
-    try:
-        size = (MODELS_DIR / spec["file"]).stat().st_size
-    except OSError as e:
-        return False, f"the uncensored LLM file is unreadable ({e.strerror})"
-    if size == 0:
-        return False, "the uncensored LLM file is empty"
-    want = spec.get("size_bytes")
-    if isinstance(want, int) and want > 0 and size != want:
-        return False, f"the uncensored LLM file is incomplete ({size} of {want} bytes)"
+    if isinstance(spec, dict) and "file" in spec:
+        if not section_present(spec):
+            return None, "the uncensored LLM is not downloaded"
+        try:
+            size = (MODELS_DIR / spec["file"]).stat().st_size
+        except OSError as e:
+            return None, f"the uncensored LLM file is unreadable ({e.strerror})"
+        if size == 0:
+            return None, "the uncensored LLM file is empty"
+        want = spec.get("size_bytes")
+        if isinstance(want, int) and want > 0 and size != want:
+            return None, f"the uncensored LLM file is incomplete ({size} of {want} bytes)"
+        section = "llm_uncensored"
+    elif isinstance(MANIFEST.get("llm"), dict) and MANIFEST["llm"].get("uncensored"):
+        section = "llm"
+    else:
+        return None, "this tier has no uncensored LLM section"
     ago = time.time() - UNCENSORED_FAIL["at"]
     if UNCENSORED_FAIL["at"] and ago < UNCENSORED_RETRY_S:
-        return False, (f"the uncensored LLM failed to load {int(ago)} s ago ({UNCENSORED_FAIL['error'][:80]}) — "
-                       f"retried in {int(UNCENSORED_RETRY_S - ago)} s")
-    return True, None
+        return None, (f"the uncensored LLM failed to load {int(ago)} s ago ({UNCENSORED_FAIL['error'][:80]}) — "
+                      f"retried in {int(UNCENSORED_RETRY_S - ago)} s")
+    return section, None
 
 
-def _uncensored_failed(e: BaseException) -> None:
+def uncensored_status() -> tuple:
+    """(usable, reason) of the uncensored rung — /api/status, llm_choice"""
+    section, why = uncensored_rung()
+    return section is not None, why
+
+
+def _uncensored_failed(e: BaseException, section: str = "llm_uncensored") -> None:
     """[R86 r2, N4] a load of the uncensored LLM that failed (OOM, a corrupt file, an incompatible quant) is
     not retried on every refused request — up to LLAMA_LOAD_TIMEOUT s each time: the rung is skipped for
     UNCENSORED_RETRY_S. A per-request error while that server runs (ready) is not a load failure."""
-    if MM.llama_model_key == "llm_uncensored" and MM.llama_ready:
+    if MM.llama_model_key == section and MM.llama_ready:
         return
     UNCENSORED_FAIL.update(at=time.time(), error=f"{type(e).__name__}: {str(e)[:120]}")
     print(f"[kernel] the uncensored LLM failed to load: {str(e)[:160]} — the rung is skipped for "
           f"{UNCENSORED_RETRY_S} s", flush=True)
 
 
-def guard_request(kind: str, request) -> None:
-    """[R86] the minors guard on the user's own words: MinorRiskError before anything runs"""
-    risk, why = refusal.minor_risk(request)
-    if risk:
+def block_check(kind: str, request, label: str = "", check=None) -> None:
+    """[R86 round 4] the narrow minors block (refusal.minor_block) at one of its four points: a hit counts,
+    journals one line and raises MinorBlockError — no model call, nothing cached, nothing rendered. `check`
+    [review v7.5-2]: refusal.minor_age for a picture edit (the picture is the request's other half)."""
+    hit, why = (check or refusal.minor_block)(request)
+    if hit:
         REFUSALS["blocked"] += 1
-        print(f"[kernel] blocked (minor-risk: {why}) on {kind}", flush=True)
-        raise MinorRiskError(refusal.BLOCK_MESSAGE)
+        print(f"[kernel] blocked (minors: {why}) on {kind} '{(label or refusal._as_text(request))[:60]}'", flush=True)
+        raise MinorBlockError(refusal.BLOCK_MESSAGE)
 
 
-async def guard_request_en(kind: str, request) -> None:
-    """[R86 r2, B1] the guard on the user's words AND on their English — the translation hop the image /
-    video / music / knowledge paths take while the translation layer is on (a pair hidden in the OS
-    language is a pair once it is English; the MT answer is cached, so the hop costs nothing twice).
-    No MT call while the layer is off."""
-    guard_request(kind, request)
+def primary_uncensored(key: str = "llm") -> bool:
+    """[R86 round 4, check point 4] the model that answers `key` first is an uncensored one: the served section
+    is `llm_uncensored`, or carries "uncensored": true (the manifest flag on the 8/16 GB default, or the
+    llm_model setting choosing such a model)"""
+    section = _served_name(key)
+    spec = MANIFEST.get(section)
+    return section == "llm_uncensored" or (isinstance(spec, dict) and bool(spec.get("uncensored")))
+
+
+def block_check_primary(kind: str, request, key: str = "llm", label: str = "") -> None:
+    """[R86 round 4, check point 4] an uncensored PRIMARY: the request is checked at the entry (milliseconds,
+    no model call); a request a censored primary answers is never checked here"""
+    if primary_uncensored(key):
+        block_check(kind, request, label)
+
+
+async def block_check_refused(kind: str, request, label: str = "") -> None:
+    """[R86 round 4, check point 3] the primary refused: the request is checked once before any rung — as
+    typed, and (translation layer on) its cached English hop: the one MT call the block makes, on refused
+    requests only, so a pair hidden in the OS language is a pair once it is English"""
+    block_check(kind, request, label)
     if isinstance(request, str) and request.strip() and translation_active():
         english = await english_text(request)
         if english != request:
-            guard_request(kind, english)
-
-
-def guard_answer(kind: str, text: str, label: str = "") -> None:
-    """[R86 r2, B1 safety net] a REFUSAL that itself names minors / children / "appears underage" is the
-    strongest evidence the request was about minors although the guard let it through: the ladder stops
-    there — MinorRiskError, no further rung, nothing rendered, nothing cached."""
-    cites, why = refusal.cites_minors(text)
-    if cites:
-        REFUSALS["blocked"] += 1
-        print(f"[kernel] blocked (minor-risk: {why}) on {kind} '{(label or '')[:60]}'", flush=True)
-        raise MinorRiskError(refusal.BLOCK_MESSAGE)
-
-
-def quarantine(path: Path, why: str, what: str) -> bool:
-    """[R86 r2, S4] content the guard would not create today — an app, an icon, a page, a /genimg picture
-    cached before R86 (or before the guard knew the form) — is moved out of every served directory into
-    CACHE_DIR/quarantine/<what>/: not deleted (the owner decides), but not listed, not mounted, not served.
-    -> True when something was moved."""
-    try:
-        if not path.exists():
-            return False
-        dest = QUARANTINE_DIR / what / path.name
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        if dest.exists():
-            shutil.rmtree(dest) if dest.is_dir() else dest.unlink()
-        shutil.move(str(path), str(dest))
-    except OSError as e:
-        print(f"[kernel] WARN quarantine of {path} failed: {e}", flush=True)
-        return False
-    REFUSALS["blocked"] += 1
-    print(f"[kernel] quarantined {what} {path.name!r} (minor-risk: {why})", flush=True)
-    return True
-
-
-def quarantine_app(app_id: str, why: str) -> None:
-    """[R86 r2, S4] the app directory (code, meta, history) and its launcher icon"""
-    quarantine(APPS_DIR / app_id, why, "apps")
-    quarantine(FILES_DIR / "icons" / f"{app_id}.png", why, "icons")
-
-
-def app_prompt_blocked(app_id: str, prompt, move: bool = False) -> bool:
-    """[R86 r2 S4 / r3 Y3] an app whose prompt the guard blocks today is HIDDEN from the menu, /api/status and
-    the host page; it is MOVED to the quarantine only on a summon (`move`, the owner's explicit action) — a
-    listing never moves an app (the review planted "naked mole rat facts for kids" and lost it to a GET). The
-    real desk case: cache/apps/cencored-hentai-picture-of-small-titted-girl-and/ with its rendered icon. The
-    verdict is cached per (id, prompt): the menu and the status bar poll every few seconds."""
-    key = (app_id, str(prompt)[:300])
-    risk = _APP_GUARD.get(key)
-    if risk is None:
-        risk = refusal.minor_risk(prompt)
-        if len(_APP_GUARD) > 1024:
-            _APP_GUARD.clear()
-        _APP_GUARD[key] = risk
-    if risk[0] and move:
-        quarantine_app(app_id, risk[1])
-    return risk[0]
+            block_check(kind, english, label)
 
 
 def note_fallback(kind: str, frm: str, to: str, reason: str, label: str):
@@ -1082,7 +1207,8 @@ def note_fallback(kind: str, frm: str, to: str, reason: str, label: str):
 def rung_name(rung: str) -> str:
     """what the user is told the retry runs on"""
     if rung == "llm_uncensored":
-        return short_model_name((MANIFEST.get("llm_uncensored") or {}).get("name") or "the uncensored LLM")
+        section = uncensored_rung()[0]
+        return short_model_name((MANIFEST.get(section) or {}).get("name") or "the uncensored LLM") if section else "the uncensored LLM"
     if rung == "preamble":
         return "the same model with the 18+ system prompt"
     if rung == "encoder":
@@ -1117,20 +1243,41 @@ def uncensored_system(system, rkey: str):
     """[R86 r2, B2] every request the llm_uncensored section serves carries prompts.ADULT_PREAMBLE: its
     "never minors or anyone who looks underage, never real identifiable persons, never non-consensual
     acts" sentence is the kernel's only such instruction, and the decensored model is the one that would
-    comply without it. Applied at the hold (MM.chat / chat_stream), so it covers the ladder's rung AND
-    llm_model=uncensored as the primary; idempotent (the rung's own prefix is the same text); None (the
-    MT hop's bare user turn) stays None."""
-    if rkey == "llm_uncensored" and isinstance(system, str) and not system.startswith(prompts.ADULT_PREAMBLE):
-        return prompts.ADULT_PREAMBLE + system
+    comply without it. [R86 r4b, S5] every request a FLAGGED section serves ("uncensored": true — the
+    heretic default on the stick, and an llm_model choice that resolves to it) carries the one limits line
+    prompts.UNCENSORED_LIMITS at the END of its system prompt (never minors or anyone who looks underage,
+    never sexual content about real identifiable people — deliberately not "non-consensual": the owner's
+    call, not a safety floor); a system prompt that starts with ADULT_PREAMBLE (the ladder's rung) states
+    the same limits already and gets no second line. Applied at the hold (MM.chat / chat_stream), so it
+    covers the ladder's rung AND the primary, before chat_payload adds the translation layer's language
+    line; idempotent; None (the MT hop's bare user turn) stays None; the user's text is never touched."""
+    if not isinstance(system, str):
+        return system
+    if rkey == "llm_uncensored":
+        return system if system.startswith(prompts.ADULT_PREAMBLE) else prompts.ADULT_PREAMBLE + system
+    spec = MANIFEST.get(rkey)
+    if isinstance(spec, dict) and spec.get("uncensored") and not system.startswith(prompts.ADULT_PREAMBLE) \
+            and not system.rstrip().endswith(prompts.UNCENSORED_LIMITS):
+        return system.rstrip() + "\n\n" + prompts.UNCENSORED_LIMITS
     return system
+
+
+def _same_model(a: str, b: str) -> bool:
+    """two manifest sections serve the same GGUF (the heretic as `llm` and as a tier's `llm_uncensored`)"""
+    if a == b:
+        return True
+    sa, sb = MANIFEST.get(a), MANIFEST.get(b)
+    return isinstance(sa, dict) and isinstance(sb, dict) and "file" in sa and sa.get("file") == sb.get("file")
 
 
 def rung_plan(key: str, rungs=None) -> tuple:
     """[R86] the attempts after a refusal on `key`: ([(rung, chat key, system prefix)], [why a rung
-    cannot run]). The uncensored rung is skipped when it IS the model that declined (llm_model
-    "uncensored") or when its file is absent/empty/incomplete or its last load failed [N4]; a caller's
-    `rungs` subset (vision: ("preamble",)) never exceeds the manifest's ladder — `ladder: []` is off for
-    everyone [R86 r2, N4]. The uncensored rung carries ADULT_PREAMBLE too [R86 r2, B2]."""
+    cannot run]). The uncensored rung (uncensored_rung: a tier's `llm_uncensored` section, else the default
+    `llm` when flagged uncensored — chat key "llm_default", which bypasses the llm_model setting) is skipped
+    when it IS the model that declined (the same section, or the same file) or when its file is
+    absent/empty/incomplete or its last load failed [N4]; a caller's `rungs` subset (vision: ("preamble",))
+    never exceeds the manifest's ladder — `ladder: []` is off for everyone [R86 r2, N4]. The uncensored rung
+    carries ADULT_PREAMBLE too [R86 r2, B2]."""
     plan, skipped = [], []
     served = _served_name(key)
     ladder = refusal_ladder()
@@ -1140,14 +1287,13 @@ def rung_plan(key: str, rungs=None) -> tuple:
         if rung == "preamble":
             plan.append(("preamble", key, prompts.ADULT_PREAMBLE))
         elif rung == "llm_uncensored":
-            if served == "llm_uncensored":
-                skipped.append("the uncensored LLM was the model that declined")
-                continue
-            ok, why = uncensored_status()
-            if ok:
-                plan.append(("llm_uncensored", "llm_uncensored", prompts.ADULT_PREAMBLE))
-            else:
+            section, why = uncensored_rung()
+            if section is None:
                 skipped.append(why)
+            elif _same_model(section, served):
+                skipped.append("the uncensored LLM is the model that declined")
+            else:
+                plan.append(("llm_uncensored", "llm_default" if section == "llm" else section, prompts.ADULT_PREAMBLE))
     return plan, skipped
 
 
@@ -1184,12 +1330,13 @@ def refusal_error(ran: list, skipped: list) -> RefusalError:
         why = "no uncensored fallback is installed — vibe.models.download('llm_uncensored')"
     elif any("failed to load" in s for s in skipped):
         why = next(s for s in skipped if "failed to load" in s)
+    tail = " — rephrase the request, or ✨ improve the result"          # [R86 round 4] declined, never a 502
     if why:
         if ran:
-            return RefusalError(f"the model declined this request (also with the 18+ system prompt) and {why}")
-        return RefusalError(f"the model declined this request and {why}")
+            return RefusalError(f"the model declined this request (also with the 18+ system prompt) and {why}{tail}")
+        return RefusalError(f"the model declined this request and {why}{tail}")
     names = ", ".join(["the model"] + [rung_name(r) for r in ran])
-    return RefusalError(f"the model declined this request on every available model ({names})")
+    return RefusalError(f"the model declined this request on every available model ({names}){tail}")
 
 
 def _exhausted(kind: str, label: str, ran: list, skipped: list, text: str) -> RefusalError:
@@ -1199,16 +1346,20 @@ def _exhausted(kind: str, label: str, ran: list, skipped: list, text: str) -> Re
 
 
 async def llm_generate(system, messages, *, kind: str = "text", label: str = "", key: str = "llm",
-                       request=None, rungs=None, sticky=None, on_fallback=None, **chat) -> str:
+                       request=None, rungs=None, sticky=None, on_fallback=None, gen_info=None, **chat) -> str:
     """[R86] MM.chat with the refusal ladder: the answer of `key` is judged (refusal.is_refusal, `kind`
     html|text|prompt), a refusal is retried rung by rung (rung_plan) and the first real answer is
     returned. `request` = the user's own words (the minors guard runs on them before anything
     starts; default: the last user turn), `label` = the journal's short name of the generation,
     `rungs` = a caller's subset of the ladder (vision passes ("preamble",): a text-only fallback
-    cannot look at pictures), `sticky` = the request's shared rung memory [S5]. A refusal that names
-    minors stops the ladder [B1]. Raises MinorRiskError / RefusalError; engine errors pass through."""
+    cannot look at pictures), `sticky` = the request's shared rung memory [S5]. [R86 round 4] the narrow
+    minors block runs here at two of its four points: at the entry when the primary is an uncensored model
+    (check point 4), and once on a request the primary refused, before any rung (check point 3). Raises
+    MinorBlockError / RefusalError; engine errors pass through. `gen_info` (a dict) receives how the answer
+    that is returned ended (finish_info — the length limit, 2026-10-14)."""
     label = label or _user_text(messages)[:60]
-    guard_request(kind, request if request is not None else _user_text(messages))
+    req = request if request is not None else _user_text(messages)
+    block_check_primary(kind, req, key, label)                        # [R86 round 4, check point 4]
     attempts, skipped, started = _attempts(key, rungs, sticky)
     if started:
         print(f"[kernel] {kind} '{label[:60]}' starts on {started} (the rung that answered this request)", flush=True)
@@ -1218,17 +1369,23 @@ async def llm_generate(system, messages, *, kind: str = "text", label: str = "",
             note_fallback(kind, frm, rung, why, label)
             if on_fallback:                      # the app route reports the spec's climb as its `refusal` event [S5]
                 await on_fallback(frm, rung, why)
+        got = {}
         try:
-            text = await MM.chat(_with_prefix(system, prefix), messages, key=rkey, **chat)
+            text = await MM.chat(_with_prefix(system, prefix), messages, key=rkey, gen_info=got, **chat)
         except Exception as e:
-            if rung == "llm_uncensored" or _served_name(rkey) == "llm_uncensored":   # [N4; r3 Z1] the rung OR the primary
-                _uncensored_failed(e)
+            if (rung == "llm_uncensored" or _served_name(rkey) == "llm_uncensored") \
+                    and not isinstance(e, EngineMissingError):   # [N4; r3 Z1] the rung OR the primary (a missing engine is no failed load)
+                _uncensored_failed(e, _served_name(rkey))
             raise
         hit, why = refusal.is_refusal(text, kind)
         if not hit:
             _remember(sticky, rung)
+            if isinstance(gen_info, dict):
+                gen_info.clear()
+                gen_info.update(got)
             return text
-        guard_answer(kind, text, label)
+        if rung is None:
+            await block_check_refused(kind, req, label)                  # [R86 round 4, check point 3] no rung after a hit
         if rung:
             ran.append(rung)
             frm = rung
@@ -1248,7 +1405,7 @@ def _stream_decidable(text: str) -> bool:
 
 
 async def llm_stream(system, messages, *, kind: str = "html", label: str = "", key: str = "llm",
-                     request=None, rungs=None, on_fallback=None, sticky=None, **chat):
+                     request=None, rungs=None, on_fallback=None, sticky=None, gen_info=None, **chat):
     """[R86] MM.chat_stream with the refusal ladder — an async generator of text deltas, consumed ONLY
     through contextlib.aclosing() (it holds MM.chat_stream's GPU slot across yields, see there). The
     first STREAM_DECIDE_CHARS characters — or fewer: a document with visible text in it, or the whole
@@ -1257,9 +1414,13 @@ async def llm_stream(system, messages, *, kind: str = "html", label: str = "", k
     the next rung starts: `on_fallback(from, to, reason)` is awaited first — the app route turns it
     into the `refusal` SSE event so the shell resets its code view. [R86 r2, S2] the WHOLE document is
     judged again when the stream ends: a refusal that hid behind a long <head> or a preface restarts on
-    the next rung the same way (the deltas already shown are withdrawn by that event). `sticky` [S5]."""
+    the next rung the same way (the deltas already shown are withdrawn by that event). `sticky` [S5].
+    [R86 round 4] the narrow minors block: check point 4 at the entry (an uncensored primary), check
+    point 3 once after the primary's refusal, before any rung. `gen_info` (a dict) receives how the stream
+    that was delivered ended (finish_info — the length limit, 2026-10-14)."""
     label = label or _user_text(messages)[:60]
-    guard_request(kind, request if request is not None else _user_text(messages))
+    req = request if request is not None else _user_text(messages)
+    block_check_primary(kind, req, key, label)                        # [R86 round 4, check point 4]
     attempts, skipped, started = _attempts(key, rungs, sticky)
     if started:
         print(f"[kernel] {kind} '{label[:60]}' starts on {started} (the rung that answered this request)", flush=True)
@@ -1269,9 +1430,10 @@ async def llm_stream(system, messages, *, kind: str = "html", label: str = "", k
             note_fallback(kind, frm, rung, why, label)
             if on_fallback:
                 await on_fallback(frm, rung, why)
-        buf, full, decided, refused = [], [], False, False
+        buf, full, decided, refused, got = [], [], False, False, {}
         try:
-            async with contextlib.aclosing(MM.chat_stream(_with_prefix(system, prefix), messages, key=rkey, **chat)) as gen:
+            async with contextlib.aclosing(MM.chat_stream(_with_prefix(system, prefix), messages, key=rkey,
+                                                          gen_info=got, **chat)) as gen:
                 async for delta in gen:
                     full.append(delta)
                     if decided:
@@ -1288,8 +1450,9 @@ async def llm_stream(system, messages, *, kind: str = "html", label: str = "", k
                             yield d
                         buf = []
         except Exception as e:
-            if rung == "llm_uncensored" or _served_name(rkey) == "llm_uncensored":   # [N4; r3 Z1]
-                _uncensored_failed(e)
+            if (rung == "llm_uncensored" or _served_name(rkey) == "llm_uncensored") \
+                    and not isinstance(e, EngineMissingError):   # [N4; r3 Z1]
+                _uncensored_failed(e, _served_name(rkey))
             raise
         whole = "".join(full)
         if not refused:
@@ -1299,8 +1462,12 @@ async def llm_stream(system, messages, *, kind: str = "html", label: str = "", k
                     yield d
         if not refused:
             _remember(sticky, rung)
+            if isinstance(gen_info, dict):
+                gen_info.clear()
+                gen_info.update(got)
             return
-        guard_answer(kind, whole, label)
+        if rung is None:
+            await block_check_refused(kind, req, label)                  # [R86 round 4, check point 3]
         if rung:
             ran.append(rung)
             frm = rung
@@ -1315,8 +1482,8 @@ async def expand_fallback(kind: str, name: str, raw: str, key: str, why: str, en
     image_expander=encoder and no such file it is the very server that refused, retried with the 18+
     rules) — the cheap fallback the integrator asked for, never the 14 GB uncensored LLM for a
     picture. -> (clean text, "llm"|"encoder") or ("", None): the caller renders the RAW prompt then
-    (with IMAGE_PROMPT_HINT, as on an engine error) — never the refusal. [R86 r2, B1] a refusal on any
-    rung that names minors raises MinorRiskError: the picture is not rendered at all."""
+    (with IMAGE_PROMPT_HINT, as on an engine error) — never the refusal. [R86 round 4] the user's
+    prompt met the minors block at the media entry already; the final prompt meets it at the sd floor."""
     adult = EXPAND_ADULT.get(name, name)
     frm = _served_name(key)
     for rung in expander_ladder():
@@ -1334,9 +1501,7 @@ async def expand_fallback(kind: str, name: str, raw: str, key: str, why: str, en
             print(f"[kernel] expander fallback ({rung}) failed: {str(e)[:120]}", flush=True)
             frm = rung
             continue
-        hit, why = refusal.is_refusal(answer, "prompt")
-        if hit:
-            guard_answer("prompt", answer, raw)
+        hit, why = refusal.is_expansion_refusal(answer)
         text = "" if hit else clean_expansion(answer)
         if len(text) >= 20:
             return text, model
@@ -1374,9 +1539,8 @@ async def expand_prompts(kind: str, raw_prompts: list, adult: bool = False, sett
                 answer = await MM.chat(system, [{"role": "user", "content": raw[:EXPAND_PROMPT_MAX]}],
                                        key=key, max_tokens=EXPAND_MAX_TOKENS,
                                        temperature=EXPAND_SAMPLING["temperature"], sampling=EXPAND_SAMPLING)
-                hit, why = refusal.is_refusal(answer, "prompt")      # [R86] Gemma: "I cannot fulfill this request…"
+                hit, why = refusal.is_expansion_refusal(answer)      # [R86] Gemma: "I cannot fulfill this request…"
                 if hit:                                              # … was rendered as the picture's prompt before
-                    guard_answer("prompt", answer, raw)              # [R86 r2, B1] a refusal naming minors: not rendered
                     text, fb_model = await expand_fallback(kind, name, raw, key, why, english)
                     if fb_model == "refused":                        # [R86 r3, X2] every rung refused: the item is declined,
                         item.update(prompt=raw, declined=True, error=EXPANDER_DECLINED)   # never rendered from the raw prompt
@@ -1389,8 +1553,6 @@ async def expand_prompts(kind: str, raw_prompts: list, adult: bool = False, sett
                     item.update(prompt=text, expanded=True)
                 else:
                     print(f"[kernel] expander ({name}) gave nothing usable for: {raw[:60]}", flush=True)
-            except MinorRiskError:                    # [R86 r2, B1] the refusal named minors: the item is blocked, not rendered
-                item.update(prompt=raw, blocked=True, error=refusal.BLOCK_MESSAGE)
             except Exception as e:                    # the picture still renders, from the raw prompt
                 print(f"[kernel] expander ({name}) failed, rendering the raw prompt: {str(e)[:120]}", flush=True)
         return item
@@ -1537,22 +1699,28 @@ def prompt_char_budget(system: str) -> int:
     return max(4000, (llm_ctx() - OUT_RESERVE_TOKENS) * CHARS_PER_TOKEN - len(system))
 
 
-async def repair_html(html: str, problems: list, max_rounds: int = 2, purpose: str = "", sticky=None) -> str:
+async def repair_html(html: str, problems: list, max_rounds: int = 2, purpose: str = "", sticky=None,
+                      gen_info=None) -> str:
     """Ask the LLM to fix structural/runtime problems until validate_html is clean. `sticky` [R86 r2, S5]:
-    the request's rung memory — a repair starts on the rung that wrote the document."""
+    the request's rung memory — a repair starts on the rung that wrote the document. `gen_info` (a dict,
+    2026-10-14): its "length" says the incoming document is cut (or derived from a cut one); a round whose
+    reply hit the length limit sets it — every round repairs the previous reply, so the cut carries on."""
     for _ in range(max_rounds):
         cap = prompt_char_budget(prompts.HTML_FIX_SYSTEM) - 400 - len(purpose)
         msg = ((f"PURPOSE: {purpose}\n\n" if purpose else "")
                + "DOCUMENT HTML:\n" + html[:cap] + "\n\nPROBLEMS TO FIX:\n"
                + "\n".join(f"- {p}" for p in problems))
+        got = {}
         try:   # [R86] a repair reply that is a refusal is never the document: the round is skipped
             html = strip_fences(await llm_generate(prompts.HTML_FIX_SYSTEM,
                                                    [{"role": "user", "content": msg}], kind="html",
                                                    label=f"repair: {purpose[:40]}", request=purpose, sticky=sticky,
-                                                   temperature=0.4), "html")
+                                                   gen_info=got, temperature=0.4), "html")
         except RefusalError as e:
             print(f"[kernel] repair round skipped — {e}", flush=True)
             break
+        if isinstance(gen_info, dict) and length_cut(got) and not length_cut(gen_info):
+            gen_info.update(got)                # [2026-10-14] the document is now a cut one
         problems = validate_html(html)
         if not problems:
             break
@@ -1607,13 +1775,18 @@ def checks_summary(v: dict) -> str:
     return f"gate {'clean' if not v['static'] else str(len(v['static'])) + ' problem(s)'}, {run}"
 
 
-async def repair_app(html: str, verdict: dict, purpose: str, rounds: int, note=None, sticky=None) -> tuple:
+async def repair_app(html: str, verdict: dict, purpose: str, rounds: int, note=None, sticky=None,
+                     gen_info=None) -> tuple:
     """[R77] The app repair loop: up to `rounds` repair replies, every one checked with check_app;
     returns the BEST candidate seen (never one worse than what came in — a reply that breaks more is
     dropped and the next round repairs the best one again). An identical resubmission is not checked
     again but re-asked with a stronger order, a repeated error gets a root-cause note (the benchmark's
-    Bonsai run resent one broken program 9×). `note(text)` streams progress. -> (html, verdict, used)"""
+    Bonsai run resent one broken program 9×). `note(text)` streams progress. `gen_info` (a dict, 2026-10-14):
+    in, whether `html` is cut at the length limit (or derived from a cut one); out, the same for the version
+    returned — a reply repairs the best version, so it is cut when that one was or its own generation was.
+    -> (html, verdict, used)"""
     best, best_v = html, verdict
+    best_cut = dict(gen_info) if length_cut(gen_info) else None
     seen = {gamecheck.code_key(html)}
     repeat, last_sig, used = None, _verdict_sig(verdict), 0
     for r in range(rounds):
@@ -1622,11 +1795,13 @@ async def repair_app(html: str, verdict: dict, purpose: str, rounds: int, note=N
         msg = ((f"PURPOSE: {purpose}\n\n" if purpose else "")
                + "DOCUMENT HTML:\n" + best[:cap] + "\n\nPROBLEMS TO FIX:\n"
                + "\n".join(f"- {p}" for p in best_v["problems"]) + appcheck.repeat_note(repeat))
+        got = {}
         try:   # [R86] a refusal is never a candidate: the best version so far stays, the budget ends
             new = jsfix.harden_app_html(strip_fences(await llm_generate(prompts.HTML_FIX_SYSTEM,
                                                                         [{"role": "user", "content": msg}], kind="html",
                                                                         label=f"repair: {purpose[:40]}", request=purpose,
                                                                         sticky=sticky,          # [R86 r2, S5] the app's rung
+                                                                        gen_info=got,           # [2026-10-14]
                                                                         temperature=0.7 if repeat else 0.4), "html"))
         except RefusalError as e:
             print(f"[kernel] self-repair round {used}: {e} — keeping the best version", flush=True)
@@ -1648,12 +1823,16 @@ async def repair_app(html: str, verdict: dict, purpose: str, rounds: int, note=N
         better = app_rank(v) < app_rank(best_v)
         if better:
             best, best_v = new, v
+            best_cut = best_cut or (dict(got) if length_cut(got) else None)   # [2026-10-14] derived from the best
         if note:
             await note(f"// self-repair round {used}: "
                        + ("all checks clean" if not v["problems"] else f"{len(v['problems'])} problem(s): {v['problems'][0][:200]}")
                        + ("" if better or not v["problems"] else " — keeping the better earlier version"))
         if not best_v["problems"]:
             break
+    if isinstance(gen_info, dict):
+        gen_info.clear()
+        gen_info.update(best_cut or {"length": False})
     return best, best_v, used
 
 
@@ -1752,14 +1931,16 @@ LLAMA_GPU_KINDS = ("llm", "llm_fast", "llm_uncensored", "python_llm", "expander"
 
 
 def short_model_name(name) -> str:
-    """A manifest model name up to its first ' (' / ' —' / ' –': 'Krea 2 (uncensored) — Krea-2-Turbo
-    Q4_K_M + Kroma v0.3 LoRA' -> 'Krea 2', 'Gemma 4 26B-A4B-it (UD-IQ4_XS, MoE, …)' -> 'Gemma 4 26B-A4B-it'."""
+    """A manifest model name up to its first ' (' / ' —' / ' –': 'Muse (Krea 2 fine-tune by Stable Yogi,
+    uncensored) — v3.5 Extended Q4_0' -> 'Muse', 'Muse SFW (the same model, …)' -> 'Muse SFW',
+    'Gemma 4 26B-A4B-it (UD-IQ4_XS, MoE, …)' -> 'Gemma 4 26B-A4B-it'."""
     name = str(name or "").strip()
     return re.split(r"\s+[(—–]", name, maxsplit=1)[0].strip() or name
 
 
 def lora_short_name(stem: str) -> str:
-    """'kroma-v0.3-base-lora-rank-384-fro-0985-bf16' -> 'Kroma' (the LoRA file's first word)"""
+    """'kroma-v0.3-base-lora-rank-384-fro-0985-bf16' -> 'Kroma' (the LoRA file's first word; v7.5's LoRA —
+    no shipped section carries one since Muse, 2026-10-10)"""
     first = re.split(r"[-_. ]+", str(stem or "").strip(), maxsplit=1)[0]
     return first[:1].upper() + first[1:] if first else "LoRA"
 
@@ -1824,8 +2005,9 @@ class ModelManager:
         return g
 
     def image_display_name(self, kind: str) -> str:
-        """[R80] the image model as the menubar names it: 'Krea 2 · Kroma' (the v7.5 default, Krea 2 + the
-        Kroma LoRA), 'Krea 2' (image_safe — or the default while its LoRA file is missing: rendered stock)."""
+        """[R80] the image model as the menubar names it: 'Muse' (the default since 2026-10-10, no LoRA),
+        'Muse SFW' (image_safe); a section with a `lora` entry gets ' · <LoRA>' appended ('Krea 2 · Kroma' was
+        the v7.5 default) — or stays the plain name while its LoRA file is missing (rendered stock)."""
         name = short_model_name((self.manifest.get(kind) or {}).get("name") or kind)
         lora = self.sd_lora(kind)
         return f"{name} · {lora_short_name(lora['stem'])}" if lora else name
@@ -1846,6 +2028,8 @@ class ModelManager:
             fallback = rest.endswith(":fallback")       # [R86] the refusal fallback's encoder rung
             spec = expander_llm_spec(rest[:-len(":fallback")] if fallback else rest, self.manifest, fallback)
             return f"expander:{spec['file']}", spec     # keyed by the GGUF: sections sharing it share the server
+        if key == "llm_default":           # [R86 round 4] the tier's default `llm` whatever llm_model says: the
+            return "llm", self.manifest["llm"]   # uncensored rung on the flagged default (same server key, no reload)
         spec = self.manifest.get(key) or self.manifest["llm"]
         if "shared_with" in spec:
             key = spec["shared_with"]
@@ -1870,7 +2054,10 @@ class ModelManager:
         if section != "llm":
             spec = self.manifest.get(section)
             if not spec or "file" not in spec:
-                fallback = f"this tier has no '{want}' LLM — serving the default"
+                if want == "uncensored" and self.manifest.get("llm", {}).get("uncensored"):   # [R86 round 4]
+                    fallback = "the default LLM is the uncensored one already — serving it"
+                else:
+                    fallback = f"this tier has no '{want}' LLM — serving the default"
             elif spec.get("addon") and not section_present(spec):
                 fallback = (f"the {want} LLM is an add-on that isn't downloaded — serving the default "
                             f"(vibe.models.download('{canonical_download_key(section)}'), {spec.get('size_gb', '?')} GB)")   # [R86] key
@@ -2060,6 +2247,7 @@ class ModelManager:
             # the journal with its last words before starting it again
             print(f"[kernel] llama-server had exited (code {self.llama_proc.returncode}); last output "
                   f"({LOG_DIR / 'llama-server.log'}):\n{engine_log_tail('llama-server.log', 1500)}", flush=True)
+        require_engine("llama-server")                 # [2026-10-14] a clean 503, never a FileNotFoundError
         engine_check_or_raise("llama-server")          # the manifest's serve_args vs the installed build
         await self.stop_llama()
         model_path = MODELS_DIR / spec["file"]
@@ -2162,8 +2350,9 @@ class ModelManager:
                 payload.update({k: v for k, v in extra.items() if isinstance(k, str) and k not in ("messages", "stream")})
         return payload
 
-    async def chat(self, system, messages, key="llm", max_tokens=16384, temperature=0.7, sampling=None):
-        """Non-streaming chat completion. Returns full text."""
+    async def chat(self, system, messages, key="llm", max_tokens=16384, temperature=0.7, sampling=None, gen_info=None):
+        """Non-streaming chat completion. Returns full text. `gen_info` (a dict) receives how the
+        generation ended — finish_info(): {"finish", "tokens", "length"} [2026-10-14]."""
         # [R72] a SHARED hold on the resolved model key (_llm_hold): up to `parallel` requests on
         # the loaded model run at once; everything else (another model, an image job) waits for
         # the group to drain, in FIFO order. The state goes back to "idle" with the LAST holder,
@@ -2180,10 +2369,15 @@ class ModelManager:
                     data = await r.json()
             if "choices" not in data:           # llama-server's error JSON (a bad image, an overflow) [R70]
                 raise RuntimeError(f"llama-server: {data.get('error') or data}")
-            return data["choices"][0]["message"]["content"]
+            choice = data["choices"][0]
+            if isinstance(gen_info, dict):      # [2026-10-14] a reply cut at max_tokens / n_ctx is never cached
+                gen_info.update(finish_info(choice.get("finish_reason"), data, max_tokens,
+                                            ctx=self._ctx_of(spec.get("serve_args", []))[1]))
+            return choice["message"]["content"]
 
-    async def chat_stream(self, system, messages, key="llm", max_tokens=16384, temperature=0.7):
-        """Async generator of text deltas.
+    async def chat_stream(self, system, messages, key="llm", max_tokens=16384, temperature=0.7, gen_info=None):
+        """Async generator of text deltas. `gen_info` (a dict) receives how the stream ended once it
+        ended — finish_info() over the chunks' finish_reason / usage / timings [2026-10-14].
 
         Holds its GPU slot (a shared hold, _llm_hold [R72]) across yields, so a consumer
         that stops iterating without closing the generator would strand the slot until GC
@@ -2196,6 +2390,7 @@ class ModelManager:
             await self._ensure_llama_resolved(rkey, spec)
             system = uncensored_system(system, rkey)          # [R86 r2, B2]
             payload = self.chat_payload(key, system, messages, max_tokens, temperature, True, spec=spec)
+            finish, tail, deltas = None, {}, 0
             async with aiohttp.ClientSession() as s:
                 async with s.post(f"http://127.0.0.1:{LLAMA_PORT}/v1/chat/completions",
                                   json=payload, timeout=self._request_timeout(spec, stream=True)) as r:
@@ -2207,11 +2402,21 @@ class ModelManager:
                         if chunk == "[DONE]":
                             break
                         try:
-                            delta = json.loads(chunk)["choices"][0]["delta"].get("content", "")
+                            obj = json.loads(chunk)
+                            for k in ("usage", "timings"):        # [2026-10-14] the last chunk's counts
+                                if isinstance(obj.get(k), dict):
+                                    tail[k] = obj[k]
+                            choice = obj["choices"][0]
+                            finish = choice.get("finish_reason") or finish
+                            delta = (choice.get("delta") or {}).get("content", "")
                         except Exception:
                             continue
                         if delta:
+                            deltas += 1
                             yield delta
+            if isinstance(gen_info, dict):
+                gen_info.update(finish_info(finish, tail, max_tokens, ctx=self._ctx_of(spec.get("serve_args", []))[1],
+                                            deltas=deltas))
 
     # ---- stable-diffusion.cpp: one job (sd-cli) or one session for many (sd-server) --------
     # docs/INTEGRATION-2026-09-28.md §4: loading Krea 2 costs ~10 s of every 54 s picture on the
@@ -2231,15 +2436,16 @@ class ModelManager:
         seed, size and prompt, which are per picture."""
         spec = self.manifest[kind]
         args = list(spec.get("gen_args", []))
-        # user model tuning [R42]: settings may override the tuned defaults
-        s = load_settings()
+        # user model tuning [R42]: settings may override the tuned defaults — of the CREATING models only: the picture
+        # editor's schedule (Qwen-Image-2.1 Turbo's saved sigmas, a step count bound to them) is its own [R85]
+        s = load_settings() if kind != IMAGE_EDIT_KEY else {}
         for key, flag in (("image_steps", "--steps"),
                           ("image_sampler", "--sampling-method"),
                           ("image_scheduler", "--scheduler"),
                           ("image_cfg", "--cfg-scale")):
             if s.get(key) not in (None, "", "default"):
                 args = override_flag(args, flag, s[key])
-        # Krea 2 / Kroma / Z-Image / Qwen-Image prompt through an LLM encoder;
+        # Muse (Krea 2 family) / Z-Image / Qwen-Image prompt through an LLM encoder;
         # Chroma (FLUX family) through T5-XXL
         if "t5xxl" in spec:
             args += ["--t5xxl", str(MODELS_DIR / spec["t5xxl"]["file"])]
@@ -2248,8 +2454,9 @@ class ModelManager:
         return args
 
     def sd_lora(self, kind: str):
-        """[R76] The LoRA image section `kind` applies (the v7.5 default: Krea 2 + Kroma v0.3,
-        docs/IMAGE-MODELS-V75-2026-10-07.md): {"dir", "name", "stem", "multiplier"} — `dir` is the
+        """[R76] The LoRA image section `kind` applies (v7.5's default Krea 2 + Kroma v0.3,
+        docs/IMAGE-MODELS-V75-2026-10-07.md; since 2026-10-10 no shipped section has one — the Muse
+        default renders stock, docs/IMAGE-MODEL-MUSE-2026-10-10.md): {"dir", "name", "stem", "multiplier"} — `dir` is the
         engines' --lora-model-dir (the entry's own directory, so sd-server's scan lists only it),
         `name` the server's lora "path" (relative to dir), `stem` the CLI's <lora:stem:m> tag.
         None when the section declares none, or when the file is missing (an install that has not
@@ -2271,6 +2478,9 @@ class ModelManager:
         spec = self.manifest[kind]
         args = ["--diffusion-model", str(MODELS_DIR / spec["diffusion"]["file"]),
                 "--vae", str(MODELS_DIR / spec["vae"]["file"])]
+        vision = (spec.get("vision") or {}).get("file")
+        if vision:   # [R85] the picture editor's vision tower (mmproj): the reference picture reaches the encoder
+            args += ["--llm_vision", str(MODELS_DIR / vision)]
         lora = self.sd_lora(kind)
         if lora:   # [R76] at_runtime: `immediately` aborts on a GGUF (quantised) base — sd.cpp #2083
             args += ["--lora-model-dir", str(lora["dir"]), "--lora-apply-mode", SD_LORA_APPLY_MODE]
@@ -2284,6 +2494,18 @@ class ModelManager:
             return args[args.index(flag) + 1]
         except (ValueError, IndexError):
             return default
+
+    def sd_idle_s(self, kind: str) -> float:
+        """[R85] the idle window of section `kind`'s sd-server session: SD_SESSION_IDLE, or the section's longer
+        "session_idle_s" (the picture editor: a second ✨ usually follows the first within a minute — a cold load of
+        its ~10 GB from the stick/card would cost minutes). Any other GPU waiter still closes the window at once;
+        SD_SESSION_IDLE 0 (the suite) keeps every window shut."""
+        if SD_SESSION_IDLE <= 0:
+            return SD_SESSION_IDLE
+        try:
+            return max(SD_SESSION_IDLE, float((self.manifest.get(kind) or {}).get("session_idle_s") or 0))
+        except (TypeError, ValueError):
+            return SD_SESSION_IDLE
 
     # ---- [R79] the image engine's files vs the LLM's page cache --------------------------------
     def sd_files(self, kind: str) -> list:
@@ -2374,10 +2596,10 @@ class ModelManager:
             if not r["ok"]:
                 raise RuntimeError(r["error"])
             return out_path
-        risk, why = refusal.minor_risk(prompt)      # [R86 r2, B3] the floor for video (sd-cli, no sd_batch): vibe.video(),
-        if risk:                                    # an app's <video data-gen-video> asset, every caller
+        hit, why = refusal.minor_block(prompt)      # [R86 round 4, check point 2] the FINAL video prompt (sd-cli, no sd_batch):
+        if hit:                                     # vibe.video(), an app's <video data-gen-video> asset, every caller
             REFUSALS["blocked"] += 1
-            print(f"[kernel] blocked (minor-risk: {why}) on {kind} '{str(prompt)[:60]}'", flush=True)
+            print(f"[kernel] blocked (minors: {why}) on {kind} '{str(prompt)[:60]}'", flush=True)
             raise RuntimeError(refusal.BLOCK_MESSAGE)
         ensure_cache_space(kind)                    # bounded cache / clean disk-full error
         spec = self.manifest[kind]
@@ -2388,6 +2610,7 @@ class ModelManager:
             for i in range(0, len(extra_args) - 1, 2):
                 args = override_flag(args, extra_args[i], extra_args[i + 1])
         args += ["-M", "vid_gen", "--t5xxl", str(MODELS_DIR / spec["t5xxl"]["file"])]
+        require_engine("sd-cli")                       # [2026-10-14]
         engine_check_or_raise("sd-cli")                # never the July-engine OOM with a misleading error
         args = [str(engine_path("sd-cli")), *self._sd_model_args(kind),
                 *sd_backend_args(args), "-p", prompt, "-o", str(out_path), "-v"]
@@ -2423,19 +2646,19 @@ class ModelManager:
         while nobody waits for the GPU, JOINS it (_sd_join: no second model load); the session a
         batch starts stays open SD_SESSION_IDLE s for such batches (_sd_idle owns its GPU hold),
         and any other GPU waiter closes it at once — the scheduler's FIFO order is untouched.
-        [R86] the minors guard's floor: a job whose prompt pairs a sexual term with a minor indicator
-        (refusal.minor_risk) is answered {"ok": False, "error": BLOCK_MESSAGE, "blocked": True}
-        without reaching any engine — every picture path (icons via sd_job, pages, apps, wallpaper,
-        the forge, /genimg, /api/image(s)) ends here, so nothing renders such a prompt."""
+        [R86 round 4, check point 2] the narrow minors block on the FINAL prompt, right before sd renders
+        it: a job whose prompt it refuses (refusal.minor_block) is answered {"ok": False, "error":
+        BLOCK_MESSAGE, "blocked": True} without reaching any engine — every picture path (icons via sd_job,
+        pages, apps, wallpaper, the forge, /genimg, /api/image(s)) ends here, after the expander or any rung."""
         if not jobs:
             return []
-        blocked = {}                                    # [R86] the minors guard's floor (see the docstring)
+        blocked = {}                                    # [R86 round 4] the block's floor (see the docstring)
         for i, j in enumerate(jobs):
-            risk, why = refusal.minor_risk(j.get("prompt"))
-            if risk:
+            hit, why = (refusal.minor_age if kind == IMAGE_EDIT_KEY else refusal.minor_block)(j.get("prompt"))
+            if hit:
                 blocked[i] = why
                 REFUSALS["blocked"] += 1
-                print(f"[kernel] blocked (minor-risk: {why}) on image '{str(j.get('prompt'))[:60]}'", flush=True)
+                print(f"[kernel] blocked (minors: {why}) on image '{str(j.get('prompt'))[:60]}'", flush=True)
         live = [j for i, j in enumerate(jobs) if i not in blocked]
         res = await self._sd_batch_render(kind, live) if live else []
         if not blocked:
@@ -2455,6 +2678,8 @@ class ModelManager:
             j["w"], j["h"] = str(j.get("w") or default_w), str(j.get("h") or default_h)
             j["seed"] = random.randint(1, 2**31 - 1)      # fresh random seed per picture
         server = self.sd_server_path()
+        if not server:
+            require_engine("sd-cli")                   # [2026-10-14] neither image engine: a clean 503
         engine_check_or_raise("sd-server" if server else "sd-cli")
         if server:
             res = await self._sd_join(kind, base, jobs)
@@ -2502,6 +2727,7 @@ class ModelManager:
         for j in jobs:
             args = override_flag(override_flag(base, "-W", j["w"]), "-H", j["h"]) + ["-s", str(j["seed"])]
             argv = [str(engine_path("sd-cli")), *self._sd_model_args(kind), *args,
+                    *(["-r", str(j["ref"])] if j.get("ref") else []),     # [R85] the picture to edit
                     "-p", j["prompt"] + tag, "-o", str(j["out"]), "-v"]
             print(f"[kernel] sd-cli {kind}{' + LoRA ' + lora['stem'] if lora else ''}: {j['prompt'][:80]}", flush=True)
             finish = self._drop_start(kind)            # [R79] each process reads the weights anew
@@ -2615,7 +2841,13 @@ class ModelManager:
                         "batch_size": 1}
                 if lora:
                     body["lora"] = [{"path": lora["name"], "multiplier": lora["multiplier"]}]
-                print(f"[kernel] sd-server {kind}: {j['prompt'][:80]}", flush=True)
+                if j.get("ref"):          # [R85] the picture to edit = the request's reference image (routes_sdapi.cpp
+                    try:                  # extra_images -> ref_images); the model edits it at the job's size
+                        body["extra_images"] = [base64.b64encode(Path(j["ref"]).read_bytes()).decode()]
+                    except OSError as e:
+                        r["error"] = f"the picture to edit is unreadable: {e}"
+                        continue
+                print(f"[kernel] sd-server {kind}{' (edit)' if j.get('ref') else ''}: {j['prompt'][:80]}", flush=True)
                 try:
                     async with s.post(f"{url}/sdapi/v1/txt2img", json=body,
                                       timeout=aiohttp.ClientTimeout(total=SD_SERVER_JOB_TIMEOUT)) as resp:
@@ -2641,10 +2873,11 @@ class ModelManager:
         idle model), when the server dies or the kernel shuts down. Then the drops end (finish: the
         residency log), the server stops and the hold goes back to the scheduler."""
         t_open, why = time.monotonic(), "idle"
+        idle = self.sd_idle_s(sess.kind)                  # [R85] the picture editor's window is longer
         try:
             while True:
                 self.state = "idle"                       # nothing renders: the menubar is not busy
-                deadline = time.monotonic() + SD_SESSION_IDLE
+                deadline = time.monotonic() + idle
                 while not sess.pending:
                     if self.gpu_lock.waiting:
                         why = "a GPU waiter"
@@ -2657,7 +2890,7 @@ class ModelManager:
                         break
                     left = deadline - time.monotonic()
                     if left <= 0:
-                        why = f"{SD_SESSION_IDLE:g} s without a picture"
+                        why = f"{idle:g} s without a picture"
                         break
                     sess.wake.clear()
                     try:
@@ -2731,16 +2964,16 @@ class ModelManager:
         if not spec:
             raise RuntimeError("this tier has no music model")
         vocal_language = music_language(language)     # validate before anything is spent
-        risk, why = refusal.minor_risk(f"{prompt}\n{lyrics or ''}")   # [R86 r2, B3] the floor for music: the caption AND
-        if risk:                                                      # the lyrics (vibe.music(), an app's <audio data-gen-music>)
+        hit, why = refusal.minor_block(f"{prompt}\n{lyrics or ''}")   # [R86 round 4, check point 1] music's entry for an
+        if hit:                                                       # app's <audio data-gen-music>: the caption AND the lyrics
             REFUSALS["blocked"] += 1
-            print(f"[kernel] blocked (minor-risk: {why}) on music '{str(prompt)[:60]}'", flush=True)
+            print(f"[kernel] blocked (minors: {why}) on music '{str(prompt)[:60]}'", flush=True)
             raise RuntimeError(refusal.BLOCK_MESSAGE)
         ensure_cache_space("music")
         missing = music_engine_missing(spec)
-        if missing:  # never a raw FileNotFoundError from create_subprocess_exec
-            raise RuntimeError(f"music engine not installed ({', '.join(missing)} missing — "
-                               "scripts/install-engines.sh builds acestep.cpp)")
+        if missing:  # never a raw FileNotFoundError from create_subprocess_exec [2026-10-14: EngineMissingError, a 503]
+            raise EngineMissingError(missing[0], f"the music engine is not installed ({', '.join(missing)} missing — "
+                                     "acestep.cpp is built by scripts/install-engines.sh)")
         engine_check_or_raise("ace-lm")
         job_dir = out_path.parent / ".jobs" / out_path.stem
         shutil.rmtree(job_dir, ignore_errors=True)
@@ -3216,8 +3449,6 @@ async def h_app_host(request):
         meta = json.loads((APPS_DIR / app_id / "meta.json").read_text())
     except Exception:
         meta = {}
-    if app_prompt_blocked(app_id, f"{meta.get('prompt') or ''} {app_id}"):   # [R86 r2 S4 / r3 Y3] a pre-R86 cache: not hosted (not moved)
-        return web.Response(text=refusal.BLOCK_MESSAGE, status=403)
     app_html = jsfix.harden_app_html(html_path.read_text())
     hit, why = refusal.is_refusal(app_html, "html")
     if hit:   # [R86 r2, S4] a cached refusal is not an app: the desktop summon regenerates it (_app_generate)
@@ -3245,9 +3476,6 @@ async def h_status(request):
             m = json.loads(meta.read_text())
         except Exception:
             continue
-        aid = m.get("app_id") or meta.parent.name
-        if app_prompt_blocked(aid, f"{m.get('prompt') or ''} {aid}"):   # [R86 r2 S4 / r3 Y3] hidden (not moved)
-            continue
         apps.append(m)
     return web.json_response({
         "tier": MANIFEST.get("tier"), "state": MM.state, "engine": engine_backend(),
@@ -3261,6 +3489,7 @@ async def h_status(request):
         "image": MANIFEST["image"]["name"], "video": MANIFEST["video"]["name"],
         "image_model": image_model_status(),                                # [R76] setting -> model + LoRA
         "image_sessions": "sd-server" if MM.sd_server_path() else "sd-cli",   # docs/INTEGRATION-2026-09-28.md §4
+        "image_edit": image_edit_status(),                                  # [R85] the ✨ picture editor
         "loaded": MM.llama_model_key,
         "gpu": MM.gpu_status(),              # [R80] what is resident on the GPU now — the menubar shows it
         "last_fallback": REFUSALS["last"],   # [R86] {at, from, to, kind, reason, prompt} of the last refusal fallback
@@ -3326,6 +3555,10 @@ async def _app_generate(request, task):
         prev_html = None
     gen_assets = bool(body.get("assets")) or bool(meta.get("assets"))
     version = int(meta.get("version", 0)) + 1
+    if not (prev_html and not evolve):          # [2026-10-14] a generation without llama-server: a 503 before the
+        why = engine_missing("llama-server")     # stream starts (a cached app still opens without any engine)
+        if why:
+            return engine_missing_response("llama-server", why)
 
     resp = web.StreamResponse(headers={"Content-Type": "text/event-stream",
                                        "Cache-Control": "no-cache"})
@@ -3357,18 +3590,10 @@ async def _app_generate(request, task):
         await eof()
     LIVE_STREAMS[task] = closer
 
-    try:   # [R86] the minors guard on the user's words (and their English [r2]) — before the cache, the research, any model
-        await guard_request_en("app", f"{original_prompt} {instruction}".strip())
-    except MinorRiskError as e:
-        if app_dir.exists():                                 # [R86 r2, S4] a cache of this very prompt from before the guard
-            quarantine_app(app_id, "summoned again")
-        await send("error", {"message": str(e)})
-        await eof()
-        return resp
-    sessionlog.note_event("app", instruction or prompt)
-
     if prev_html and not evolve:
-        # instant start: the app opens as-is — evolution only on "✨ improve"
+        # instant start: the app opens as-is — evolution only on "✨ improve". [R86 r4b, S8] a cached app is never
+        # checked (cached content is never checked anywhere; its host page GET /app/{id} serves it just the same)
+        sessionlog.note_event("app", instruction or prompt)
         meta["last_opened"] = time.time()
         icon_exists = (FILES_DIR / "icons" / f"{app_id}.png").exists()
         if icon_exists:
@@ -3384,6 +3609,14 @@ async def _app_generate(request, task):
         if not icon_exists:
             asyncio.create_task(generate_app_icon(app_id, original_prompt, meta_path))
         return resp
+
+    try:   # [R86 round 4, check point 4] an uncensored primary: the user's words are checked at the entry of a GENERATION —
+        block_check_primary("app", f"{original_prompt} {instruction}".strip(), label=app_id)   # before the research, the session log, any model
+    except MinorBlockError as e:
+        await send("error", {"message": str(e)})
+        await eof()
+        return resp
+    sessionlog.note_event("app", instruction or prompt)
 
     # ground the app in reality: web search when online, offline encyclopedia otherwise
     # (the query in English for the English knowledge base while the translation layer is on [R71])
@@ -3456,7 +3689,7 @@ async def _app_generate(request, task):
                     user_msg += ("\n\nDETAILED SPECIFICATION (researched by the OS "
                                  "— follow it):\n" + spec)
                     await send("delta", {"text": "// specification ready — coding…\n"})
-            except MinorRiskError as e:          # [R86 r3, X4] the spec's refusal named minors: the summon ends here, no stream
+            except MinorBlockError as e:         # [R86 round 4] the block hit the request after the spec's refusal: the summon ends here, no stream
                 await send("error", {"message": str(e)})
                 await eof()
                 return resp
@@ -3469,12 +3702,13 @@ async def _app_generate(request, task):
     if gen_assets:
         system += prompts.APP_ASSETS_INSTRUCTION
 
+    gi = {}        # [2026-10-14] the app's generation cut at the length limit? (its repairs inherit it)
     try:
         # aclosing: the generator holds the GPU lock — close it promptly on any exit
         async with contextlib.aclosing(llm_stream(
                 system, [{"role": "user", "content": user_msg}], kind="html", label=f"app {app_id}",
                 request=f"{original_prompt} {instruction}".strip(), on_fallback=on_fallback, sticky=sticky,
-                temperature=0.75)) as gen:                                  # [R86] the refusal ladder
+                gen_info=gi, temperature=0.75)) as gen:                     # [R86] the refusal ladder
             async for delta in gen:
                 chunks.append(delta)
                 await send("delta", {"text": delta})
@@ -3488,7 +3722,8 @@ async def _app_generate(request, task):
 
             async def note(text):
                 await send("delta", {"text": text + "\n"})
-            html, verdict, used = await repair_app(html, verdict, original_prompt, GATE_REPAIR_ROUNDS, note, sticky=sticky)
+            html, verdict, used = await repair_app(html, verdict, original_prompt, GATE_REPAIR_ROUNDS, note, sticky=sticky,
+                                                   gen_info=gi)
         print(f"[kernel] app {app_id} v{version}: first version {first_checks}; best {checks_summary(verdict)} "
               f"after {used} repair round(s)", flush=True)
         if prev_html:
@@ -3550,6 +3785,19 @@ async def _app_generate(request, task):
         await eof()
         return resp
 
+    if length_cut(gi):
+        # [2026-10-14] cut at the length limit: this window gets it with the note, nothing is saved — app.html,
+        # meta.json and the history stay as they were (a new app is not listed); the next summon or ✨ improve
+        # generates afresh. No icon is painted for it.
+        log_length_cut("app", app_id, gi)
+        note = length_note(gi)
+        await send("delta", {"text": f"\n// {note}\n"})
+        await send("done", {"app_id": app_id, "html": html, "version": version,
+                            "icon": meta.get("icon"), "warning": note, "truncated": True,
+                            "checks": checks_summary(verdict), "repair_rounds": used,
+                            "broken": broken})
+        await eof()
+        return resp
     meta.update(app_id=app_id, prompt=original_prompt, version=version,
                 assets=gen_assets, last_opened=time.time())
     if broken:
@@ -3573,7 +3821,7 @@ async def _app_generate(request, task):
         warning = f"app not saved ({disk_full_message() if e.errno in DISK_FULL_ERRNOS else e})"
         print(f"[kernel] WARN {app_id}: {warning}", flush=True)
     await send("done", {"app_id": app_id, "html": html, "version": version,
-                        "icon": meta.get("icon"), "warning": warning,
+                        "icon": meta.get("icon"), "warning": warning, "truncated": False,
                         "checks": checks_summary(verdict), "repair_rounds": used,   # [R77]
                         "broken": broken})   # [N5] None = the JS gate passed; else the shell shows the verdict
     await eof()
@@ -3617,7 +3865,7 @@ async def h_apps(request):
         except Exception:
             continue
         aid = m.get("app_id")
-        if aid and app_prompt_blocked(aid, f"{m.get('prompt') or ''} {aid}"):   # [R86 r2 S4 / r3 Y3] not listed (moved only on a summon)
+        if aid in RETIRED_APP_IDS:               # [R83] the generated browser: the built-in replaces it
             continue
         has_icon = m.get("icon") or (FILES_DIR / "icons" / f"{aid}.png").exists()
         apps.append({"app_id": aid, "prompt": m.get("prompt"),
@@ -3632,8 +3880,6 @@ async def h_apps(request):
     for main in GAMES_DIR.glob("*/main.py"):
         gdir = main.parent
         m = game_meta(gdir)
-        if app_prompt_blocked(gdir.name, f"{m.get('prompt') or ''} {gdir.name}"):   # [R86 r2 S4 / r3 Y3] games too: hidden, not moved
-            continue
         games.append({"slug": gdir.name, "prompt": m.get("prompt") or gdir.name.replace("-", " "),
                       "version": m.get("version") or len(list((gdir / "history").glob("v*.py"))) + 1,
                       "launched": m.get("launched", 0), "last_crash": m.get("last_crash")})
@@ -3655,16 +3901,20 @@ async def h_app_modify(request):
         meta_prompt = json.loads((APPS_DIR / app_id / "meta.json").read_text()).get("prompt") or app_id
     except Exception:
         meta_prompt = app_id
+    gi = {}
     try:   # [R86] a refusal is never written over the app
         html = jsfix.harden_app_html(strip_fences(await llm_generate(
             prompts.APP_REGEN_SYSTEM, messages, kind="html", label=f"modify {app_id}",
-            request=f"{meta_prompt} {instruction}", temperature=0.6), "html"))
-    except MinorRiskError as e:
+            request=f"{meta_prompt} {instruction}", gen_info=gi, temperature=0.6), "html"))
+    except MinorBlockError as e:
         return web.json_response({"error": str(e)}, status=400)
     except RefusalError as e:
-        return web.json_response({"error": str(e)}, status=502)
+        return web.json_response({"error": str(e)}, status=DECLINED_STATUS)   # [R86 round 4] declined, never a 502
+    if length_cut(gi):                           # [2026-10-14] never written over the app: returned with the note
+        log_length_cut("app modify", app_id, gi)
+        return web.json_response({"app_id": app_id, "html": html, "truncated": True, "warning": length_note(gi)})
     html_path.write_text(html)
-    return web.json_response({"app_id": app_id, "html": html})
+    return web.json_response({"app_id": app_id, "html": html, "truncated": False})
 
 
 async def h_wallpaper(request):
@@ -3683,9 +3933,6 @@ async def h_wallpaper(request):
     if texts:
         keep = rng.sample(texts, rng.randint(1, min(5, len(texts))))
         rng.shuffle(keep)
-    for t in [t for t in keep if refusal.minor_risk(t)[0]]:   # [R86 r2, S3] each fragment on its own: one blocked fragment
-        print(f"[kernel] wallpaper: fragment dropped (minor-risk): {t[:60]!r}", flush=True)   # never costs the wallpaper
-        keep.remove(t)
     scene = ""
     if keep:
         try:
@@ -3694,8 +3941,8 @@ async def h_wallpaper(request):
                                           + "\n".join(f"- {t[:140]}" for t in keep)}],
                                         kind="text", label="wallpaper", request="\n".join(keep),   # [R86] a refusal is
                                         max_tokens=120, temperature=1.0)).strip().strip('"')[:400]  # never the scene
-        except MinorRiskError:   # [R86 r3, X4] the scene writer's refusal named minors: the fragments are suspect —
-            print("[kernel] wallpaper: the refusal named minors — this cycle paints the classic scene", flush=True)
+        except MinorBlockError:   # [R86 round 4] the block hit the joined fragments (an uncensored primary, or after a refusal):
+            print("[kernel] wallpaper: the fragments met the minors block — this cycle paints the classic scene", flush=True)
             keep, scene = [], ""                                                           # the classic wallpaper, nothing of them
         except RefusalError as e:   # [R86 r3, X2's rule] every rung refused the fragments: the classic scene, never the raw text
             print(f"[kernel] wallpaper: {e} — this cycle paints the classic scene", flush=True)
@@ -3731,9 +3978,9 @@ async def h_ask(request):
     user_msg = body["prompt"]
     if not isinstance(user_msg, str):   # [R86 r3, X3] content parts / any JSON: judged and answered as their text, never a bypass
         user_msg = _user_text([{"role": "user", "content": user_msg}]) or refusal._as_text(user_msg)
-    try:   # [R86] the minors guard (the words and their English [r2]) before the session log (the log feeds the wallpaper)
-        await guard_request_en("text", user_msg)
-    except MinorRiskError as e:
+    try:   # [R86 round 4, check point 4] an uncensored primary: checked at the entry, before the session log (it feeds the wallpaper)
+        block_check_primary("text", user_msg, label=user_msg)
+    except MinorBlockError as e:
         return web.json_response({"error": str(e)}, status=400)
     sessionlog.note_event("ask", user_msg)
     facts, source = await KB.context_block(await english_text(user_msg), native=knowledge_native(user_msg))     # [R71, P2/P3]
@@ -3744,19 +3991,15 @@ async def h_ask(request):
                                   [{"role": "user", "content": user_msg}], kind="text",
                                   label=f"ask: {body['prompt'][:40]}", request=body["prompt"],
                                   max_tokens=int(body.get("max_tokens", 2048)), temperature=0.8)
-    except MinorRiskError as e:
+    except MinorBlockError as e:
         return web.json_response({"error": str(e)}, status=400)
     except RefusalError as e:
-        return web.json_response({"error": str(e)}, status=502)
+        return web.json_response({"error": str(e)}, status=DECLINED_STATUS)   # [R86 round 4] declined, never a 502
     return web.json_response({"text": text.strip()})
 
 
 async def h_search(request):
     body = await request.json()
-    try:   # [R86 r2] the minors guard: the query feeds the session log (the wallpaper) and the knowledge query
-        await guard_request_en("search", body["query"])
-    except MinorRiskError as e:
-        return web.json_response({"error": str(e)}, status=400)
     sessionlog.note_event("search", body["query"])  # user input feeds the session log [R44]
     query = await english_text(body["query"])     # [R71, P2] the English books get English …
     # … the Wiktionary of the OS language gets the text as typed [P3]; hits say their source
@@ -3785,12 +4028,27 @@ async def h_desktop_search(request):
         results.append({"group": group, "icon": icon, "title": title, "sub": sub,
                         "action": action})
 
+    # [R83] an address opens in the built-in browser: the FIRST result (Enter runs it)
+    addr = web_address(q)
+    if addr:
+        add("web", "🌐", f"open {addr}", "in the Browser — the imaginary web", {"type": "web", "address": addr})
+
+    # the system apps by name (not on the dock since 2026-10-15; the shell has their prompts)
+    sys_ids = set()
+    if ql:
+        for aid, icon, title, sub, more in SYSTEM_APPS:
+            if ql in f"{aid} {title} {more}".lower():
+                sys_ids.add(aid)
+                add("apps", icon, title, sub, {"type": "sysapp", "app_id": aid})
+
     # living apps (their prompts are saved — relaunch evolves them)
     apps = []
     for mp in APPS_DIR.glob("*/meta.json"):
         try:
             m = json.loads(mp.read_text())
         except Exception:
+            continue
+        if m.get("app_id") in RETIRED_APP_IDS or m.get("app_id") in sys_ids:   # [R83] no duplicate entries
             continue
         hay = (m.get("app_id", "") + " " + m.get("prompt", "")).lower()
         if not ql or ql in hay:
@@ -3806,11 +4064,14 @@ async def h_desktop_search(request):
              if not ql or ql in g.parent.name.lower()]
     rng.shuffle(games)
     for g in games[:3]:
-        crash = game_meta(GAMES_DIR / g).get("last_crash")     # [D-R68-6] the user sees it
+        gm = game_meta(GAMES_DIR / g)
+        crash = gm.get("last_crash")     # [D-R68-6] the user sees it
+        ver = game_version_numbers(GAMES_DIR / g, gm)[0]
+        # [R82] a launch runs the current version in a desktop window; ✨ improve in that window evolves it
         add("games", "🕹", g.replace("-", " "),
             (f"crashed after {crash.get('after_s', '?')} s last time ({str(crash.get('summary', ''))[:40]}) · "
-             "relaunch forges a repaired version") if crash else "forge the next version (desktop window)",
-            {"type": "game", "prompt": g.replace("-", " ")})
+             "✨ improve in its window repairs it") if crash else f"v{ver} · plays at once · ✨ improve in its window evolves it",
+            {"type": "game", "slug": g, "prompt": gm.get("prompt") or g.replace("-", " ")})
 
     # files on /data
     if ql:
@@ -4036,6 +4297,7 @@ async def render_generated_media(html: str, slug: str, prefix: str = "web",
 WEB_DIR = CACHE_DIR / "web"
 _ensure_dir(WEB_DIR)
 WEB_JOBS = {}  # slug -> {"status": "generating"|"error", "t0": float, "error": str}
+WEB_CUTS = {}  # [R84] token -> {"address", "html", "note", "t0"}: an improvement cut at the length limit, shown once
 
 
 def web_slug(address: str) -> str:
@@ -4286,15 +4548,17 @@ def site_profile_from_html(html: str, address: str) -> dict:
             "nav": nav[:12], "palette": {"vars": cvars, "colours": colours}, "fonts": fonts, "founded_by": address}
 
 
-def update_site_profile(address: str, html: str, add_page: bool = True) -> dict:
+def update_site_profile(address: str, html: str, add_page: bool = True, reanchor: bool = False) -> dict:
     """after a page was written: the site's profile is created from it (the FIRST page of a site
     anchors name, premise, nav and look) or the page is added to it (gaps filled, nothing the
     first page set is replaced). add_page=False: an older cached page whose address is unknown
-    (identity only). Never raises; {} when it could not be written."""
+    (identity only). reanchor=True [R84]: the page that FOUNDED the profile got a new version (✨ improve, a
+    revert) — the identity is read again from it, so the site's next pages follow the version the user chose; the
+    page list stays. Never raises; {} when it could not be written."""
     try:
         site = web_site(address)
         prof, page = load_site_profile(site), site_profile_from_html(html, address)
-        if not prof.get("brand") and not prof.get("nav"):
+        if reanchor or (not prof.get("brand") and not prof.get("nav")):
             prof = dict(page, pages=prof.get("pages", []))
         else:
             for k in ("brand", "title", "headings", "premise", "nav", "fonts"):
@@ -4330,10 +4594,12 @@ def _header_markup(html: str, cap: int = 1400) -> str:
 
 
 def site_context_block(address: str, prof: dict, how=None, ctx_addr=None, ctx_html="", link_text="",
-                       cap: int = SITE_CTX_CAP) -> str:
-    """the SITE CONTEXT part of a page prompt, most important first (the cap cuts the end)"""
+                       cap: int = SITE_CTX_CAP, intro: str = None) -> str:
+    """the SITE CONTEXT part of a page prompt, most important first (the cap cuts the end); `intro` replaces the
+    first line (the ✨ improve prompt: the SAME page of the site, R84)"""
     site = web_site(address)
-    lines = [f"SITE CONTEXT — this is ANOTHER PAGE of the existing website {site}. It must be unmistakably the "
+    lines = [intro.format(site=site) if intro else
+             f"SITE CONTEXT — this is ANOTHER PAGE of the existing website {site}. It must be unmistakably the "
              "SAME site as its other pages: the same name, the same premise and product line, the same tone, the "
              "same header and navigation, the same palette and fonts. Do NOT reinterpret what the site is, do NOT "
              "rename it, do NOT turn it into a different company, shop or topic, do NOT invent a new navigation."]
@@ -4386,10 +4652,19 @@ def site_context_for(address: str, referer: str = None, cap: int = SITE_CTX_CAP)
     return site_context_block(address, prof, how, ctx_addr, ctx_html, link_text, cap)
 
 
-async def generate_page(address: str, referer: str = None) -> tuple:
+def address_words(address) -> str:
+    """[review v7.5-2] an address as the minors block reads it: its separators / _ + - are spaces ("site.kai/15-year-old"
+    names an age — refusal._AGE_NUM never matches right after a "/", "_" joins words, and a slug's hyphens hide the
+    age-gate exemption: ".../under-18-not-allowed")"""
+    return re.sub(r"[/_+-]+", " ", str(address or ""))
+
+
+async def generate_page(address: str, referer: str = None, gen_info=None) -> tuple:
     """Write one page of the imaginary web (shared by /web and /api/browse). `referer`: the page
-    the link was on, when the browser said so (h_web) — the same-site context [R75]."""
-    await guard_request_en("html", address)      # [R86] the minors guard (the address and its English [r2]) before the session log and the research
+    the link was on, when the browser said so (h_web) — the same-site context [R75]. `gen_info` (a dict)
+    receives {"length": True, …} when the page was cut at the length limit — the caller serves it once
+    with a note and never caches it (2026-10-14)."""
+    block_check_primary("html", address_words(address), label=address)   # [R86 round 4, check point 4] an uncensored primary: the address, before the session log
     sessionlog.note_event("browse", address)
     facts, source = await KB.context_block(await english_text(address), limit=4, native=knowledge_native(address))     # [R71, P2/P3]
     site_ctx = ""
@@ -4399,29 +4674,29 @@ async def generate_page(address: str, referer: str = None) -> tuple:
         site_ctx = "\n\n" + block if block else ""
     except Exception as e:
         print(f"[kernel] WARN web {address!r}: no site context ({e})", flush=True)
-    premise = str(load_site_profile(web_site(address)).get("premise") or "")
-    if premise:   # [R86 r2, S6] the context the kernel adds is guarded WITH the address (a site whose premise names
-        guard_request("html", f"{address} {premise}")   # under-age users + a sexual link: the pair the model would see)
     user_msg = f"The browser navigated to: {address}" + site_ctx
     if facts:
         user_msg += "\n\n" + prompts.CONTEXT_HEADER.format(source=source) + facts
     user_msg = user_msg[:prompt_char_budget(prompts.BROWSER_SYSTEM)]
-    # [R86] the refusal ladder: a refusal is never the page — RefusalError / MinorRiskError reach _web_build
+    # [R86] the refusal ladder: a refusal is never the page — RefusalError / MinorBlockError reach _web_build
     # and h_browse (an error page, nothing cached, no site profile)
     sticky = {}                                 # [R86 r2, S5] the rung that answers the page also repairs it
+    gi = {}                                     # [2026-10-14] cut at the length limit? (the repair inherits it)
     html = strip_fences(await llm_generate(prompts.BROWSER_SYSTEM,
                                            [{"role": "user", "content": user_msg}], kind="html",
-                                           label=f"web {address[:50]}", request=address, sticky=sticky,
-                                           temperature=0.8), "html")
+                                           label=f"web {address[:50]}", request=address_words(address), sticky=sticky,
+                                           gen_info=gi, temperature=0.8), "html")
     html = rewrite_page(html, address)          # fix links/imgs BEFORE validating
     problems = validate_html(html)
     if problems:
         try:
             html = await repair_html(html, problems, max_rounds=1,
-                                     purpose=f"the website at '{address}'", sticky=sticky)
+                                     purpose=f"the website at '{address}'", sticky=sticky, gen_info=gi)
             html = rewrite_page(html, address)  # repair may reintroduce raw links
         except Exception:
             pass
+    if isinstance(gen_info, dict):
+        gen_info.update(gi)
     return html, source
 
 
@@ -4431,15 +4706,61 @@ async def generate_page(address: str, referer: str = None) -> tuple:
 # and vibe.browse() results) get it injected at serve time, cached files untouched. There
 # is no Chromium flag for it: --kiosk keeps the menu (the benchmark's F10 check saw it).
 NO_CONTEXT_MENU = '<script>document.addEventListener("contextmenu",function(e){e.preventDefault()},true)</script>'
+_GENIMG_LATE_SCRIPT = None
 
 
-def no_context_menu(html: str) -> str:
+def genimg_late_script() -> str:
+    """[SD run 2026-10-13] the late-picture script: the <script data-kairos-genimg> block of the shell's BRIDGE_SRC —
+    ONE copy for app iframes and served pages (the protocol: the GENIMG_* notes at /genimg below). "" when the shell
+    cannot be read (the page is served as before)."""
+    global _GENIMG_LATE_SCRIPT
+    if _GENIMG_LATE_SCRIPT is None:
+        try:
+            m = re.search(r"<script data-kairos-genimg>.*?</script>", bridge_src(), re.S)
+            _GENIMG_LATE_SCRIPT = m.group(0) if m else ""
+        except Exception as e:
+            print(f"[kernel] WARN no late-picture script for served pages ({str(e)[:80]})", flush=True)
+            _GENIMG_LATE_SCRIPT = ""
+        if not _GENIMG_LATE_SCRIPT:
+            print("[kernel] WARN shell.js BRIDGE_SRC has no <script data-kairos-genimg> block: served pages get no "
+                  "late pictures", flush=True)
+    return _GENIMG_LATE_SCRIPT
+
+
+def no_context_menu(html: str, report: str = "") -> str:
+    """what every served page (/web/, vibe.browse) gets at serve time, the cache untouched: no context menu [R28] and
+    the late-picture script [SD run 2026-10-13]; a /web/ page also gets its report to the browser (web_page_report,
+    R83 — `report`, "" for vibe.browse html)"""
+    inject = NO_CONTEXT_MENU + genimg_late_script() + report
     m = re.search(r"<head[^>]*>", html, re.I)
-    return (html[:m.end()] + NO_CONTEXT_MENU + html[m.end():]) if m else NO_CONTEXT_MENU + html
+    return (html[:m.end()] + inject + html[m.end():]) if m else inject + html
 
 
-def _page_shell(title: str, body: str, refresh: str = "") -> str:
-    return (f'<!DOCTYPE html><html><head><meta charset="utf-8">{refresh}{NO_CONTEXT_MENU}<style>'
+def web_page_report(address: str, state: str = "page", **extra) -> str:
+    """[R83] the browser's view of a served /web/ document: one tiny <script data-kairos-page> that posts
+    {kairosPage: {address, state, title, …}} to the parent frame (the built-in browser, shell/browser.js) once the
+    document is parsed, and {state: "leaving"} when it goes (a link was clicked or a form sent — window-level listeners,
+    after the page's own handlers; pagehide as the fallback: the browser shows its loading state at once). state = page | loading | error | declined | blocked | cut; extra = message, note, elapsed, doing, version,
+    current, versions. The kernel knows the canonical address (h_web builds it), so the browser never parses URLs of a
+    sandboxed frame it cannot read. Inert at top level (no parent) and under innerHTML; the browser only trusts a report
+    from the frame it shows and only ever navigates to /web/ URLs it builds itself."""
+    data = {"address": address, "state": state}
+    data.update({k: v for k, v in extra.items() if v is not None})
+    js = (json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
+          .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+    return ("<script data-kairos-page>(function(){var d=" + js + ";"
+            "function post(m){try{if(window.parent!==window)parent.postMessage({kairosPage:m},\"*\")}catch(e){}}"
+            "function ready(){try{d.title=document.title||d.title||\"\"}catch(e){}post(d)}"
+            "if(document.readyState===\"loading\")document.addEventListener(\"DOMContentLoaded\",ready);else ready();"
+            "function leave(){post({address:d.address,state:\"leaving\"})}"
+            "addEventListener(\"click\",function(e){var a=e.target&&e.target.closest?e.target.closest(\"a[href]\"):null;"
+            "if(a&&!e.defaultPrevented&&!/^(#|javascript:)/i.test(a.getAttribute(\"href\")||\"\"))leave()});"
+            "addEventListener(\"submit\",function(e){if(!e.defaultPrevented)leave()});"
+            "addEventListener(\"pagehide\",leave)})()</script>")
+
+
+def _page_shell(title: str, body: str, refresh: str = "", report: str = "") -> str:
+    return (f'<!DOCTYPE html><html><head><meta charset="utf-8">{refresh}{NO_CONTEXT_MENU}{report}<style>'
             "body{margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;"
             "justify-content:center;gap:14px;background:#07070d;color:#e8e8f2;"
             "font:15px system-ui;text-align:center;padding:0 24px}"
@@ -4463,27 +4784,44 @@ def _loading_page(address: str, t: int, elapsed: int) -> str:
     return _page_shell(escape(address),
                        f"<div class='d'>the imaginary web is {doing}… {elapsed}s</div>"
                        "<div class='tip'>every link is a prompt — this page is being "
-                       "written just for you</div>", refresh)
+                       "written just for you</div>", refresh,
+                       web_page_report(address, "loading", elapsed=elapsed, doing=doing))   # [R83]
 
 
-def _error_page(address: str, err: str) -> str:
+# [R83] what the error page says it is — the built-in browser shows the same kind in its note bar
+WEB_ERROR_TITLES = {"error": "the imaginary web stumbled", "declined": "the model declined this page",
+                    "blocked": "this page is blocked"}
+
+
+def _error_page(address: str, err: str, kind: str = "error") -> str:
+    """the error page of a /web/ address: kind = error (an engine failure) | declined (R86: every rung refused) |
+    blocked (R86 round 4: the minors block) — the page itself and its report to the browser say which [R83]"""
     from urllib.parse import quote
     from html import escape
     u = quote(address, safe='/')
-    return _page_shell("the imaginary web stumbled",
+    kind = kind if kind in WEB_ERROR_TITLES else "error"
+    return _page_shell(WEB_ERROR_TITLES[kind],
                        f"<div class='d'>{escape(err[:220])}</div>"
                        f"<div><a href='/web/{u}?_fresh=1'>↻ try again</a> · "
-                       f"<a href='/web/home'>home</a></div>")
+                       f"<a href='/web/home'>home</a></div>", report=web_page_report(address, kind, message=err[:400]))
 
 
 async def _web_build(address: str, slug: str, referer: str = None):
     try:
-        html, _ = await generate_page(address, referer)
-        (WEB_DIR / f"{slug}.html").write_text(html)
+        gi = {}
+        html, _ = await generate_page(address, referer, gen_info=gi)
+        if length_cut(gi):                       # [2026-10-14] served once (h_web), never cached, no site profile
+            log_length_cut("web page", address, gi)
+            WEB_JOBS[slug] = {"status": "cut", "t0": time.time(), "html": html, "note": length_note(gi)}
+            return
+        web_store_page(address, html, "generated")   # [R84] a page with versions gets the new one as its next version
         update_site_profile(address, html)       # [R75] the site's identity for its next pages
         WEB_JOBS.pop(slug, None)
     except Exception as e:
-        WEB_JOBS[slug] = {"status": "error", "t0": time.time(), "error": str(e)}
+        kind = ("blocked" if isinstance(e, MinorBlockError) else "declined" if isinstance(e, RefusalError)
+                else "error")                    # [R83] the browser's note bar says which
+        WEB_JOBS[slug] = {"status": "error", "t0": time.time(), "error": str(e), "kind": kind,
+                          "code": ENGINE_MISSING_STATUS if isinstance(e, EngineMissingError) else 200}
         print(f"[kernel] web page {address!r} failed: {str(e)[:2000]}", flush=True)
 
 
@@ -4493,10 +4831,6 @@ def cached_page_html(page: Path, address: str):
     deleted and the page regenerates on this visit (its empty site profile is replaced by the real
     page's identity in update_site_profile)."""
     if not page.exists():
-        return None
-    risk, why = refusal.minor_risk(address)     # [R86 r2 S4 / r3 Y3] a page cached before the guard knew its address is not
-    if risk:                                    # served (generate_page then refuses the address: an error page); the file is
-        print(f"[kernel] web {address!r}: cached page not served (minor-risk: {why})", flush=True)   # left in place, never moved by a visit
         return None
     html = page.read_text()
     hit, why = refusal.is_refusal(html, "html")
@@ -4520,19 +4854,44 @@ async def h_web(request):
     fresh = request.query.get("_fresh") == "1"
     slug = web_slug(address)
     page = WEB_DIR / f"{slug}.html"
+    cut = WEB_CUTS.pop(request.query.get("_cut") or "", None)      # [R84] an improvement cut at the length limit:
+    if cut and cut["address"] == address:                         # shown ONCE with its note, never saved
+        return web.Response(text=no_context_menu(length_banner(cut["html"], cut["note"]),
+                                                 web_page_report(address, "cut", note=cut["note"])),
+                            content_type="text/html")
+    vers = load_web_versions(address)            # [R84] the page's versions (none until its first ✨ improve)
+    want = request.query.get("_v", "")
+    if want.isdigit() and not fresh:             # one version of the page, as it was (the browser's back / versions)
+        old = web_version_html(address, int(want))
+        if old is not None:
+            note_web_served(address)
+            return web.Response(text=no_context_menu(old, web_page_report(
+                address, "page", version=int(want), current=vers.get("current"), versions=len(vers.get("versions", [])))),
+                content_type="text/html")
     html = None if fresh else cached_page_html(page, address)      # [R86] a cached refusal is a miss
     if html is not None:
         if "kairosNavigate" in html or has_broken_media(html):
             html = rewrite_page(html, address)   # upgrade legacy cached pages
             page.write_text(html)
         note_web_served(address)                 # [R75] where the next click comes from
-        return web.Response(text=no_context_menu(html), content_type="text/html")
+        report = web_page_report(address, "page", version=vers.get("current"),
+                                 versions=len(vers["versions"]) if vers.get("versions") else None)   # [R83]
+        return web.Response(text=no_context_menu(html, report), content_type="text/html")
     job = WEB_JOBS.get(slug)
     if job and job.get("status") == "error":
         WEB_JOBS.pop(slug, None)                 # next visit retries automatically
-        return web.Response(text=_error_page(address, job.get("error", "generation failed")),
+        return web.Response(text=_error_page(address, job.get("error", "generation failed"), job.get("kind", "error")),
+                            content_type="text/html", status=job.get("code") or 200)
+    if job and job.get("status") == "cut":       # [2026-10-14] the cut page: shown once with its note, never cached —
+        WEB_JOBS.pop(slug, None)                 # the next visit generates a fresh one
+        return web.Response(text=no_context_menu(length_banner(job["html"], job["note"]),
+                                                 web_page_report(address, "cut", note=job["note"])),
                             content_type="text/html")
     if not job:
+        why = engine_missing("llama-server")     # [2026-10-14] no engine: the error page with a 503, no job
+        if why:
+            return web.Response(text=_error_page(address, why), content_type="text/html",
+                                status=ENGINE_MISSING_STATUS)
         WEB_JOBS[slug] = job = {"status": "generating", "t0": time.time()}
         # [R75] the Referer at job creation: the page the link was on (when the browser sends one)
         asyncio.create_task(_web_build(address, slug, request.headers.get("Referer")))
@@ -4554,9 +4913,24 @@ GENIMG_LIMIT = 4       # beyond this many queued pictures, serve placeholders
 # same model and size are rendered in ONE sd session (one model load) — cache, placeholders and
 # GENIMG_LIMIT keep their meaning (a queued-but-unrendered picture counts as in flight).
 GENIMG_WINDOW = float(os.environ.get("VIBEOS_GENIMG_WINDOW", "1.5"))
-GENIMG_WAIT = 360      # s a request waits for its picture (a 4-picture Krea 2 batch ≈ 4 min on the 4070)
+# s a page's FIRST request waits for its picture (a 4-picture Krea 2 batch ≈ 4 min on the 4070). [SD run 2026-10-13]
+# a picture that is not ready by then is no longer lost: the request gets the PENDING placeholder (below) and the page's
+# late-picture script asks again until the picture comes. VIBEOS_GENIMG_WAIT lowers it for tests.
+GENIMG_WAIT = float(os.environ.get("VIBEOS_GENIMG_WAIT", "360"))
 GENIMG_PENDING = []    # [{"name", "kind", "w", "h", "desc", "out", "fut"}] waiting for the window
 _GENIMG_FLUSHER = None
+# [SD run 2026-10-13, docs/SD-RUN-2026-10-13.md] the owner's xhamster page: its one picture queued behind another page's
+# two and an LLM reload, rendered ~7 min after the request — the request had given up at GENIMG_WAIT and served a
+# placeholder, and the page never asked again. Now every placeholder of a picture that is still coming (the wait ran
+# out, or GENIMG_LIMIT turned it away) is ONE PIXEL WIDER than the picture: an odd width, while every picture is a
+# multiple of 64 wide (clamp_dims). The late-picture script — the <script data-kairos-genimg> block of the shell's
+# BRIDGE_SRC, in every app iframe and injected into every served page (no_context_menu) — sees the odd width and asks
+# again as /genimg/…?_r=<n> with backoff; such a re-ask is answered AT ONCE (the picture, the pending placeholder, or
+# the final one) and never holds a connection, and it queues a picture that was turned away once a slot is free. A
+# FINAL placeholder (the minors block, a failed render) has an even width: the script stops there.
+GENIMG_FAILED = {}     # file name -> time its render last failed: a re-ask gets the final placeholder, no render loop
+GENIMG_FAIL_TTL = 600  # s; a fresh page load (no _r) tries a failed picture again, as before
+GENIMG_LATE = {}       # file name -> time a pending placeholder was first served for it (the "late picture" journal line)
 
 
 def _genimg_schedule():
@@ -4589,19 +4963,56 @@ async def _genimg_flush():
             for it, r in zip(items, results):
                 if not r.get("ok"):
                     print(f"[kernel] genimg picture failed: {str(r.get('error'))[:120]}", flush=True)
+                    _genimg_trim(GENIMG_FAILED, GENIMG_FAIL_TTL)
+                    GENIMG_FAILED[it["name"]] = time.time()
+                else:
+                    GENIMG_FAILED.pop(it["name"], None)
                 GENIMG_INFLIGHT.pop(it["name"], None)
                 if not it["fut"].done():
                     it["fut"].set_result(bool(r.get("ok")))
 
 
-def _svg_placeholder(text: str):
+def _genimg_trim(d: dict, ttl: float):
+    """drop the entries older than ttl (and the oldest beyond 512): the two name -> time maps stay small"""
+    now = time.time()
+    for k in [k for k, t in d.items() if now - t > ttl]:
+        d.pop(k, None)
+    while len(d) > 512:
+        d.pop(next(iter(d)))
+
+
+def _svg_placeholder(text: str, w: int = 512, h: int = 512):
+    """the FINAL placeholder (minors block, failed render): an even width — the late-picture script stops here"""
     from html import escape
-    return web.Response(content_type="image/svg+xml", text=(
-        "<svg xmlns='http://www.w3.org/2000/svg' width='512' height='512'>"
+    return web.Response(content_type="image/svg+xml", headers={"Cache-Control": "no-store"}, text=(
+        f"<svg xmlns='http://www.w3.org/2000/svg' width='{int(w)}' height='{int(h)}'>"
         "<rect width='100%' height='100%' fill='#0b0b18'/>"
         "<rect width='100%' height='100%' fill='none' stroke='#41e2ff' stroke-opacity='.3'/>"
         f"<text x='50%' y='50%' fill='#7a7a95' font-family='sans-serif' font-size='16' "
         f"text-anchor='middle'>{escape(text[:48])}</text></svg>"))
+
+
+def _svg_pending(desc: str, w: int, h: int):
+    """[SD run 2026-10-13] the picture is still coming: ONE PIXEL WIDER than the picture (w is a multiple of 64, so the
+    width is odd) — the late-picture script's signal to ask again. Never cached by the browser."""
+    from html import escape
+    return web.Response(content_type="image/svg+xml", headers={"Cache-Control": "no-store"}, text=(
+        f"<svg xmlns='http://www.w3.org/2000/svg' width='{int(w) | 1}' height='{int(h)}'>"
+        "<rect width='100%' height='100%' fill='#0b0b18'/>"
+        "<rect width='100%' height='100%' fill='none' stroke='#7c5cff' stroke-opacity='.45' stroke-dasharray='6 6'/>"
+        "<text x='50%' y='46%' fill='#b9a8ff' font-family='sans-serif' font-size='16' "
+        "text-anchor='middle'>still painting…</text>"
+        f"<text x='50%' y='54%' fill='#7a7a95' font-family='sans-serif' font-size='13' "
+        f"text-anchor='middle'>{escape(desc[:48])}</text></svg>"))
+
+
+def _genimg_late(name: str, desc: str, why: str):
+    """one journal line per picture that leaves with the pending placeholder"""
+    if name not in GENIMG_LATE:
+        _genimg_trim(GENIMG_LATE, 7200)
+        GENIMG_LATE[name] = time.time()
+        print(f"[kernel] genimg: {why} — the page gets a 'still painting' placeholder and asks again until the picture "
+              f"arrives: {desc[:60]}", flush=True)
 
 
 def genimg_target(tail: str, query) -> tuple:
@@ -4621,27 +5032,41 @@ def genimg_target(tail: str, query) -> tuple:
 async def h_genimg(request):
     desc, w, h, kind, out = genimg_target(request.match_info.get("tail", ""), request.query)
     name = out.name
-    risk, why = refusal.minor_risk(desc)        # [R86] the minors guard: never queued, never rendered, never cached —
-    if risk:                                    # and BEFORE the cache hit [r2, S4]: a picture rendered before the guard is quarantined
-        if not quarantine(out, why, "images"):
-            REFUSALS["blocked"] += 1
-        print(f"[kernel] blocked (minor-risk: {why}) on genimg '{desc[:60]}'", flush=True)
-        return _svg_placeholder("not rendered")
+    again = "_r" in request.query                # [SD run 2026-10-13] the late-picture script asking again: answered at once
+    try:   # [R86 round 4, check point 1] the page picture's description: before the cache hit, the queue, any render
+        block_check("genimg", desc, desc)
+    except MinorBlockError:
+        return _svg_placeholder("not rendered", w, h)
     if out.exists():
+        if again and GENIMG_LATE.pop(name, None) is not None:
+            print(f"[kernel] genimg: a late picture reached its page (ask #{str(request.query.get('_r'))[:6]}): {desc[:60]}",
+                  flush=True)
         return web.FileResponse(out)
     fut = GENIMG_INFLIGHT.get(name)
     if fut is None:
-        if len(GENIMG_INFLIGHT) >= GENIMG_LIMIT:
-            return _svg_placeholder(desc)        # overloaded: degrade, never block
+        failed = GENIMG_FAILED.get(name)
+        if again and failed and time.time() - failed < GENIMG_FAIL_TTL:
+            return _svg_placeholder(desc, w, h)  # it failed: final — a re-ask never starts a render loop
+        if len(GENIMG_INFLIGHT) >= GENIMG_LIMIT:  # overloaded: degrade, never block — and no longer lost: the re-ask
+            _genimg_late(name, desc, f"queue full ({len(GENIMG_INFLIGHT)} pictures in flight)")   # queues it later
+            return _svg_pending(desc, w, h)
         sessionlog.note_event("image", desc)
         fut = GENIMG_INFLIGHT[name] = asyncio.get_running_loop().create_future()
         GENIMG_PENDING.append({"name": name, "kind": kind, "w": w, "h": h, "desc": desc, "out": out, "fut": fut})
         _genimg_schedule()                       # the window timer collects the page's other pictures
+    if again:                                    # a re-ask never holds a connection
+        _genimg_late(name, desc, "not painted yet when the page asked again")
+        return _svg_pending(desc, w, h)
     try:  # shield: one impatient client must not cancel the shared render
         await asyncio.wait_for(asyncio.shield(fut), timeout=GENIMG_WAIT)
     except Exception:
         pass
-    return web.FileResponse(out) if out.exists() else _svg_placeholder(desc)
+    if out.exists():
+        return web.FileResponse(out)
+    if fut.done():                               # rendered nothing: failed — final
+        return _svg_placeholder(desc, w, h)
+    _genimg_late(name, desc, f"still rendering after {GENIMG_WAIT:.0f} s")
+    return _svg_pending(desc, w, h)
 
 
 async def h_browse(request):
@@ -4660,17 +5085,387 @@ async def h_browse(request):
         return web.json_response({"address": address, "html": no_context_menu(html), "cached": True})
     # [R75] same-site context as /web/: an optional "from" (the page the app was showing), else
     # the page of that site the app was shown last that links here, the root, the newest
+    gi = {}
     try:
-        html, source = await generate_page(address, ("/web/" + str(body["from"])) if body.get("from") else None)
-    except MinorRiskError as e:                  # [R86] nothing cached, a clean error for the app
+        html, source = await generate_page(address, ("/web/" + str(body["from"])) if body.get("from") else None,
+                                           gen_info=gi)
+    except MinorBlockError as e:                 # [R86] nothing cached, a clean error for the app
         return web.json_response({"error": str(e), "address": address}, status=400)
     except RefusalError as e:
-        return web.json_response({"error": str(e), "address": address}, status=502)
-    page.write_text(html)
+        return web.json_response({"error": str(e), "address": address}, status=DECLINED_STATUS)   # [R86 round 4] never a 502
+    if length_cut(gi):                           # [2026-10-14] served with its note, never cached, no site profile
+        log_length_cut("web page", address, gi)
+        note = length_note(gi)
+        return web.json_response({"address": address, "html": no_context_menu(length_banner(html, note)),
+                                  "cached": False, "truncated": True, "note": note,
+                                  "grounded_by": source or "imagination"})
+    web_store_page(address, html, "generated")   # [R84] (page.write_text, plus the next version of a page with versions)
     update_site_profile(address, html)
     note_web_served(address)
     return web.json_response({"address": address, "html": no_context_menu(html), "cached": False,
                               "grounded_by": source or "imagination"})
+
+
+# ------------------------------------------------ ✨ improve a website [R84]
+# Owner (2026-10-08): "make the improve to the website." The built-in browser's ✨ (shell/browser.js, the sticky note
+# of the apps' ✨) turns the page it shows into its NEXT VERSION: the previous HTML + the site's R75 profile + the
+# user's optional instruction go to the page writer (prompts.WEB_EVOLVE_SYSTEM = BROWSER_SYSTEM — its 18+ page rule
+# included — plus the evolution rules), streamed like an app's improvement (R86's refusal ladder and `refusal` event,
+# the minors block at the entry). The result passes the page checks (validate_html: structure + the JS gate, one
+# repair round) and never replaces a version that passes them better (R77's no-regression rule; the attempt is kept as
+# failed-v<N>.html). A result cut at the length limit (2026-10-14) is shown once and never saved (WEB_CUTS). A good one
+# becomes the page /web/ serves; every version stays in WEB_DIR/versions/<page slug>/ (v1 = the page as it was before
+# its first improvement) up to WEB_VERSIONS_KEEP — the oldest go, the current never. The browser shows a version
+# with /web/<address>?_v=<n> (its back/forward) and makes one current again with POST /api/web/version (the revert).
+# The site stays one site: the prompt carries the profile (name, premise, nav, palette, fonts, the other pages) and
+# keeps them unless the user asks otherwise; a new version of the page that FOUNDED the profile re-anchors it, so the
+# site's next pages follow what the user chose (pages already written are not rewritten).
+WEB_VERSIONS_KEEP = max(2, int(os.environ.get("VIBEOS_WEB_VERSIONS_KEEP", "8")))
+WEB_CUTS_KEEP = 8
+
+
+def _web_versions_dir(address: str) -> Path:
+    return WEB_DIR / "versions" / web_slug(address)      # WEB_DIR at call time (tests point it elsewhere)
+
+
+def _page_title(html: str) -> str:
+    return _html_text((re.search(r"<title[^>]*>(.*?)</title>", html or "", re.I | re.S) or [None, ""])[1])[:140]
+
+
+def load_web_versions(address: str) -> dict:
+    """{"address", "current", "versions": [{"v", "at", "title", "instruction", "by", "chars"}], "failed": [...]} of a
+    page that has versions; {} for one that was never improved (its cache file is its only version)"""
+    try:
+        idx = json.loads((_web_versions_dir(address) / "index.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return idx if isinstance(idx, dict) and isinstance(idx.get("versions"), list) and idx["versions"] else {}
+
+
+def web_version_html(address: str, v: int):
+    """the HTML of version v of a page, or None"""
+    if not any(x.get("v") == v for x in load_web_versions(address).get("versions", [])):
+        return None
+    try:
+        return (_web_versions_dir(address) / f"v{int(v)}.html").read_text()
+    except OSError:
+        return None
+
+
+def _save_web_versions(address: str, idx: dict) -> None:
+    path = _web_versions_dir(address) / "index.json"
+    tmp = path.with_name("index.json.tmp")
+    tmp.write_text(json.dumps(idx, ensure_ascii=False, indent=1))
+    tmp.replace(path)
+
+
+def web_add_version(address: str, html: str, by: str, instruction: str = None) -> dict:
+    """[R84] `html` becomes the page's NEW current version: versions/<slug>/v<N>.html, then the page cache file (what
+    /web/ serves). The first call keeps the page as it was as v1. Prunes to WEB_VERSIONS_KEEP (the oldest go, never the
+    current). Raises OSError (disk full) — the caller says so. -> the index"""
+    d = _web_versions_dir(address)
+    d.mkdir(parents=True, exist_ok=True)
+    page = WEB_DIR / f"{web_slug(address)}.html"
+    idx = load_web_versions(address)
+    if not idx:
+        idx = {"address": address, "current": None, "versions": []}
+        try:
+            old = page.read_text()
+        except OSError:
+            old = None
+        if old and not refusal.is_refusal(old, "html")[0]:
+            (d / "v1.html").write_text(old)
+            idx["versions"].append({"v": 1, "at": round(page.stat().st_mtime), "title": _page_title(old),
+                                    "instruction": None, "by": "generated", "chars": len(old)})
+            idx["current"] = 1
+    n = max(x["v"] for x in idx["versions"]) + 1 if idx["versions"] else 1
+    (d / f"v{n}.html").write_text(html)
+    idx["versions"].append({"v": n, "at": round(time.time()), "title": _page_title(html),
+                            "instruction": (instruction or "")[:300] or None, "by": by, "chars": len(html)})
+    idx["current"] = n
+    while len(idx["versions"]) > WEB_VERSIONS_KEEP:
+        drop = next(x for x in idx["versions"] if x["v"] != idx["current"])
+        idx["versions"].remove(drop)
+        try:
+            (d / f"v{drop['v']}.html").unlink()
+        except OSError:
+            pass
+    _save_web_versions(address, idx)
+    page.write_text(html)
+    return idx
+
+
+def web_set_current(address: str, v: int) -> dict:
+    """[R84] the revert: version v becomes the page /web/ serves again (no version is deleted) -> the index;
+    KeyError when the page has no such version"""
+    html = web_version_html(address, v)
+    if html is None:
+        raise KeyError(v)
+    idx = load_web_versions(address)
+    idx["current"] = v
+    _save_web_versions(address, idx)
+    (WEB_DIR / f"{web_slug(address)}.html").write_text(html)
+    return idx
+
+
+def web_store_page(address: str, html: str, by: str = "generated") -> None:
+    """write a freshly generated page to the cache (_web_build, h_browse); a page that has versions (it was improved)
+    gets it as its next version, so a reload with _fresh never drops the history [R84]"""
+    if load_web_versions(address):
+        web_add_version(address, html, "regenerated" if by == "generated" else by)
+    else:
+        (WEB_DIR / f"{web_slug(address)}.html").write_text(html)
+
+
+def _versions_out(address: str, idx: dict) -> dict:
+    page = WEB_DIR / f"{web_slug(address)}.html"
+    if not idx and page.exists():               # never improved: its cache file is v1
+        try:
+            title = _page_title(page.read_text())
+        except OSError:
+            title = ""
+        idx = {"current": 1, "versions": [{"v": 1, "at": round(page.stat().st_mtime), "title": title,
+                                           "instruction": None, "by": "generated"}]}
+    return {"address": address, "cached": page.exists(), "current": idx.get("current"),
+            "versions": [{k: x.get(k) for k in ("v", "at", "title", "instruction", "by")} for x in idx.get("versions", [])],
+            "keep": WEB_VERSIONS_KEEP}
+
+
+async def h_web_versions(request):
+    """GET /api/web/versions?address=<a /web/ address> — the page's versions for the browser's version strip [R84]"""
+    address = (request.query.get("address") or "").strip().strip("/")
+    if not address:
+        return web.json_response({"error": "address missing"}, status=400)
+    return web.json_response(_versions_out(address, load_web_versions(address)))
+
+
+async def h_web_version(request):
+    """POST /api/web/version {address, version} — the revert: that version becomes the page /web/ serves [R84]"""
+    try:
+        body = await request.json()
+        address, v = str(body.get("address") or "").strip().strip("/"), int(body.get("version"))
+    except (ValueError, TypeError, AttributeError):
+        return web.json_response({"error": "expected {address, version}"}, status=400)
+    try:
+        idx = web_set_current(address, v)
+    except KeyError:
+        return web.json_response({"error": f"{address!r} has no version {v}"}, status=404)
+    prof = load_site_profile(web_site(address))
+    update_site_profile(address, web_version_html(address, v) or "", reanchor=prof.get("founded_by") == address)
+    print(f"[kernel] web {address!r}: version {v} is the page again (revert)", flush=True)
+    return web.json_response(_versions_out(address, idx))
+
+
+async def h_web_improve(request):
+    """SSE stream (see _web_improve); tracked in LIVE_STREAMS while the response is open, like an app generation"""
+    task = asyncio.current_task()
+    try:
+        return await _web_improve(request, task)
+    finally:
+        LIVE_STREAMS.pop(task, None)
+
+
+async def _web_improve(request, task):
+    """POST /api/web/improve {address, instruction?, from_version?} -> SSE: delta (the new page's code), refusal (R86:
+    the next rung starts, the code view resets), done {address, version, current, versions, title, checks} — or done
+    {truncated, note, cut} (shown once via /web/<address>?_cut=<cut>, nothing saved) —, fallback {message, version}
+    (the attempt fails the checks its predecessor passes: the page stays), error {message, kind: error|declined|blocked}"""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    address = str(body.get("address") or "").strip().strip("/")[:2000]
+    instruction = str(body.get("instruction") or "").strip()[:2000]
+    if not address:
+        return web.json_response({"error": "address missing"}, status=400)
+    idx = load_web_versions(address)
+    page = WEB_DIR / f"{web_slug(address)}.html"
+    prev, prev_v = None, idx.get("current") or 1
+    try:
+        fv = int(body.get("from_version"))
+    except (TypeError, ValueError):
+        fv = None
+    if fv:                                       # the browser shows an older version: improve THAT one
+        prev = web_version_html(address, fv)
+        prev_v = fv if prev is not None else prev_v
+    if prev is None:
+        prev = cached_page_html(page, address)   # [R86] a cached refusal is no page to improve
+    if prev is None:
+        return web.json_response({"error": "this page is not in the cache — open it first, then ✨ improve it",
+                                  "address": address}, status=404)
+    why = engine_missing("llama-server")
+    if why:
+        return engine_missing_response("llama-server", why)
+    version = (max(x["v"] for x in idx["versions"]) + 1) if idx else 2
+
+    resp = web.StreamResponse(headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache"})
+    await resp.prepare(request)
+    client = {"gone": False}
+
+    async def send(event, data):
+        if client["gone"]:                       # a closed browser window: the improvement still finishes and is kept
+            return
+        try:
+            await resp.write(f"event: {event}\ndata: {json.dumps(data)}\n\n".encode())
+        except (ConnectionResetError, ConnectionError, RuntimeError):
+            client["gone"] = True
+
+    async def eof():
+        try:
+            await resp.write_eof()
+        except Exception:
+            pass
+
+    async def closer():
+        await send("error", {"message": "the kernel is restarting — ✨ improve the page again in a moment", "kind": "error"})
+        client["gone"] = True
+        await eof()
+    LIVE_STREAMS[task] = closer
+
+    async def fail(e):
+        kind = ("blocked" if isinstance(e, MinorBlockError) else "declined" if isinstance(e, RefusalError) else "error")
+        print(f"[kernel] web improve {address!r} failed ({kind}): {str(e)[:600]}", flush=True)
+        await send("error", {"message": str(e)[:600], "kind": kind, "address": address})
+        await eof()
+        return resp
+
+    request_text = f"{address_words(address)} {instruction}".strip()
+    try:   # [R86 round 4, check point 4] an uncensored primary: the user's words at the entry of the generation
+        block_check_primary("html", request_text, label=address)
+    except MinorBlockError as e:
+        return await fail(e)
+    sessionlog.note_event("browse", instruction or address)
+    site = web_site(address)
+    prof = load_site_profile(site)
+    system = prompts.WEB_EVOLVE_SYSTEM
+    budget = prompt_char_budget(system)
+    head = (f"The browser shows the page: {address}\n\n"
+            + (f"USER IMPROVEMENT REQUEST: {instruction}\n\n" if instruction
+               else "No instruction: improve the page by your own judgement.\n\n"))
+    site_block = ""
+    if prof.get("brand") or prof.get("nav"):
+        site_block = site_context_block(address, prof, cap=min(SITE_CTX_CAP, budget // 4),
+                                        intro=prompts.WEB_EVOLVE_SITE_INTRO) + "\n\n"
+    tail = f"\n\nWrite version {version} of this page now — the FULL HTML document."
+    prev_cap = max(2000, budget - len(head) - len(site_block) - len(tail) - 64)
+    user_msg = head + site_block + f"PREVIOUS VERSION (v{prev_v}) HTML:\n" + prev[:prev_cap] + tail
+    sticky, chunks, gi = {}, [], {}
+
+    async def on_fallback(frm, to, why):         # [R86] the next rung starts: the code view starts over
+        chunks.clear()
+        await send("refusal", {"from": frm, "to": to, "to_name": rung_name(to), "kind": "page",
+                               "reason": (why or "")[:200], "message": f"the model declined — retrying with {rung_name(to)}"})
+    await send("delta", {"text": f"<!-- ✨ {address}: writing version {version}"
+                                 + (f" — {instruction[:120]}" if instruction else "") + " -->\n"})
+    t0 = time.time()
+    try:
+        async with contextlib.aclosing(llm_stream(
+                system, [{"role": "user", "content": user_msg}], kind="html", label=f"improve {address[:50]}",
+                request=request_text, on_fallback=on_fallback, sticky=sticky, gen_info=gi, temperature=0.75)) as gen:
+            async for delta in gen:
+                chunks.append(delta)
+                await send("delta", {"text": delta})
+        html = rewrite_page(strip_fences("".join(chunks), "html"), address)
+        problems, rounds = validate_html(html), 0
+        if problems:                             # the page checks (structure + the JS gate) and one repair round [R77]
+            await send("delta", {"text": f"\n<!-- self-repair: {'; '.join(problems)[:300]} -->\n"})
+            html = rewrite_page(await repair_html(html, problems, max_rounds=1, purpose=f"the website at '{address}'",
+                                                  sticky=sticky, gen_info=gi), address)
+            problems, rounds = validate_html(html), 1
+    except Exception as e:
+        return await fail(e)
+    took = round(time.time() - t0, 1)
+    if length_cut(gi):                           # [2026-10-14] shown once with its note, never saved
+        log_length_cut("web page improvement", address, gi)
+        note = length_note(gi)
+        tok = uuid.uuid4().hex[:16]
+        while len(WEB_CUTS) >= WEB_CUTS_KEEP:
+            WEB_CUTS.pop(next(iter(WEB_CUTS)))
+        WEB_CUTS[tok] = {"address": address, "html": html, "note": note, "t0": time.time()}
+        await send("done", {"address": address, "truncated": True, "note": note, "cut": tok, "version": None,
+                            "current": idx.get("current") or 1, "seconds": took})
+        await eof()
+        return resp
+    prev_problems = validate_html(prev)
+    if problems and len(problems) > len(prev_problems):   # [R77] never a regression: the page stays as it was
+        failed = None
+        try:
+            d = _web_versions_dir(address)
+            d.mkdir(parents=True, exist_ok=True)
+            (d / f"failed-v{version}.html").write_text(html)
+            failed = f"failed-v{version}.html"
+        except OSError:
+            pass
+        why = f"it fails the page checks v{prev_v} passes ({problems[0][:200]})"
+        print(f"[kernel] web improve {address!r}: v{version} not used — {why}; kept as {failed}", flush=True)
+        await send("fallback", {"address": address, "version": prev_v, "failed_version": version,
+                                "message": f"the improvement to v{version} was not used: {why}; v{prev_v} stays"})
+        await eof()
+        return resp
+    try:
+        idx = web_add_version(address, html, "improve", instruction)
+    except OSError as e:
+        evict_cache("web improve save failed")
+        return await fail(RuntimeError(f"the improved page was not saved ({disk_full_message() if e.errno in DISK_FULL_ERRNOS else e})"))
+    update_site_profile(address, html, reanchor=prof.get("founded_by") == address)   # [R75] the founding page re-anchors
+    note_web_served(address)
+    print(f"[kernel] web {address!r}: improved to v{idx['current']} in {took} s ({len(html)} chars"
+          f"{', instruction: ' + instruction[:60] if instruction else ''}; checks {'; '.join(problems)[:120] or 'passed'}"
+          f", {rounds} repair round(s))", flush=True)
+    out = _versions_out(address, idx)
+    await send("done", {"address": address, "version": idx["current"], "current": idx["current"],
+                        "versions": out["versions"], "title": _page_title(html), "truncated": False, "seconds": took,
+                        "checks": "; ".join(problems)[:300] or "passed", "repair_rounds": rounds})
+    await eof()
+    return resp
+
+
+# ------------------------------------------------ addresses in the desktop search [R83]
+# "oppenheimer.com", "www.x.de/y", "https://…" — and "xhamster.com nude …" (an address, then words: a site search) open
+# in the built-in browser. shell/browser.js webAddress() is the same function; tests/test_dock_browser.py runs one
+# table through both.
+WEB_TLDS = frozenset("""com net org info biz name pro io co ai app dev page site online web shop store blog news tech
+    cloud art fun game games live life world today space zone club xyz top me tv cc us uk eu de at ch fr es it nl be lu
+    pl cz sk hu ro bg gr pt ie dk se no fi is ee lv lt ru ua jp cn kr tw hk sg in id my th vn ph au nz ca mx br ar cl
+    za ng eg tr il ae sa pk xxx porn sex adult kai""".split())
+_WEB_HOST_RE = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,24})")
+
+
+def web_address(text: str):
+    """the /web/ address `text` names, or None when it is not an address: a host with http(s)://, with www. or with a
+    known TLD (WEB_TLDS, incl. the imaginary web's .kai) — 'node.js tutorial', 'readme.md', 'e.g.' stay searches.
+    'Oppenheimer.com' -> 'oppenheimer.com'; 'https://a.org/b?c=1' -> 'a.org/b?c=1'; 'xhamster.com nude slim' ->
+    'xhamster.com/search?q=nude slim' (words after a bare host: the site's search; after a path: ?q=, &q=)"""
+    t = " ".join(str(text or "").split())
+    m = re.match(r"^(https?://)?([^\s/?#]+)([/?#]\S*)?(?: (.+))?$", t, re.I)
+    if not m:
+        return None
+    scheme, host, path, rest = m.groups()
+    host = host.lower().rstrip(".")
+    hm = _WEB_HOST_RE.fullmatch(host)
+    if not hm or not (scheme or host.startswith("www.") or hm.group(1) in WEB_TLDS):
+        return None
+    path = (path or "").split("#")[0]
+    if rest:
+        if path.strip("/") == "":
+            return f"{host}/search?q={rest}"
+        return f"{host}{path}{'&' if '?' in path else '?'}q={rest}"
+    addr = host + path
+    return addr if "?" in addr else addr.rstrip("/")
+
+
+# the system apps the search finds by name — not on the dock (owner 2026-10-15: Files, Notes and News left it; the
+# browser is the built-in since R83), reachable through ⊞ Apps and here. The shell holds their prompts
+# (shell/index.html: the dock + <template id="system-apps">); the search hands back {"type": "sysapp", "app_id"}.
+SYSTEM_APPS = (("browser", "🌐", "Browser", "the built-in web browser — the imaginary web", "web internet websites"),
+               ("notes", "📝", "Notes", "system app", "notepad"),
+               ("news", "📰", "News", "system app", "newspaper headlines"),
+               ("files", "📁", "Files", "system app", "file manager explorer folders"),
+               ("settings", "⚙️", "Settings", "system app", "preferences system wifi bluetooth language"))
+# [R83] the generated "browser" app (the dock's data-app="browser" until 2026-10-15) is retired: the built-in browser
+# replaces it. Its cache stays on disk (the owner's card has one) but it is no longer listed — no duplicate.
+RETIRED_APP_IDS = frozenset({"browser"})
 
 
 def format_bug_report(err, app_id: str, purpose: str, version) -> str:
@@ -4722,10 +5517,15 @@ async def h_app_repair(request):
           f"{(body['error'] or {}).get('type', 'Error') if isinstance(body['error'], dict) else 'Error'}",
           flush=True)
     problems = [report] + validate_html(html_path.read_text())
-    try:   # [R86] repair_html keeps the document when the repair reply is a refusal; the guard is a 400
-        html = jsfix.harden_app_html(await repair_html(html_path.read_text(), problems, purpose=purpose))
-    except MinorRiskError as e:
+    gi = {}
+    try:   # [R86] repair_html keeps the document when the repair reply is a refusal; the block is a 400
+        html = jsfix.harden_app_html(await repair_html(html_path.read_text(), problems, purpose=purpose, gen_info=gi))
+    except MinorBlockError as e:
         return web.json_response({"error": str(e)}, status=400)
+    if length_cut(gi):                       # [2026-10-14] a cut repair is never written over the app
+        log_length_cut("app repair", app_id, gi)
+        return web.json_response({"app_id": app_id, "html": html, "broken": gate_verdict(html),
+                                  "truncated": True, "warning": length_note(gi)})
     html_path.write_text(html)
     broken = gate_verdict(html)              # [N5] the shell shows a still-failing gate instead of remount → error → next round
     if meta:                                 # (a missing/unreadable meta.json is not replaced by a stub)
@@ -4746,8 +5546,8 @@ def resolve_image_kind(body: dict) -> str:
     """Which image model runs this job: explicit {"model"} > {"uncensored"} flag
     > the user's settings choice > the tier default. Falls back to the baked
     default when the chosen model is an add-on that hasn't been downloaded yet.
-    [R76] "uncensored" (key or flag) IS the default (Krea 2 + the Kroma LoRA); "safe" =
-    the stock Krea 2. {"adult": true} picks no model — only the 18+ expander rules."""
+    [R76 → Muse, 2026-10-10] "uncensored" (key or flag) IS the default (Muse, no LoRA); "safe" =
+    the same Muse DiT with the SFW expander. {"adult": true} picks no model — only the 18+ expander rules."""
     choice = body.get("model") or ("uncensored" if body.get("uncensored") else None) \
         or load_settings().get("image_model") or "default"
     kind = IMAGE_MODEL_KEYS.get(choice, "image")
@@ -4799,15 +5599,15 @@ async def render_images(kind: str, items: list, adult: bool = False, expand=None
     setting = expand if expand in EXPAND_MODES else None
     if isinstance(expand, bool):
         setting = "on" if expand else "off"
-    # [R86] the minors guard BEFORE expansion or rendering: a flagged prompt is neither expanded (so the
-    # expander's raw-prompt fallback cannot render it) nor rendered — its result says why
+    # [R86 round 4, check point 1] the narrow minors block at the render's entry, BEFORE the expander: a blocked
+    # prompt is neither expanded nor rendered — its result says why (the final prompt meets check point 2 at sd_batch)
     blocked = {}
     for i, it in enumerate(items):
-        risk, why = refusal.minor_risk(it.get("prompt"))
-        if risk:
+        hit, why = refusal.minor_block(it.get("prompt"))
+        if hit:
             blocked[i] = why
             REFUSALS["blocked"] += 1
-            print(f"[kernel] blocked (minor-risk: {why}) on image '{str(it.get('prompt'))[:60]}'", flush=True)
+            print(f"[kernel] blocked (minors: {why}) on image '{str(it.get('prompt'))[:60]}'", flush=True)
     live = [it for i, it in enumerate(items) if i not in blocked]
     results = []
     if live:
@@ -4818,13 +5618,13 @@ async def render_images(kind: str, items: list, adult: bool = False, expand=None
                 it["prompt"] = await english_text(it["prompt"])
         exp = await expand_prompts(kind, [it["prompt"] for it in live], adult=adult, setting=setting)
         jobs = [{"prompt": e["prompt"], "out": it["out"], "w": it.get("w"), "h": it.get("h")}
-                for it, e in zip(live, exp) if not (e.get("blocked") or e.get("declined"))]   # [R86 r2 B1 / r3 X2]
+                for it, e in zip(live, exp) if not e.get("declined")]   # [R86 r3 X2; r4b S7: the expander sets no `blocked` since round 4]
         rendered = iter(await MM.sd_batch(kind, jobs) if jobs else [])
         for it, e in zip(live, exp):
-            if e.get("blocked") or e.get("declined"):      # the expander's refusal named minors / every rung refused
-                results.append({"ok": False, "path": None, "error": e.get("error") or refusal.BLOCK_MESSAGE, "seed": None,
+            if e.get("declined"):                           # every expander rung refused: declined, never rendered
+                results.append({"ok": False, "path": None, "error": e.get("error") or EXPANDER_DECLINED, "seed": None,
                                 "engine": None, "prompt": it.get("prompt"), "expanded": False, "expander": e.get("expander"),
-                                "expander_model": None, "blocked": bool(e.get("blocked")), "declined": bool(e.get("declined"))})
+                                "expander_model": None, "blocked": False, "declined": True})
                 continue
             r = next(rendered)
             r.update(prompt=e["prompt"], expanded=e["expanded"], expander=e["expander"],
@@ -4843,10 +5643,13 @@ async def render_images(kind: str, items: list, adult: bool = False, expand=None
 async def h_image(request):
     body = await request.json()
     prompt = body["prompt"]
-    try:   # [R86] the minors guard at the entry: no job, no expansion, no render (the English — the expander's or the MT's
-        guard_request("image", prompt)       # when no expander runs — meets the sd floor; no extra MT hop here [R71 pin])
-    except MinorRiskError as e:
+    try:   # [R86 round 4, check point 1] the user's prompt at the entry: no job, no expansion, no render (the English —
+        block_check("image", prompt, prompt)   # the expander's or the MT's — meets check point 2 at the sd floor; no MT hop here [R71 pin])
+    except MinorBlockError as e:
         return web.json_response({"error": str(e)}, status=400)
+    why = image_engine_missing()                 # [2026-10-14] no job without an image engine: a clean 503
+    if why:
+        return engine_missing_response("sd-cli", why)
     sessionlog.note_event("image", prompt)
     kind = resolve_image_kind(body)
     jid = new_job(kind)
@@ -4901,11 +5704,14 @@ async def h_images(request):
         return web.json_response({"error": 'prompts: a list of prompt strings, or "prompt" + "count"'}, status=400)
     if len(plist) > IMAGES_MAX:
         return web.json_response({"error": f"at most {IMAGES_MAX} pictures per call (got {len(plist)})"}, status=400)
-    for p in plist:                             # [R86] the minors guard at the entry: the whole call is refused (the English meets the floor)
+    for p in plist:                             # [R86 round 4, check point 1] at the entry: the whole call is refused (the English meets the floor)
         try:
-            guard_request("image", p)
-        except MinorRiskError as e:
+            block_check("image", p, p)
+        except MinorBlockError as e:
             return web.json_response({"error": str(e), "prompt": p[:200]}, status=400)
+    why = image_engine_missing()                 # [2026-10-14]
+    if why:
+        return engine_missing_response("sd-cli", why)
     kind = resolve_image_kind(body)
     w = h = None
     dims = image_dims(body.get("width"), body.get("height"))
@@ -4937,6 +5743,304 @@ async def h_images(request):
 
     asyncio.create_task(run())
     return web.json_response({"job": jid, "count": len(plist), "model": kind})
+
+
+# ------------------------------------------------ ✨ improve a picture [R85]
+# Owner (2026-10-08): "same for the pictures, make them improveable use a qwen workflow for the improve (krea to create
+# first qwen to edit)". Muse (`image`, the Krea 2 fine-tune since 2026-10-10) creates; the tier's `image_edit` section
+# — a Qwen image-edit model, an add-on the media image pre-installs — edits a picture with the user's instruction: an
+# sd-server session (sd_batch: R79's idle window, the R72 exclusive GPU hold, the R86 floor on the final prompt) whose
+# request carries the picture as its reference image ("extra_images"; sd-cli: -r). Every edit is a new VERSION of the
+# picture's chain FILES_DIR/images/versions/<root>/: v0.png = the original (copied there, so the chain survives the loose
+# file's eviction), v1.png … + versions.json {root, source, current, versions: [{v, at, by, instruction, prompt, parent,
+# model, seed, ms, w, h}]}; a revert only moves `current`. The media cache evicts a chain as a whole (_version_chains).
+# Only pictures the OS painted can be improved (/files/images/…, /genimg/…): no upload route, so no photo of a real
+# person enters the editor. docs/PICTURE-EDIT-2026-10-15.md
+IMAGE_EDIT_KEY = "image_edit"
+IMAGE_VERSIONS_DIR = FILES_DIR / "images" / "versions"
+IMAGE_VERSIONS_KEEP = int(os.environ.get("VIBEOS_IMAGE_VERSIONS_KEEP", "16"))   # per chain; v0 and the current stay
+IMAGE_EDIT_MAX_CHARS = 1000
+# the empty sticky note ("the AI picks an improvement itself"): improve the quality, keep the content
+IMAGE_EDIT_DEFAULT = ("Improve the quality of this picture: sharper details, cleaner textures, better light and colour. "
+                      "Keep the content, the composition, every person and the style exactly as they are.")
+_IMAGE_ROOT_RE = re.compile(r"^[a-z0-9][a-z0-9-]{3,40}$")
+
+
+def png_size(path):
+    """(width, height) from a PNG's IHDR (no PIL on the image), None for anything else"""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(24)
+    except OSError:
+        return None
+    if len(head) < 24 or head[:8] != b"\x89PNG\r\n\x1a\n" or head[12:16] != b"IHDR":
+        return None
+    w, h = struct.unpack(">II", head[16:24])
+    return (w, h) if w and h else None
+
+
+def picture_file(picture):
+    """The file behind a picture the OS painted — a /files/images/… or /genimg/… URL (also as an absolute URL) — or
+    None: any other shape, an escape, a picture outside the image cache (icons, video frames, /data)"""
+    if not isinstance(picture, str) or not picture.strip():
+        return None
+    try:
+        p = served_file(picture.strip())
+    except (ValueError, OSError):
+        return None
+    if p is None:
+        return None
+    base = (FILES_DIR / "images").resolve()
+    return p if p.is_relative_to(base) and p != base else None
+
+
+def image_chain_dir(root: str) -> Path:
+    return IMAGE_VERSIONS_DIR / root
+
+
+def image_version_url(root: str, v: int) -> str:
+    return f"/files/images/versions/{root}/v{int(v)}.png"
+
+
+def image_chain_of(path: Path) -> tuple:
+    """(root, version) of a picture file: a chain's v<N>.png -> (its root, N); any other picture -> (a root derived from
+    its place in the image cache, None) — the same picture always maps to the same chain"""
+    rp = path.resolve()
+    try:
+        rel = rp.relative_to(IMAGE_VERSIONS_DIR.resolve())
+    except ValueError:
+        rel = None
+    if rel is not None and len(rel.parts) == 2 and _IMAGE_ROOT_RE.match(rel.parts[0]):
+        m = re.fullmatch(r"v(\d+)\.png", rel.parts[1])
+        if m:
+            return rel.parts[0], int(m.group(1))
+    try:
+        key = str(rp.relative_to(FILES_DIR.resolve()))
+    except ValueError:
+        key = str(rp)
+    return "p" + hashlib.md5(key.encode()).hexdigest()[:16], None
+
+
+def load_image_versions(root: str) -> dict:
+    """versions.json of chain `root`, {} when there is none (never improved, evicted) or it is unreadable"""
+    if not isinstance(root, str) or not _IMAGE_ROOT_RE.match(root):
+        return {}
+    try:
+        idx = json.loads((image_chain_dir(root) / "versions.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return idx if isinstance(idx, dict) and isinstance(idx.get("versions"), list) and idx["versions"] else {}
+
+
+def _save_image_versions(root: str, idx: dict) -> None:
+    path = image_chain_dir(root) / "versions.json"
+    tmp = path.with_name("versions.json.tmp")
+    tmp.write_text(json.dumps(idx, ensure_ascii=False, indent=1))
+    tmp.replace(path)
+
+
+def image_chain_start(src: Path, source_url: str, root: str) -> dict:
+    """A picture's first ✨: the chain dir, the original copied as v0.png, versions.json -> the index"""
+    d = image_chain_dir(root)
+    d.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, d / "v0.png")
+    w, h = png_size(d / "v0.png") or (None, None)
+    idx = {"root": root, "source": source_url, "current": 0, "created": round(time.time()),
+           "versions": [{"v": 0, "at": round(src.stat().st_mtime), "by": "original", "w": w, "h": h}]}
+    _save_image_versions(root, idx)
+    return idx
+
+
+def image_add_version(root: str, rec: dict) -> dict:
+    """rec (its file v<rec.v>.png is written) becomes the chain's current version; the chain is pruned to
+    IMAGE_VERSIONS_KEEP — the oldest go, never v0 (the original) or the current -> the index"""
+    idx = load_image_versions(root)
+    idx["versions"].append(rec)
+    idx["current"] = rec["v"]
+    while len(idx["versions"]) > max(2, IMAGE_VERSIONS_KEEP):
+        drop = next(x for x in idx["versions"] if x["v"] not in (0, idx["current"]))
+        idx["versions"].remove(drop)
+        try:
+            (image_chain_dir(root) / f"v{drop['v']}.png").unlink()
+        except OSError:
+            pass
+    _save_image_versions(root, idx)
+    return idx
+
+
+def image_set_current(root: str, v: int) -> dict:
+    """the revert: version v becomes the chain's current picture (nothing is deleted) -> the index; KeyError when the
+    chain has no such version (or its file is gone)"""
+    idx = load_image_versions(root)
+    if not any(x.get("v") == v for x in idx.get("versions", [])) or not (image_chain_dir(root) / f"v{int(v)}.png").is_file():
+        raise KeyError(v)
+    idx["current"] = int(v)
+    _save_image_versions(root, idx)
+    return idx
+
+
+def image_versions_out(root, idx: dict, picture: str = None) -> dict:
+    """the shape /api/image/versions, the revert and a finished ✨ job answer: {root, current, url (the current
+    version's), source, versions: [{v, url, at, by, instruction, parent, model, seed, ms, w, h}], keep}; a picture that
+    was never improved is its own v0 (root None)"""
+    if not idx:
+        return {"root": None, "current": 0, "url": picture, "source": picture, "keep": IMAGE_VERSIONS_KEEP,
+                "versions": [{"v": 0, "url": picture, "by": "original"}] if picture else []}
+    vs = [{**{k: x.get(k) for k in ("v", "at", "by", "instruction", "parent", "model", "seed", "ms", "w", "h")},
+           "url": image_version_url(root, x["v"])} for x in idx["versions"]]
+    return {"root": root, "current": idx.get("current"), "url": image_version_url(root, idx.get("current") or 0),
+            "source": idx.get("source"), "versions": vs, "keep": IMAGE_VERSIONS_KEEP}
+
+
+def image_edit_status() -> dict:
+    """/api/status + /api/models `image_edit`: the picture editor — is it installed, its name, its download key"""
+    spec = MANIFEST.get(IMAGE_EDIT_KEY)
+    if not isinstance(spec, dict) or "diffusion" not in spec:
+        return {"available": False, "present": False, "name": None, "download_key": None,
+                "reason": "this tier has no picture-edit model"}
+    present = section_present(spec)
+    dl = MODEL_DL.get(IMAGE_EDIT_KEY)
+    size = round(sum(e.get("size_gb", 0) for e in section_files(spec)), 2)
+    return {"available": present, "present": present, "name": spec.get("name"),
+            "short_name": short_model_name(spec.get("name")), "addon": bool(spec.get("addon")),
+            "download_key": IMAGE_EDIT_KEY, "size_gb": size,
+            "downloading": bool(dl and dl["status"] == "downloading"),
+            "reason": None if present else
+            f"the picture editor ({short_model_name(spec.get('name'))}) is an add-on that isn't installed — "
+            f"vibe.models.download('{IMAGE_EDIT_KEY}'), {size} GB"}
+
+
+async def h_image_improve(request):
+    """POST /api/image/improve {picture, instruction?} -> {job, root, from_version, model}: ✨ the picture's next
+    version. picture = a /files/images/… (a chain's /files/images/versions/<root>/v<N>.png continues that chain from
+    N) or /genimg/… URL; instruction = what to change ("" = improve the quality, keep the content). Poll /api/job/<id>:
+    done -> result = the new version's URL + {root, version, current, versions}; error {error, blocked?}.
+    400 = no picture the OS painted / the minors block (R86 check point 1, on the words as typed — the English the
+    model gets meets check point 2 at sd_batch), 404 = no such file, 409 = the editor add-on is not installed,
+    415 = not a PNG, 503 = no image engine."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    picture = str(body.get("picture") or body.get("url") or "").strip()
+    instruction = str(body.get("instruction") or "").strip()[:IMAGE_EDIT_MAX_CHARS]
+    src = picture_file(picture)
+    if src is None:
+        return web.json_response({"error": "picture: a /files/images/… or /genimg/… picture the OS painted"}, status=400)
+    if not src.is_file():
+        return web.json_response({"error": f"no such picture: {picture} (a /genimg/ picture must have been painted first)"},
+                                 status=404)
+    try:   # [R86 round 4, check point 1] the instruction at the media entry: no job, no translation, no render
+        block_check("image", instruction, instruction, check=refusal.minor_age)   # [review v7.5-2] the age alone
+    except MinorBlockError as e:
+        return web.json_response({"error": str(e), "blocked": True}, status=400)
+    st = image_edit_status()
+    if not st["available"]:
+        return web.json_response({"error": st["reason"], "download_key": st["download_key"], "missing": True}, status=409)
+    why = image_engine_missing()
+    if why:
+        return engine_missing_response("sd-cli", why)
+    if not png_size(src):
+        return web.json_response({"error": "only PNG pictures can be improved"}, status=415)
+    root, parent = image_chain_of(src)
+    sessionlog.note_event("image", instruction or "improve a picture")
+    jid = new_job(IMAGE_EDIT_KEY)
+    JOBS[jid].update(root=root, from_version=parent or 0, instruction=instruction or None)
+    asyncio.create_task(_image_improve_job(jid, src, picture, root, parent, instruction))
+    return web.json_response({"job": jid, "root": root, "from_version": parent or 0,
+                              "model": MANIFEST[IMAGE_EDIT_KEY].get("name")})
+
+
+async def _image_improve_job(jid, src: Path, picture: str, root: str, parent, instruction: str):
+    """the ✨ job: (start the chain) -> the instruction in English (R71's fast model, cached; as typed when the layer is
+    off) -> one edit through sd_batch at the reference's size -> v<N> becomes current. One edit per chain at a time
+    (its lock); the GPU queue orders chains."""
+    lock = _IMAGE_CHAIN_LOCKS.setdefault(root, asyncio.Lock())
+    try:
+        async with lock:
+            idx = load_image_versions(root)
+            if not idx:
+                if parent is not None:
+                    raise RuntimeError("this picture's versions were cleared from the media cache — open the picture "
+                                       "again and ✨ it anew")
+                idx = image_chain_start(src, picture, root)
+            frm = 0 if parent is None else int(parent)
+            ref = image_chain_dir(root) / f"v{frm}.png"
+            if not ref.is_file() or not any(x.get("v") == frm for x in idx["versions"]):
+                raise RuntimeError(f"version {frm} of this picture is gone (pruned or cleared)")
+            w0, h0 = png_size(ref) or (1024, 1024)
+            w, h = clamp_dims(MANIFEST[IMAGE_EDIT_KEY], w0, h0)
+            english = (await english_text(instruction)) if instruction else ""
+            prompt = (english or "").strip() or IMAGE_EDIT_DEFAULT
+            n = max(x["v"] for x in idx["versions"]) + 1
+            out = image_chain_dir(root) / f"v{n}.png"
+            JOBS[jid].update(version=n, prompt=prompt)
+            t0 = time.time()
+            r = (await MM.sd_batch(IMAGE_EDIT_KEY, [{"prompt": prompt, "out": out, "w": w, "h": h, "ref": ref}]))[0]
+            if not r["ok"]:
+                JOBS[jid].update(blocked=bool(r.get("blocked")))
+                raise RuntimeError(r["error"] or "the picture editor rendered nothing")
+            ms = round((time.time() - t0) * 1000)
+            model = short_model_name(MANIFEST[IMAGE_EDIT_KEY].get("name"))
+            idx = image_add_version(root, {"v": n, "at": round(time.time()), "by": "improve",
+                                           "instruction": instruction or None,
+                                           "prompt": prompt if prompt != instruction else None,
+                                           "parent": frm, "model": model, "seed": r.get("seed"), "ms": ms,
+                                           "w": int(w), "h": int(h)})
+        out_v = image_versions_out(root, idx)
+        print(f"[kernel] picture {root}: ✨ v{frm} -> v{n} in {ms / 1000:.1f} s ({model}, {w}x{h}"
+              f"{', instruction: ' + instruction[:60] if instruction else ', no instruction'})", flush=True)
+        JOBS[jid].update(status="done", result=image_version_url(root, n), version=n, current=n, seed=r.get("seed"),
+                         engine=r.get("engine"), model=model, ms=ms, versions=out_v["versions"], url=out_v["url"])
+    except Exception as e:
+        JOBS[jid].update(status="error", error=str(e))
+
+
+async def h_image_versions(request):
+    """GET /api/image/versions?picture=<url> | ?root=<root> — a picture's version chain for the viewer's strip (a
+    picture never improved: itself as v0, root null)"""
+    root = (request.query.get("root") or "").strip()
+    picture = (request.query.get("picture") or "").strip()
+    if root:
+        if not _IMAGE_ROOT_RE.match(root):
+            return web.json_response({"error": "bad root"}, status=400)
+        idx = load_image_versions(root)
+        if not idx:
+            return web.json_response({"error": f"no versions for {root}"}, status=404)
+        return web.json_response(image_versions_out(root, idx))
+    src = picture_file(picture)
+    if src is None:
+        return web.json_response({"error": "picture: a /files/images/… or /genimg/… URL, or root"}, status=400)
+    r, _v = image_chain_of(src)
+    idx = load_image_versions(r)
+    return web.json_response(image_versions_out(r, idx, picture) if idx else image_versions_out(None, {}, picture))
+
+
+async def h_image_version(request):
+    """POST /api/image/version {root | picture, version} — the revert: that version becomes the picture's current one
+    (none is deleted) -> the chain as /api/image/versions answers it"""
+    try:
+        body = await request.json()
+        v = int(body.get("version"))
+        root = str(body.get("root") or "").strip()
+        if not root and body.get("picture"):
+            src = picture_file(str(body["picture"]))
+            root = image_chain_of(src)[0] if src is not None else ""
+    except (ValueError, TypeError, AttributeError):
+        return web.json_response({"error": "expected {root, version}"}, status=400)
+    if not _IMAGE_ROOT_RE.match(root or ""):
+        return web.json_response({"error": "expected {root, version}"}, status=400)
+    lock = _IMAGE_CHAIN_LOCKS.get(root)
+    if lock is not None and lock.locked():
+        return web.json_response({"error": "this picture is being improved right now — revert when it is done"},
+                                 status=409)
+    try:
+        idx = image_set_current(root, v)
+    except KeyError:
+        return web.json_response({"error": f"{root!r} has no version {v}"}, status=404)
+    print(f"[kernel] picture {root}: version {v} is current again (revert)", flush=True)
+    return web.json_response(image_versions_out(root, idx))
 
 
 def _gen_conf(spec: dict) -> dict:
@@ -4978,7 +6082,7 @@ async def h_models(request):
                  "defaults": _gen_conf(spec),
                  "expander": spec.get("expander"),      # prompt expansion available (Krea family)
                  "licence": spec.get("licence"),
-                 # [R76] the LoRA the model applies (the default's Kroma v0.3), and whether its file is
+                 # [R76] the LoRA the model applies (v7.5's Kroma v0.3; None for Muse), and whether its file is
                  # there — missing = the stock DiT renders until it is fetched
                  "lora": {"file": lora["file"], "multiplier": lora.get("multiplier", 1.0),
                           "present": MM.sd_lora(key) is not None} if lora else None,
@@ -4990,8 +6094,9 @@ async def h_models(request):
     extras = []
     available = {"video": video_available, "music": lambda: music_unavailable_reason() is None,
                  "vision": lambda: vision_unavailable_reason() is None,          # [R70]
-                 "translation": lambda: translation_unavailable_reason(check_setting=False) is None}   # [R71]
-    for key in ("video", "music", "vision", "translation"):
+                 "translation": lambda: translation_unavailable_reason(check_setting=False) is None,   # [R71]
+                 "image_edit": lambda: image_edit_status()["available"]}                             # [R85]
+    for key in ("video", "music", "vision", "translation", "image_edit"):
         spec = MANIFEST.get(key)
         if not spec:
             continue
@@ -5037,9 +6142,9 @@ async def h_models(request):
         "llm_setting": {"setting": llm_choice["setting"], "effective": llm_choice["effective"],
                         "fallback": llm_choice["fallback"], "modes": llm_modes(),   # [R86 r2, N2] only what this tier has
                         "note": "vibe.settings.set('llm_model', 'fast') switches to the small fast coder LLM "
-                                "(an add-on: vibe.models.download('fast') first); 'default' = the tier's brain; "
-                                "'uncensored' = the decensored LLM (vibe.models.download('llm_uncensored') first) "
-                                "— the refusal fallback's last rung as the primary model [R86]"},
+                                "(an add-on: vibe.models.download('fast') first); 'default' = the tier's brain — on the "
+                                "8/16 GB tiers the uncensored heretic Gemma 4 itself [R86 round 4]; 'uncensored' exists only "
+                                "on a tier with an llm_uncensored add-on section (vibe.models.download('llm_uncensored') first)"},
         # [R86] the refusal fallback: the ladder, whether the uncensored rung can run, the last fallback
         "refusal_fallback": refusal_fallback_status(),
         "overrides": {k: s.get(k) for k in
@@ -5066,7 +6171,7 @@ def addon_section_key(key: str):
     uncensored) map through IMAGE_MODEL_KEYS; 'video'/'music'/'vision' name their section."""
     if key in IMAGE_MODEL_KEYS:
         return IMAGE_MODEL_KEYS[key]
-    if key in ("video", "music", "vision", "translation"):       # translation: the MT add-on [R71]
+    if key in ("video", "music", "vision", "translation", "image_edit"):   # translation: the MT add-on [R71]; image_edit [R85]
         return key
     if key in LLM_MODEL_KEYS:                    # "fast" -> llm_fast [docs/FIXES-2026-09-28.md A2]
         return LLM_MODEL_KEYS[key]
@@ -5095,10 +6200,12 @@ def canonical_download_key(key: str) -> str:
 def refusal_fallback_status() -> dict:
     """[R86] /api/status + /api/models `refusal_fallback`: the ladders, the uncensored rung's state,
     the counters and the last fallback (also at the top level as `last_fallback`)."""
-    ok, why = uncensored_status()
+    section, why = uncensored_rung()
+    addon = isinstance(MANIFEST.get("llm_uncensored"), dict) and "file" in MANIFEST["llm_uncensored"]
     return {"ladder": refusal_ladder(), "expander_ladder": expander_ladder(),
-            "uncensored": {"available": ok, "reason": why, "section": "llm_uncensored" in MANIFEST,
-                           "download_key": "llm_uncensored"},
+            # [R86 round 4] section = "llm_uncensored" (a tier's add-on) | "llm" (the flagged default) | None
+            "uncensored": {"available": section is not None, "reason": why, "section": section,
+                           "download_key": "llm_uncensored" if addon else None},
             "count": REFUSALS["count"], "blocked": REFUSALS["blocked"], "last": REFUSALS["last"]}
 
 
@@ -5343,10 +6450,6 @@ async def h_vision(request):
         return web.json_response({"error": str(e)}, status=400)
     except FileNotFoundError as e:
         return web.json_response({"error": str(e)}, status=404)
-    try:   # [R86] the minors guard before the session log
-        guard_request("vision", prompt)
-    except MinorRiskError as e:
-        return web.json_response({"error": str(e)}, status=400)
     sessionlog.note_event("vision", prompt)
     print(f"[kernel] vision ({engine_backend()}): {what} — {prompt[:60]}", flush=True)
     messages = [{"role": "user", "content": [
@@ -5358,9 +6461,13 @@ async def h_vision(request):
         text = await llm_generate(prompts.VISION_SYSTEM, messages, kind="text", key="vision",
                                   label=f"vision: {prompt[:40]}", request=prompt, rungs=("preamble",),
                                   max_tokens=min(int(body.get("max_tokens", 512)), 2048), temperature=0.2)
-    except MinorRiskError as e:
+    except MinorBlockError as e:       # [R86 round 4, check point 3] the block after the vision model's refusal
         return web.json_response({"error": str(e)}, status=400)
-    except RuntimeError as e:          # engine failure (or RefusalError): a clean error, never a traceback
+    except RefusalError as e:          # [R86 round 4] declined, never a 502
+        return web.json_response({"error": str(e)}, status=DECLINED_STATUS)
+    except EngineMissingError as e:    # [2026-10-14] no engine binary: a 503, not an engine failure's 502
+        return engine_missing_response(e.binary, str(e))
+    except RuntimeError as e:          # engine failure: a clean error, never a traceback
         return web.json_response({"error": str(e)}, status=502)
     return web.json_response({"text": text.strip()})
 
@@ -5572,6 +6679,7 @@ class TranslationService:
             if not model_path.exists():
                 raise RuntimeError(translation_unavailable_reason(check_setting=False)
                                    or f"the translation model is missing ({model_path.name})")
+            require_engine("llama-server")               # [2026-10-14] a clean 503
             engine_check_or_raise("llama-server")
             if self.proc is not None:                    # died on its own since it last served
                 print(f"[kernel] translation server had exited (code {self.proc.returncode}); last output:\n"
@@ -5864,6 +6972,8 @@ async def h_translate(request):
               flush=True)
     try:
         out, info = await translate_texts(texts, to, frm, prefer="fast" if dom else None)
+    except EngineMissingError as e:    # [2026-10-14] no llama-server: a 503, not an engine failure's 502
+        return engine_missing_response(e.binary, str(e))
     except RuntimeError as e:
         return web.json_response({"error": str(e)[:1500]}, status=502)
     resp = {"to": to, "from": frm, **info}
@@ -5925,15 +7035,18 @@ async def h_dict_status(request):
 
 async def h_video(request):
     body = await request.json()
-    try:   # [R86 r2, B3] the minors guard (the words and their English) before the session log and the job
-        await guard_request_en("video", body.get("prompt", ""))
-    except MinorRiskError as e:
+    try:   # [R86 round 4, check point 1] the user's prompt at the entry, before the session log and the job
+        block_check("video", body.get("prompt", ""))   # (the English final prompt meets check point 2 at sd_job)
+    except MinorBlockError as e:
         return web.json_response({"error": str(e)}, status=400)
     sessionlog.note_event("video", body.get("prompt", ""))
     if not video_available():
         return web.json_response(
             {"error": "the video model is an add-on and isn't installed — "
                       "download it in Settings (vibe.models.download('video'))"}, status=400)
+    why = engine_missing("sd-cli")               # [2026-10-14] video renders with sd-cli only
+    if why:
+        return engine_missing_response("sd-cli", why)
     jid = new_job("video")
 
     async def run():
@@ -5956,10 +7069,9 @@ async def h_music(request):
     the model guess; an unknown code is a 400 naming the accepted ones, no job [R69]."""
     body = await request.json()
     prompt = body["prompt"]
-    try:   # [R86 r2, B3] the minors guard on the caption (and its English) and the lyrics, before the session log
-        await guard_request_en("music", prompt)
-        guard_request("music", str(body.get("lyrics") or ""))
-    except MinorRiskError as e:
+    try:   # [R86 round 4, check point 1] the caption and the lyrics at the entry, before the session log
+        block_check("music", f"{prompt}\n{body.get('lyrics') or ''}", prompt)
+    except MinorBlockError as e:
         return web.json_response({"error": str(e)}, status=400)
     sessionlog.note_event("music", prompt)
     try:
@@ -5969,6 +7081,9 @@ async def h_music(request):
                                  status=400)
     why = music_unavailable_reason()
     if why:
+        missing = music_engine_missing()         # [2026-10-14] a missing engine binary is a 503 like on every route
+        if missing and MANIFEST.get("music"):
+            return engine_missing_response(missing[0], why)
         return web.json_response({"error": why}, status=400)
     jid = new_job("music")
 
@@ -6000,16 +7115,21 @@ async def h_job(request):
 KIOSK_USER = os.environ.get("KAIROS_KIOSK_USER", "kairos")
 
 
-def game_env(gdir: Path):
+def game_env(gdir: Path, pos=None):
     """Environment + Popen kwargs to launch a game on the kiosk display [R7].
 
     The kernel runs as root; the kiosk X server is `startx` by the kiosk user with
     its auth cookie in ~/.Xauthority — without XAUTHORITY pygame cannot open :0.
     On the appliance the game runs AS that user (its display, its audio session,
-    its files); anywhere without such a user (dev container, tests) it runs as-is."""
+    its files); anywhere without such a user (dev container, tests) it runs as-is.
+    [R82] `pos` = the root rect (x, y, w, h) of the desktop frame's body the game runs in: SDL opens the window
+    there (SDL_VIDEO_WINDOW_POS; openbox honours a position the client asks for), so it never flashes up
+    elsewhere before the kernel glues it to its frame."""
     env = dict(os.environ)
     env.setdefault("DISPLAY", os.environ.get("KAIROS_DISPLAY", ":0"))
     env.setdefault("SDL_AUDIODRIVER", "dummy")
+    if pos:
+        env["SDL_VIDEO_WINDOW_POS"] = f"{int(pos[0])},{int(pos[1])}"
     popen = {}
     try:
         import pwd
@@ -6147,110 +7267,174 @@ def format_game_crash_report(rec, slug, purpose, version) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------- games: launch = run, ✨ = evolve [R82]
+GAME_INSTRUCTION_MAX = 2000   # chars of a ✨ improvement request
+GAME_BUSY = {}                # [R82] slug -> job id of the forge job improving it (one at a time; a revert waits)
+
+
+def game_slug(text: str) -> str:
+    """[R82] a game's slug as the shell sends it back: taken verbatim when it already is one (slugify cuts at 48 chars
+    AFTER stripping, so a slug may end in "-" — slugifying it again named ANOTHER game: the GPU check's ✨ forged a
+    new v1 instead of v2), slugified otherwise. Only [a-z0-9-]: never a path."""
+    t = str(text or "").strip()
+    return t if re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", t) else slugify(t)
+
+
+def game_version_numbers(gdir: Path, meta: dict = None):
+    """[R82] -> (current, every kept version number). history/v<N>.py keeps every version that was replaced or
+    reverted from (the current one may be there too); main.py is the current one (meta.json "version").
+    Games from before R82 (history v1..v(N-1), main.py = vN) read the same."""
+    meta = game_meta(gdir) if meta is None else meta
+    hist = set()
+    if (gdir / "history").is_dir():
+        for p in (gdir / "history").glob("v*.py"):
+            m = re.fullmatch(r"v(\d+)\.py", p.name)
+            if m:
+                hist.add(int(m.group(1)))
+    if not (gdir / "main.py").exists():
+        return 0, sorted(hist)
+    try:
+        cur = int(meta.get("version") or 0)
+    except (TypeError, ValueError):
+        cur = 0
+    cur = cur or (max(hist) + 1 if hist else 1)
+    return cur, sorted(hist | {cur})
+
+
+def game_versions_out(gdir: Path) -> dict:
+    """GET /api/game/versions: {slug, prompt, current, versions: [{v, at, by, instruction}], failed, running, busy}"""
+    meta = game_meta(gdir)
+    cur, vs = game_version_numbers(gdir, meta)
+    info = meta.get("versions") if isinstance(meta.get("versions"), dict) else {}
+    out = []
+    for v in vs:
+        i = info.get(str(v)) if isinstance(info.get(str(v)), dict) else {}
+        p = gdir / "main.py" if v == cur else gdir / "history" / f"v{v}.py"
+        try:
+            at = i.get("at") or round(p.stat().st_mtime, 1)
+        except OSError:
+            at = None
+        out.append({"v": v, "at": at, "by": i.get("by") or ("forged" if v == 1 else "improved"),
+                    "instruction": i.get("instruction")})
+    return {"slug": gdir.name, "prompt": meta.get("prompt") or gdir.name.replace("-", " "), "current": cur,
+            "versions": out, "failed": meta.get("failed_evolution"), "running": bool(wm.WM.running_for(gdir.name)),
+            "busy": gdir.name in GAME_BUSY}
+
+
+async def end_game_instances(slug: str):
+    """[R82] the running instance(s) of a game end before its next version (or a restart) runs in the same frame:
+    thawed, SIGTERM (SDL's QUIT: the game may save), ≤ 1.5 s, then SIGKILL — asked for by the kernel, so the
+    reaper records no crash. -> the pids"""
+    procs = wm.WM.running_for(slug)
+    for pid, _ in procs:
+        wm.WM.registry.mark_killed(pid)
+        wm._signal_game(pid, signal.SIGCONT)
+        wm._signal_game(pid, signal.SIGTERM)
+    t0 = time.monotonic()
+    while any(wm._alive(p) for p, _ in procs) and time.monotonic() - t0 < 1.5:
+        await asyncio.sleep(0.05)
+    for pid, _ in procs:
+        if wm._alive(pid):
+            wm._signal_game(pid, signal.SIGKILL)
+    return [p for p, _ in procs]
+
+
+def game_job_error(jid, e):
+    """the job's error and its kind: declined (R86: every rung of the ladder refused), blocked (the minors block),
+    error (anything else) — the game frame says which"""
+    kind = "declined" if isinstance(e, RefusalError) else "blocked" if isinstance(e, MinorBlockError) else "error"
+    JOBS[jid].update(status="error", error=str(e), error_kind=kind, stage=kind)
+
+
 async def h_game(request):
-    """Generate a pygame game, check it, launch it as a real window on the kiosk display,
-    self-repair on failure. [R77, docs/FORGE-POLISH-2026-10-07.md] A candidate passes the static
-    gate (compile + pyflakes errors + missing imports) and a headless play-test with synthetic
-    input (gamecheck) BEFORE it becomes main.py — the file on disk is always a version that
-    passed. GAME_ATTEMPTS candidates per job (checks and display crashes share the budget); an
-    identical resubmission or a repeated error is re-asked more firmly. An evolution that never
-    passes keeps the previous version (restored and launched, the job says so honestly) and the
-    attempt goes to history/failed-v<N>.py. [D-R68-6] "running" means its window MAPPED on the
-    display (game_gate); a game that dies later is recorded, never silently lost (_reap_game)."""
+    """POST /api/game {prompt | slug, evolve?, instruction?, restart?, frame?} [R82: launch = run, ✨ = evolve].
+
+    * A game that exists (games/<slug>/main.py) and no `evolve`: RUN its current version — no forging, no LLM. Its
+      instance already running answers at once (already:true; with a `frame` it moves into that frame); `restart`
+      ends it first. A version that fails to start is recorded (last_crash: the next ✨ gets it as a bug report).
+    * A new game, or `evolve` (the frame's ✨): FORGE the next version with the user's `instruction` (top priority),
+      the previous source and the last crash as a bug report. [R77, docs/FORGE-POLISH-2026-10-07.md] A candidate
+      passes the static gate (compile + pyflakes errors + missing imports) and a headless play-test with synthetic
+      input (gamecheck) BEFORE it becomes main.py — the file on disk is always a version that passed. GAME_ATTEMPTS
+      candidates per job (checks and display crashes share the budget); an identical resubmission or a repeated
+      error is re-asked more firmly. An evolution that never passes keeps the previous version (still running in
+      its frame, or relaunched; the job says so honestly) and the attempt goes to history/failed-v<N>.py. Every
+      version stays in history/ (GET /api/game/versions, the revert POST /api/game/version). R86's refusal ladder
+      and the minors block run on the prompt + the instruction; GAME_SYSTEM carries the 18+ rule.
+    * [D-R68-6] "running" means its window MAPPED on the display (game_gate); a game that dies later is recorded,
+      never silently lost (_reap_game). `frame` = the desktop frame it runs in (kernel/wm.py pairs the window)."""
     body = await request.json()
-    prompt = body["prompt"]
-    try:   # [R86] the minors guard (the words and their English [r2]) before the job and the session log (the log feeds the wallpaper)
-        await guard_request_en("game", prompt)
-    except MinorRiskError as e:
-        return web.json_response({"error": str(e)}, status=400)
-    sessionlog.note_event("game", prompt)
+    frame = body.get("frame") if isinstance(body.get("frame"), dict) else None
+    evolve, restart = bool(body.get("evolve")), bool(body.get("restart"))
+    instruction = str(body.get("instruction") or "").strip()[:GAME_INSTRUCTION_MAX]
+    slug = game_slug(body.get("slug")) if body.get("slug") else ""
+    prompt = str(body.get("prompt") or "").strip()
+    if not slug and not prompt:
+        return web.json_response({"error": "prompt or slug required"}, status=400)
+    if slug:
+        meta0 = game_meta(GAMES_DIR / slug)
+        prompt = prompt or meta0.get("prompt") or slug.replace("-", " ")
+    else:
+        slug = slugify(prompt)
+    gdir = GAMES_DIR / slug
+    if (gdir / "main.py").exists() and not evolve:
+        return await _game_run(slug, gdir, prompt, frame, restart)
+    request_text = prompt + (f"\n{instruction}" if instruction else "")
+    try:   # [R86 round 4, check point 4] an uncensored primary: checked at the entry, before the job and the session log
+        block_check_primary("game", request_text, "python_llm", prompt)
+    except MinorBlockError as e:
+        return web.json_response({"error": str(e), "kind": "blocked"}, status=400)
+    why = engine_missing("llama-server")         # [2026-10-14] no job without the engine that writes the game
+    if why:
+        return engine_missing_response("llama-server", why)
+    if slug in GAME_BUSY and JOBS.get(GAME_BUSY[slug], {}).get("status") == "running":
+        return web.json_response({"error": f"{slug} is being improved already", "job": GAME_BUSY[slug]}, status=409)
+    sessionlog.note_event("game", request_text)
     jid = new_job("game")
+    GAME_BUSY[slug] = jid
 
     async def run():
         undo = {}      # [R77] set while main.py holds a candidate of THIS job: how to put the previous version back
         sticky = {}    # [R86 r2, S5] the rung that writes the game also fixes it
         try:
-            slug = slugify(prompt)
-            gdir = GAMES_DIR / slug
             gdir.mkdir(parents=True, exist_ok=True)
             meta = game_meta(gdir)
             prev_code = (gdir / "main.py").read_text() if (gdir / "main.py").exists() else None
-            version = 1
-            if prev_code:  # living software: every launch forges the next version
-                version = len(list((gdir / "history").glob("v*.py"))) + 2 if (gdir / "history").exists() else 2
+            cur, known = game_version_numbers(gdir, meta)
+            version = (max(known) + 1) if prev_code else 1
+            if prev_code:  # [R82] ✨ improve: the NEXT version, from the current one (a revert's choice included)
                 # [R45] a crash of the previous version travels with its source as a bug report
                 crash = meta.get("last_crash")
-                report = (format_game_crash_report(crash, slug, prompt, version - 1) + "\n\n") if crash else ""
+                report = (format_game_crash_report(crash, slug, prompt, cur) + "\n\n") if crash else ""
                 if crash:
-                    print(f"[kernel] game {slug}: v{version - 1} crashed last time ({crash.get('summary')}) "
+                    print(f"[kernel] game {slug}: v{cur} crashed last time ({crash.get('summary')}) "
                           "— the bug report goes to the forge with the source", flush=True)
-                user = (f"GAME PURPOSE: {prompt}\n\nPREVIOUS VERSION SOURCE:\n"
+                ask = (f"USER IMPROVEMENT REQUEST: {instruction}\n\n{prompts.GAME_EVOLVE_REQUEST}\n\n" if instruction
+                       else f"{prompts.GAME_EVOLVE_NO_REQUEST}\n\n")
+                user = (f"GAME PURPOSE: {prompt}\n\n{ask}PREVIOUS VERSION SOURCE (v{cur}):\n"
                         f"{prev_code[:EVOLVE_CONTEXT_CAP]}\n\n{report}{prompts.GAME_EVOLVE_INSTRUCTION}")
             else:
                 user = f"Make this game: {prompt}"
+            JOBS[jid]["stage"] = f"writing v{version}"
+            gi = {}
             code = strip_fences(await llm_generate(
                 prompts.GAME_SYSTEM, [{"role": "user", "content": user}], kind="text",      # [R86]
-                label=f"game {slug}", request=prompt, key="python_llm", sticky=sticky, temperature=0.7), "python")
+                label=f"game {slug}", request=request_text, key="python_llm", sticky=sticky, gen_info=gi,
+                temperature=0.7), "python")
+            # [2026-10-14] the candidate's cut at the length limit (a fix of a cut candidate inherits it): such a
+            # candidate may still pass the checks and run — from its own file, never as main.py (not cached)
+            cut = dict(gi) if length_cut(gi) else None
             checks = {"static_failures": 0, "playtest_failures": 0, "display_failures": 0,
                       "identical_resubmissions": 0, "repeated_errors": 0}
 
-            async def launch(attempt, label_version, extra, clear_crash=True):
-                """main.py on the display + the launch gate -> (state, stderr, gate verdict):
-                running | ended (exit 0 before the gate: the job is done) | failed"""
-                env, popen = game_env(gdir)
-                t0 = time.time()
-                # own session = own process group: the window layer freezes a minimized
-                # game and thaws/ends it with killpg (kernel/wm.py _signal_game) — the
-                # kernel's own group is never signalled [D-R68-2]
-                proc = await asyncio.create_subprocess_exec(
-                    "python3", str(gdir / "main.py"), cwd=str(gdir), env=env,
-                    stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
-                    start_new_session=True, **popen)
-                # the window layer attributes the game's X window (_NET_WM_PID) to this
-                # app: its taskbar chip carries the game's name from the moment it maps [R68]
-                wm.WM.register_game(proc.pid, slug, title=prompt[:60])
-                drain, tail = _tail_stderr(proc)
-                # running = its window mapped on the display (+ first frames); survival
-                # only where no display can be asked [D-R68-6]
-                verdict, win = await game_gate(proc)
-                if verdict in ("mapped", "survived"):
-                    xid = win["id"] if win else None
-                    JOBS[jid].update(status="done", result=dict({
-                        "slug": slug, "running": True, "attempt": attempt + 1, "pid": proc.pid,
-                        "version": label_version, "gate": verdict, "window": xid}, **extra))
-                    meta.update(slug=slug, prompt=prompt, version=label_version, launched=round(t0, 1),
-                                attempt=attempt + 1, gate=verdict)
-                    if clear_crash:
-                        meta.pop("last_crash", None)      # the forge got it; this version starts clean
-                    try:
-                        write_game_meta(gdir, meta)
-                    except OSError as e:
-                        print(f"[kernel] game {slug}: meta.json not written: {e}", flush=True)
-                    print(f"[kernel] game {slug} v{label_version} running: "
-                          + (f"window {win['hex']} mapped" if win else "alive (no display to ask)")
-                          + f" after {time.time() - t0:.1f} s (attempt {attempt + 1})", flush=True)
-                    asyncio.create_task(_reap_game(proc, drain, tail, dict(
-                        jid=jid, slug=slug, gdir=gdir, title=prompt[:60], version=label_version,
-                        attempt=attempt + 1, t0=t0, gate=verdict, window=xid)))
-                    return "running", "", verdict
-                wm.WM.forget_game(proc.pid)
-                if verdict == "no-window":
-                    await _end_game(proc)
-                    await asyncio.wait([drain], timeout=0.5)
-                    return "failed", (tail[0] + f"\n[kernel] the game ran {GAME_MAP_TIMEOUT:.0f} s without opening a "
-                                      f"window on the display {env.get('DISPLAY')} — ended").strip()[-GAME_STDERR_TAIL:], verdict
-                await asyncio.wait([drain], timeout=0.5)     # the trailing traceback
-                if proc.returncode == 0:
-                    JOBS[jid].update(status="done", result=dict({
-                        "slug": slug, "running": False, "attempt": attempt + 1,
-                        "version": label_version, "gate": verdict}, **extra))
-                    return "ended", "", verdict
-                return "failed", tail[0], verdict
+            def launch(attempt, label_version, extra, clear_crash=True, script=None):
+                return launch_game(jid, gdir, slug, prompt, meta, attempt, label_version, extra,
+                                   clear_crash=clear_crash, script=script, frame=frame)
 
             popen = kiosk_popen()      # the play-test runs as the kiosk user, never as root
             tried, last_sig, last_fail = set(), None, None
             stderr = ""                # last failure reason — the final error must carry it [R11]
-            installed = False          # main.py replaced by this job (the previous version moved to history/)
+            installed = False          # main.py replaced by this job (the previous version kept in history/)
             for attempt in range(GAME_ATTEMPTS):
                 repeat = None
                 key = gamecheck.code_key(code)
@@ -6263,6 +7447,7 @@ async def h_game(request):
                           "source — asking again with a stronger instruction, self-repairing", flush=True)
                 else:
                     tried.add(key)
+                    JOBS[jid]["stage"] = f"checking v{version} (attempt {attempt + 1}/{GAME_ATTEMPTS})"
                     static = gamecheck.static_problems(code)
                     if static:
                         kind, text = "static", gamecheck.failure_text("static", static)
@@ -6272,6 +7457,7 @@ async def h_game(request):
                         stderr = "static check:\n" + text
                         label = f"static check: {static[0].splitlines()[0][:120]}"
                     else:
+                        JOBS[jid]["stage"] = f"play-testing v{version} (attempt {attempt + 1}/{GAME_ATTEMPTS})"
                         pt = await gamecheck.play_test(code, popen=popen, seed=attempt)
                         if not pt["ok"]:
                             kind, text, line = "playtest", gamecheck.failure_text("playtest", pt), pt.get("line")
@@ -6283,17 +7469,47 @@ async def h_game(request):
                             print(f"[kernel] game {slug} v{version}: attempt {attempt + 1} passed the static gate and "
                                   f"the play-test ({pt['verdict']}, {pt['seconds']} s, {pt['input_events']} input events)",
                                   flush=True)
-                            if prev_code and not installed:
-                                (gdir / "history").mkdir(exist_ok=True)
-                                (gdir / "history" / f"v{version - 1}.py").write_text(prev_code)
-                            installed = True
+                            extra = {"checks": dict(checks, playtest=pt["verdict"], playtest_s=pt["seconds"])}
                             if prev_code:
-                                undo.update(main=gdir / "main.py", prev=prev_code, hist=gdir / "history" / f"v{version - 1}.py")
-                            (gdir / "main.py").write_text(code)
+                                extra.update(evolved_from=cur, instruction=instruction or None)
+                            script = None
+                            if cut:
+                                # [2026-10-14] cut at the length limit: it runs once, from its own file — main.py,
+                                # history/ and meta.json stay as they were; the next launch runs the game as it was
+                                script = gdir / f".length-cut-v{version}.py"
+                                script.write_text(code)
+                                log_length_cut("game", slug, cut)
+                                extra.update(truncated=True, warning=length_note(cut))
+                            else:
+                                if prev_code and not installed:
+                                    (gdir / "history").mkdir(exist_ok=True)
+                                    hist = gdir / "history" / f"v{cur}.py"
+                                    if not hist.exists():        # [R82] a revert's choice is already there
+                                        hist.write_text(prev_code)
+                                        undo["hist"] = hist
+                                    undo.update(main=gdir / "main.py", prev=prev_code)
+                                installed = True
+                                (gdir / "main.py").write_text(code)
+                                vinfo = meta.get("versions") if isinstance(meta.get("versions"), dict) else {}
+                                vinfo[str(version)] = {"at": round(time.time(), 1), "by": "improved" if prev_code else "forged",
+                                                       "instruction": instruction or None}
+                                meta["versions"] = vinfo
+                                if prev_code:
+                                    meta.pop("failed_evolution", None)
                             JOBS[jid]["code"] = code
-                            state, err, gv = await launch(attempt, version, {"checks": dict(
-                                checks, playtest=pt["verdict"], playtest_s=pt["seconds"])})
+                            JOBS[jid]["stage"] = f"starting v{version}"
+                            ended = await end_game_instances(slug)     # [R82] the old version leaves the frame
+                            if ended:
+                                print(f"[kernel] game {slug}: the running v{cur} (pid {', '.join(map(str, ended))}) "
+                                      f"ends — v{version} takes its frame", flush=True)
+                            state, err, gv = await launch(attempt, version, extra, script=script)
+                            if script is not None and state != "running":
+                                script.unlink(missing_ok=True)
                             if state != "failed":
+                                if script is not None and undo:   # an earlier candidate of this job holds main.py
+                                    undo["main"].write_text(undo["prev"])
+                                    if undo.get("hist"):
+                                        undo["hist"].unlink(missing_ok=True)
                                 undo.clear()
                                 return
                             kind, text, line = "display", err, None
@@ -6309,15 +7525,19 @@ async def h_game(request):
                           f"{' — the same error again' if repeat else ''}, self-repairing", flush=True)
                 if attempt + 1 >= GAME_ATTEMPTS:
                     break                  # no reply we could not check
+                JOBS[jid]["stage"] = f"repairing v{version} (attempt {attempt + 2}/{GAME_ATTEMPTS})"
+                got = {}
                 code = strip_fences(await llm_generate(                                            # [R86]
                     prompts.GAME_FIX_SYSTEM,
                     [{"role": "user", "content": gamecheck.fix_message(code, kind, text, line, repeat)}],
-                    kind="text", label=f"game fix {slug}", request=prompt, sticky=sticky,          # [R86]
-                    key="python_llm", temperature=0.7 if repeat else 0.4), "python")
+                    kind="text", label=f"game fix {slug}", request=request_text, sticky=sticky,    # [R86]
+                    key="python_llm", gen_info=got, temperature=0.7 if repeat else 0.4), "python")
+                cut = cut or (dict(got) if length_cut(got) else None)                  # [2026-10-14] a fix of a cut candidate
             # the budget is spent: no candidate passed every check on the display
             summary = (stderr.strip().splitlines() or ["no output"])[-1][:200]
             failed = {"version": version, "at": round(time.time(), 1), "attempts": GAME_ATTEMPTS,
-                      "error": summary, "file": f"history/failed-v{version}.py", "checks": checks}
+                      "error": summary, "file": f"history/failed-v{version}.py", "checks": checks,
+                      "instruction": instruction or None}
             try:
                 (gdir / "history").mkdir(exist_ok=True)
                 (gdir / "history" / f"failed-v{version}.py").write_text(code)
@@ -6330,13 +7550,29 @@ async def h_game(request):
                 # [R77] never hand over a regression: the previous version stays the game
                 if installed:              # a candidate passed the checks but failed on the display
                     (gdir / "main.py").write_text(prev_code)
-                    (gdir / "history" / f"v{version - 1}.py").unlink(missing_ok=True)
+                    if undo.get("hist"):
+                        undo["hist"].unlink(missing_ok=True)
                 undo.clear()
+                if (vi := meta.get("versions")) and isinstance(vi, dict):
+                    vi.pop(str(version), None)
                 msg = (f"the improvement to v{version} failed after {GAME_ATTEMPTS} attempts ({summary}) — "
-                       f"running the previous version v{version - 1}")
+                       f"running the previous version v{cur}")
                 print(f"[kernel] game {slug}: {msg}; the attempt is kept as history/failed-v{version}.py", flush=True)
                 JOBS[jid]["code"] = prev_code
-                state, err, gv = await launch(GAME_ATTEMPTS - 1, version - 1, {
+                alive = wm.WM.running_for(slug)
+                if alive:
+                    # [R82] v<cur> still runs in its frame (frozen under the ✨ note): it simply stays the game
+                    pid, g = alive[0]
+                    try:
+                        write_game_meta(gdir, meta)
+                    except OSError:
+                        pass
+                    JOBS[jid].update(status="done", stage="running", result={
+                        "slug": slug, "running": True, "attempt": GAME_ATTEMPTS, "pid": pid, "version": cur,
+                        "gate": meta.get("gate"), "window": g.get("win") or None, "frame": (frame or {}).get("id"),
+                        "fallback": True, "kept_running": True, "evolution_failed": failed, "message": msg})
+                    return
+                state, err, gv = await launch(GAME_ATTEMPTS - 1, cur, {
                     "fallback": True, "evolution_failed": failed, "message": msg}, clear_crash=False)
                 if state != "failed":
                     return
@@ -6346,18 +7582,217 @@ async def h_game(request):
                     write_game_meta(gdir, dict(meta, slug=slug, prompt=prompt))
                 except OSError:
                     pass
-            JOBS[jid].update(status="error", error=f"game kept crashing:\n{stderr}")
+            JOBS[jid].update(status="error", stage="error", error=f"game kept crashing:\n{stderr}")
         except Exception as e:
             if undo:                       # an engine error mid-evolution: the previous version stays the game [R77]
                 try:
                     undo["main"].write_text(undo["prev"])
-                    undo["hist"].unlink(missing_ok=True)
+                    if undo.get("hist"):
+                        undo["hist"].unlink(missing_ok=True)
                 except OSError:
                     pass
-            JOBS[jid].update(status="error", error=str(e))
+            game_job_error(jid, e)
+        finally:
+            if GAME_BUSY.get(slug) == jid:
+                GAME_BUSY.pop(slug, None)
 
     asyncio.create_task(run())
-    return web.json_response({"job": jid})
+    return web.json_response({"job": jid, "slug": slug, "forge": True})
+
+
+async def launch_game(jid, gdir: Path, slug: str, prompt: str, meta: dict, attempt: int, label_version: int, extra: dict,
+                      clear_crash=True, script=None, frame=None):
+    """main.py on the display + the launch gate -> (state, stderr, gate verdict): running | ended (exit 0 before
+    the gate: the job is done) | failed. `script` [2026-10-14]: a length-cut candidate runs from its own file
+    instead and leaves meta.json alone. [R82] `frame`: the desktop frame the game runs in ({id, screen, x, y, w, h,
+    vw, vh}: its body in the page's CSS pixels) — the window opens where the frame's body is and the window layer
+    pairs it with the frame (kernel/wm.py)."""
+    pos = await wm.WM.frame_root(frame) if frame else None
+    env, popen = game_env(gdir, pos=pos)
+    t0 = time.time()
+    # own session = own process group: the window layer freezes a minimized
+    # game and thaws/ends it with killpg (kernel/wm.py _signal_game) — the
+    # kernel's own group is never signalled [D-R68-2]
+    proc = await asyncio.create_subprocess_exec(
+        "python3", str(script or gdir / "main.py"), cwd=str(gdir), env=env,
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+        start_new_session=True, **popen)
+    # the window layer attributes the game's X window (_NET_WM_PID) to this
+    # app: its dock icon carries the game's name from the moment it maps [R68]; [R82] and its frame holds it
+    wm.WM.register_game(proc.pid, slug, title=prompt[:60], frame=frame)
+    drain, tail = _tail_stderr(proc)
+    # running = its window mapped on the display (+ first frames); survival
+    # only where no display can be asked [D-R68-6]
+    verdict, win = await game_gate(proc)
+    fid = (frame or {}).get("id")
+    if verdict in ("mapped", "survived"):
+        xid = win["id"] if win else None
+        JOBS[jid].update(status="done", stage="running", result=dict({
+            "slug": slug, "running": True, "attempt": attempt + 1, "pid": proc.pid,
+            "version": label_version, "gate": verdict, "window": xid, "frame": fid}, **extra))
+        if script is None:                    # [2026-10-14] a cut candidate is not the game's version
+            meta.update(slug=slug, prompt=prompt, version=label_version, launched=round(t0, 1),
+                        attempt=attempt + 1, gate=verdict)
+            if clear_crash:
+                meta.pop("last_crash", None)      # the forge got it; this version starts clean
+            try:
+                write_game_meta(gdir, meta)
+            except OSError as e:
+                print(f"[kernel] game {slug}: meta.json not written: {e}", flush=True)
+        print(f"[kernel] game {slug} v{label_version} running: "
+              + (f"window {win['hex']} mapped" if win else "alive (no display to ask)")
+              + f" after {time.time() - t0:.1f} s (attempt {attempt + 1})" + (f", frame {fid}" if fid else ""), flush=True)
+        asyncio.create_task(_reap_game(proc, drain, tail, dict(
+            jid=jid, slug=slug, gdir=gdir, title=prompt[:60], version=label_version,
+            attempt=attempt + 1, t0=t0, gate=verdict, window=xid, script=script)))
+        return "running", "", verdict
+    wm.WM.forget_game(proc.pid)
+    if verdict == "no-window":
+        await _end_game(proc)
+        await asyncio.wait([drain], timeout=0.5)
+        return "failed", (tail[0] + f"\n[kernel] the game ran {GAME_MAP_TIMEOUT:.0f} s without opening a "
+                          f"window on the display {env.get('DISPLAY')} — ended").strip()[-GAME_STDERR_TAIL:], verdict
+    await asyncio.wait([drain], timeout=0.5)     # the trailing traceback
+    if proc.returncode == 0:
+        JOBS[jid].update(status="done", stage="ended", result=dict({
+            "slug": slug, "running": False, "attempt": attempt + 1,
+            "version": label_version, "gate": verdict, "frame": fid}, **extra))
+        return "ended", "", verdict
+    return "failed", tail[0], verdict
+
+
+async def _game_run(slug: str, gdir: Path, prompt: str, frame, restart: bool):
+    """[R82] launch = run: the current version of an existing game, no LLM. Already running -> that instance (moved
+    into `frame` when one is given); `restart` ends it first (a revert, ▶ play again)."""
+    jid = new_job("game")
+    JOBS[jid]["stage"] = "starting"
+
+    async def run():
+        try:
+            meta = game_meta(gdir)
+            cur, _ = game_version_numbers(gdir, meta)
+            alive = wm.WM.running_for(slug)
+            if alive and not restart:
+                pid, g = alive[0]
+                xid = g.get("win") or None
+                fid = (frame or {}).get("id")
+                if frame and xid:
+                    await wm.WM.frame_op(fid, "adopt", dict(frame, xid=xid))
+                elif frame:
+                    wm.WM.attach_frame(frame, pid, slug, g.get("title"))
+                JOBS[jid].update(status="done", stage="running", result={
+                    "slug": slug, "running": True, "already": True, "pid": pid, "version": cur,
+                    "window": xid, "frame": fid, "launched_only": True})
+                return
+            if alive:
+                await end_game_instances(slug)
+            JOBS[jid]["stage"] = f"starting v{cur}"
+            state, err, gv = await launch_game(jid, gdir, slug, prompt, meta, 0, cur, {"launched_only": True},
+                                               clear_crash=False, frame=frame)
+            if state != "failed":
+                return
+            # it did not start: recorded like a crash — the next ✨ improve gets it as a bug report [R45]
+            lines = [ln for ln in (err or "").strip().splitlines() if ln.strip()]
+            summary = lines[-1][:200] if lines else gv
+            rec = {"id": f"start-{int(time.time())}", "slug": slug, "title": prompt[:60], "version": cur, "attempt": 1,
+                   "pid": None, "at": round(time.time(), 1), "after_s": 0, "returncode": None, "signal": None,
+                   "gate": gv, "window": None, "stderr": (err or "")[-GAME_STDERR_TAIL:], "summary": summary}
+            meta.update(last_crash=rec, crashes=int(meta.get("crashes", 0)) + 1)
+            try:
+                write_game_meta(gdir, meta)
+            except OSError:
+                pass
+            print(f"[kernel] game {slug} v{cur} did not start ({gv}): {summary} — ✨ improve gets it as a bug report",
+                  flush=True)
+            JOBS[jid].update(status="error", stage="error", error_kind="start",
+                             error=f"v{cur} did not start: {summary} — ✨ improve repairs it")
+        except Exception as e:
+            game_job_error(jid, e)
+
+    asyncio.create_task(run())
+    return web.json_response({"job": jid, "slug": slug, "forge": False})
+
+
+async def h_game_versions(request):
+    """GET /api/game/versions?slug= [R82]"""
+    slug = game_slug(request.query.get("slug", "")) if request.query.get("slug") else ""
+    gdir = GAMES_DIR / slug
+    if not slug or not (gdir / "main.py").exists():
+        return web.json_response({"error": "no such game"}, status=404)
+    return web.json_response(game_versions_out(gdir))
+
+
+async def h_game_version(request):
+    """POST /api/game/version {slug, version} [R82] — the way back: that version becomes the game (main.py) again;
+    nothing is deleted (the version it replaces stays in history/). The next ✨ builds on it. Running instances are
+    not touched: the shell restarts the game in its frame (POST /api/game {slug, restart, frame})."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    slug = game_slug(body.get("slug")) if body.get("slug") else ""
+    gdir = GAMES_DIR / slug
+    if not slug or not (gdir / "main.py").exists():
+        return web.json_response({"error": "no such game"}, status=404)
+    try:
+        v = int(body.get("version"))
+    except (TypeError, ValueError):
+        return web.json_response({"error": "version must be a number"}, status=400)
+    if slug in GAME_BUSY:
+        return web.json_response({"error": f"{slug} is being improved — wait for that first"}, status=409)
+    meta = game_meta(gdir)
+    cur, vs = game_version_numbers(gdir, meta)
+    if v not in vs:
+        return web.json_response({"error": f"{slug} has no version {v}", "versions": vs}, status=404)
+    if v != cur:
+        hist = gdir / "history"
+        hist.mkdir(exist_ok=True)
+        if not (hist / f"v{cur}.py").exists():
+            (hist / f"v{cur}.py").write_text((gdir / "main.py").read_text())
+        (gdir / "main.py").write_text((hist / f"v{v}.py").read_text())
+        meta.update(version=v, reverted={"from": cur, "to": v, "at": round(time.time(), 1)})
+        if (meta.get("last_crash") or {}).get("version") != v:
+            meta.pop("last_crash", None)          # that crash belongs to another version
+        write_game_meta(gdir, meta)
+        print(f"[kernel] game {slug}: v{v} is the game again (was v{cur}; every version kept)", flush=True)
+    return web.json_response(game_versions_out(gdir))
+
+
+def frame_bmp(data: bytes, w: int, h: int) -> bytes:
+    """[R82] the game's pixels (EWMH.grab: BGRX rows, top-down) as a 32-bit BMP — no conversion, no encoder process:
+    the screenshot a covered game frame shows. The pad byte is set opaque (Xvfb writes 0xff, a real Xorg may write 0)."""
+    px = bytearray(data[:w * h * 4])
+    px[3::4] = b"\xff" * (len(px) // 4)
+    return (struct.pack("<2sIHHI", b"BM", 54 + len(px), 0, 0, 54)
+            + struct.pack("<IiiHHIIiiII", 40, w, -h, 1, 32, 0, len(px), 2835, 2835, 0, 0) + bytes(px))
+
+
+async def h_frame_op(request):
+    """POST /api/frames/{id}/{op} [R82] — the desktop frame <-> game window pairs (kernel/wm.py): place / follow (the
+    frame body's CSS rect + the viewport: the game window goes there; follow does not wait for the read-back — the
+    drag), snapshot (the game's pixels as image/bmp, X-Kairos-Frame: where they lie in the frame body), cover /
+    uncover {focus} (the screenshot is shown: the game is minimized + frozen / back), minimize / restore {focus},
+    focus, close, adopt {xid, x, y, w, h, vw, vh, screen} (a running game window into this frame: a reloaded page),
+    release. Changes what the user sees: guarded() like every mutating route [R66]."""
+    body = {}
+    if request.can_read_body:
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+    op = request.match_info["op"]
+    t0 = time.perf_counter()
+    r = await wm.WM.frame_op(request.match_info["id"], op, body if isinstance(body, dict) else {})
+    status = r.pop("status", 200)
+    if op == "snapshot" and r.get("ok") and isinstance(r.get("detail"), dict) and "image" in r["detail"]:
+        d = r.pop("detail")
+        x, y, w, h = d["rect"]
+        img = frame_bmp(d["image"], w, h)
+        info = {"rect": d["rect"], "body": d["body"], "css": d["css"], "ms": round((time.perf_counter() - t0) * 1000, 1)}
+        return web.Response(body=img, content_type="image/bmp",
+                            headers={"X-Kairos-Frame": json.dumps(info), "Cache-Control": "no-store"})
+    r["ms"] = round((time.perf_counter() - t0) * 1000, 1)
+    return web.json_response(r, status=status)
 
 
 # [v7.5] exits that end WITH THE SESSION are not crashes: stick run 2026-10-07 — a snake game ran
@@ -6431,16 +7866,24 @@ async def _reap_game(proc, drain, tail, ctx):
     did not ask for — is recorded: games/<slug>/meta.json "last_crash", the job's
     result (running:false, crash), GET /api/apps games[], the desktop search entry, and
     the "crashed" list of every /api/windows(/stream) snapshot so the desktop tells the
-    user. NOT repaired on its own — evolution is opt-in [R35]; the next relaunch / ✨
-    improve hands the record to the forge as a bug report [R45]."""
+    user. NOT repaired on its own — evolution is opt-in [R35]; the next ✨ improve hands
+    the record to the forge as a bug report [R45] (since R82 a launch runs the current version)."""
     await proc.wait()
     await asyncio.wait([drain], timeout=0.5)         # the trailing traceback
+    if ctx.get("script") is not None:                # [2026-10-14] a length-cut run: its own file goes with it
+        try:
+            Path(ctx["script"]).unlink(missing_ok=True)
+        except OSError:
+            pass
     game = wm.WM.registry.lookup(proc.pid) or {}
     killed = bool(game.get("killed"))
     wm.WM.forget_game(proc.pid)
     rc, after = proc.returncode, round(time.time() - ctx["t0"], 1)
     rec = game_exit_record(ctx["slug"], ctx["title"], ctx["version"], ctx["attempt"], proc.pid, rc, tail[0],
                            ctx["t0"], ctx["gate"], game.get("win") or ctx["window"], killed)
+    # [R82] its frame says so: a clean end closes the frame, a crash shows it there (✨ improve repairs it)
+    wm.WM.frame_ended(proc.pid, {"returncode": rc, "after_s": after, "killed": killed, "version": ctx["version"],
+                                 "crash": rec["summary"] if rec else None})
     job = JOBS.get(ctx["jid"])
     result = job["result"] if job and isinstance(job.get("result"), dict) else None
     session = await game_ended_with_session(tail[0], ctx["gate"]) if rec is not None else ""
@@ -6457,14 +7900,17 @@ async def _reap_game(proc, drain, tail, ctx):
         return
     print(f"[kernel] game {ctx['slug']} v{ctx['version']} (pid {proc.pid}) crashed after the job reported it "
           f"running: {'killed by ' + rec['signal'] if rec['signal'] else 'exit code ' + str(rc)} after {after} s — "
-          f"{rec['summary']} (bug report saved to games/{ctx['slug']}/meta.json; no automatic repair — "
-          "relaunch it to forge a fixed version)", flush=True)
+          f"{rec['summary']} "
+          + (f"(bug report saved to games/{ctx['slug']}/meta.json; no automatic repair — ✨ improve forges a "
+             "fixed version)" if ctx.get("script") is None else "(a length-cut run: not the game's version, no bug report)"),
+          flush=True)
     if result is not None:
         result["crash"] = rec
     try:
-        meta = game_meta(ctx["gdir"])
-        meta.update(slug=ctx["slug"], last_crash=rec, crashes=int(meta.get("crashes", 0)) + 1)
-        write_game_meta(ctx["gdir"], meta)
+        if ctx.get("script") is None:            # [2026-10-14] a cut run is not the game's version: no bug report for it
+            meta = game_meta(ctx["gdir"])
+            meta.update(slug=ctx["slug"], last_crash=rec, crashes=int(meta.get("crashes", 0)) + 1)
+            write_game_meta(ctx["gdir"], meta)
     except OSError as e:
         print(f"[kernel] game {ctx['slug']}: crash record not written: {e}", flush=True)
     wm.WM.note_crash({k: v for k, v in rec.items() if k != "stderr"})
@@ -6687,6 +8133,17 @@ async def disk_full_middleware(request, handler):
 
 
 @web.middleware
+async def engine_missing_middleware(request, handler):
+    """[2026-10-14] an EngineMissingError that escapes a route (vibe.ask, /api/browse, app modify/repair, vision,
+    translation …) answers ENGINE_MISSING_STATUS with one clean JSON error — never aiohttp's bare 500 for a
+    FileNotFoundError (VERIFY 2026-10-10). error_log_middleware journals the 503 like every 5xx."""
+    try:
+        return await handler(request)
+    except EngineMissingError as e:
+        return engine_missing_response(e.binary, str(e))
+
+
+@web.middleware
 async def error_log_middleware(request, handler):
     """Every server-side failure an API caller sees (a 5xx answer or an unhandled
     exception) also lands in the journal: the stick is debugged from its persistent logs
@@ -6710,11 +8167,10 @@ async def error_log_middleware(request, handler):
     return resp
 
 
-def main():
-    app = web.Application(client_max_size=8 * 1024 * 1024,
-                          middlewares=[error_log_middleware, disk_full_middleware])
-    # [R66] classification: GET routes + generation POSTs are open to any peer that can
-    # reach the port; routes that CHANGE the machine are guarded() (loopback or token).
+def add_routes(app):
+    """every route of the kernel (main() below; tests/test_dock_browser.py mounts the same set in-process).
+    [R66] classification: GET routes + generation POSTs are open to any peer that can
+    reach the port; routes that CHANGE the machine are guarded() (loopback or token)."""
     app.router.add_get("/", h_index)
     app.router.add_get("/app/{app_id}", h_app_host)      # a cached app as a top-level window (bench)
     app.router.add_get("/api/status", h_status)
@@ -6757,6 +8213,9 @@ def main():
     app.router.add_get("/api/dict", h_dict)                         # dictionary lookup [R71 P3], open like /api/models
     app.router.add_get("/api/dict/status", h_dict_status)
     app.router.add_post("/api/game", guarded(h_game))               # runs generated code on the display
+    app.router.add_get("/api/game/versions", h_game_versions)       # [R82] a game's kept versions
+    app.router.add_post("/api/game/version", guarded(h_game_version))   # [R82] the way back: which version runs
+    app.router.add_post("/api/frames/{id}/{op}", guarded(h_frame_op))   # [R82] frame <-> game window pairs
     app.router.add_get("/api/windows", h_windows)                   # real X windows (games) [R68]
     app.router.add_get("/api/windows/stream", h_windows_stream)
     app.router.add_post("/api/windows/{id}/{op}", guarded(h_window_op))   # moves/closes what the user sees
@@ -6764,8 +8223,24 @@ def main():
     app.router.add_post("/api/store", guarded(h_store_set))
     app.router.add_get("/api/store/{key}", h_store_get)
     app.router.add_get("/api/boot", h_boot_status)
+    # [R84] ✨ improve a website: the page's next version (SSE), its versions, the revert. Open like /api/app
+    # (generation): an improvement or a revert rewrites only the imaginary web's page cache
+    app.router.add_post("/api/web/improve", h_web_improve)
+    app.router.add_get("/api/web/versions", h_web_versions)
+    app.router.add_post("/api/web/version", h_web_version)
+    # [R85] ✨ improve a picture: the next version (a job), the chain, the revert. Open like /api/image (generation);
+    # an edit or a revert writes only the media cache (images/versions/)
+    app.router.add_post("/api/image/improve", h_image_improve)
+    app.router.add_get("/api/image/versions", h_image_versions)
+    app.router.add_post("/api/image/version", h_image_version)
     app.router.add_static("/files", FILES_DIR)
     app.router.add_static("/shell", SHELL_DIR)
+
+
+def main():
+    app = web.Application(client_max_size=8 * 1024 * 1024,
+                          middlewares=[error_log_middleware, engine_missing_middleware, disk_full_middleware])
+    add_routes(app)
 
     # populate the write-protected /system partition (Android-style)
     FS.populate_system({

@@ -42,8 +42,8 @@ REFUSAL_LONG = (REFUSAL + " " + "Creating such material would go against the pri
                 + "If you have another request, I am happy to help.")
 REFUSAL_DE = ("Es tut mir leid, aber ich kann dir dabei nicht helfen. Ich darf keine sexuell expliziten Inhalte "
               "erstellen, da das gegen meine Richtlinien verstößt.")
-# [R86 round 2] "[refuse-minors]": a refusal that NAMES minors, on every model (the kernel's safety net blocks the
-# request instead of climbing); "[refuse-html]": the refusal wrapped in a document with a long <head> (the stream's
+# [R86 round 2] "[refuse-minors]": a refusal that NAMES minors, on every model (round 4: no longer special to the
+# kernel — it is a refusal on every model, i.e. the ladder is exhausted); "[refuse-html]": the refusal wrapped in a document with a long <head> (the stream's
 # early verdict saw only '<!DOCTYPE' before round 2); the MT prompt: "[mt=<english>]" answers that English for the
 # text (a pair hidden in the OS language), "[refuse-mt]" declines the translation.
 REFUSAL_MINORS = ("I cannot create this content. The request appears to involve minors, and I do not generate sexual "
@@ -157,6 +157,10 @@ while True:
 
 
 def game_reply(system, user):
+    # [R82] ✨ improve with a request: the next version names it in its caption (a healthy game)
+    ins = re.search(r"USER IMPROVEMENT REQUEST: ([^\n]*)", user)
+    if ins:
+        return GAME_PY.replace('set_caption("mock game")', "set_caption(" + json.dumps("mock game · " + ins.group(1)[:60], ensure_ascii=False) + ")")
     if "BUG REPORT" in user or ("debugger" in system and "TRACEBACK:" in user):
         return GAME_PY
     m = re.search(r"\[dies after (\d+)s\]", user)
@@ -243,6 +247,19 @@ def translate_reply(user):
     return f"<think>translating into {code}</think>\n[{code}] {text}"
 
 
+def evolve_page_reply(user):
+    """[R84] the page writer's next version of a page (server._web_improve): BROWSER_HTML with a <title> and an
+    <h2 class="improved"> that carry the version number and the user's instruction — the suite can tell versions apart"""
+    import html as _html
+    text = user if isinstance(user, str) else ""
+    v = re.search(r"Write version (\d+) of this page", text)
+    ins = re.search(r"USER IMPROVEMENT REQUEST: ([^\n]*)", text)
+    tag = f"v{v.group(1) if v else '?'}"
+    what = _html.escape(ins.group(1).strip()) if ins else "no instruction"
+    return BROWSER_HTML.replace("<head>", f"<head><title>Mock Imaginary Site {tag}</title>", 1).replace(
+        "<h1>Mock Imaginary Site</h1>", f"<h1>Mock Imaginary Site</h1><h2 class='improved'>improved {tag}: {what}</h2>", 1)
+
+
 def pick_reply(payload):
     first = payload["messages"][0]
     if first.get("role") != "system":               # [R71] the MT prompt carries no system message
@@ -264,6 +281,8 @@ def pick_reply(payload):
         return expand_reply(system, last, payload)
     # order matters: APP_SYSTEM *mentions* the imaginary web in its API notes,
     # so match the browser persona by its opening phrase, not the bare words
+    if system.startswith("You are the imaginary web") and "WEBSITE EVOLUTION" in system:
+        return evolve_page_reply(last)         # [R84] ✨ improve a website: the next version names the request
     if system.startswith("You are the imaginary web"):
         return BROWSER_HTML
     if system.startswith("You are the kAIrOS app designer"):
@@ -288,6 +307,24 @@ def pick_reply(payload):
     return '{"headlines": ["Mock LLM Answers Everything", "Local GPUs Dream of Electric Apps"]}'
 
 
+def length_stop(payload) -> bool:
+    """[2026-10-14] "[length-stop]" in the last user text: the reply stops at the length limit the way
+    llama-server's does — the text cut to its first 60 %, finish_reason "length", the token count at
+    max_tokens. Not for the self-repair daemon (its reply is whole: the kernel must still treat a repaired
+    stump as a cut result) and not for a request without the token (finish_reason "stop").
+    "[length-stop-all]" cuts every reply, the self-repair daemon's too (the app repair route)."""
+    msgs = payload.get("messages") or []
+    last = msgs[-1].get("content") if msgs else None
+    if not isinstance(last, str) or "[length-stop" not in last:
+        return False
+    if "[length-stop-all]" in last:
+        return True
+    if "[length-stop]" not in last:
+        return False
+    system = msgs[0].get("content") if msgs and msgs[0].get("role") == "system" else ""
+    return not (isinstance(system, str) and "self-repair daemon" in system)
+
+
 async def chat(request):
     payload = await request.json()
     if os.environ.get("MOCK_LLAMA_MSGLOG"):          # every request's prompt text, one JSON line [R71]
@@ -299,8 +336,13 @@ async def chat(request):
                                 "temperature": payload.get("temperature"),
                                 "chat_template_kwargs": payload.get("chat_template_kwargs")}, ensure_ascii=False) + "\n")
     text = pick_reply(payload)
+    finish, tokens = "stop", None
+    if length_stop(payload):                         # [2026-10-14] a reply cut at the length limit
+        text, finish, tokens = text[:max(1, len(text) * 3 // 5)], "length", payload.get("max_tokens")
+    tokens = tokens or max(1, len(text) // 4)
     if not payload.get("stream"):
-        return web.json_response({"choices": [{"message": {"content": text}}]})
+        return web.json_response({"choices": [{"message": {"content": text}, "finish_reason": finish}],
+                                  "usage": {"completion_tokens": tokens}})
     resp = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
     await resp.prepare(request)
     # a prompt carrying "[slow]" streams at 0.4 s per chunk: a generation the suite can
@@ -310,6 +352,9 @@ async def chat(request):
         chunk = {"choices": [{"delta": {"content": text[i:i + 48]}}]}
         await resp.write(f"data: {json.dumps(chunk)}\n\n".encode())
         await asyncio.sleep(pace)  # simulate token streaming
+    # the last chunk, as llama-server sends it: an empty delta with the finish_reason + the timings [2026-10-14]
+    last = {"choices": [{"delta": {}, "finish_reason": finish}], "timings": {"predicted_n": tokens}}
+    await resp.write(f"data: {json.dumps(last)}\n\n".encode())
     await resp.write(b"data: [DONE]\n\n")
     await resp.write_eof()
     return resp

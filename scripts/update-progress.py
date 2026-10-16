@@ -242,7 +242,8 @@ def main():
     # tests/run-tests.sh) and write tests/results-llm-parallel.json: the same {name: {reqs, status}}
     # shape, merged in so R72's row is derived from a real run like every other
     results = {**results, **load_results(RESULTS.with_name("results-llm-parallel.json"))[1]}
-    # the same for the v7.5 image-model tests [R76] (tests/test_image_lora.py -> results-image-lora.json)
+    # the same for the image-model tests [R76: v7.5 Krea 2 + the Kroma LoRA, Muse since 2026-10-10]
+    # (tests/test_image_lora.py -> results-image-lora.json)
     results = {**results, **load_results(RESULTS.with_name("results-image-lora.json"))[1]}
     # and the v7.5 desktop + web tests [R74, R75] (tests/test_desktop_web.py -> results-desktop-web.json)
     results = {**results, **load_results(RESULTS.with_name("results-desktop-web.json"))[1]}
@@ -254,6 +255,12 @@ def main():
     results = {**results, **load_results(RESULTS.with_name("results-imaging-workflow.json"))[1]}
     # and the refusal-fallback tests [R86] (tests/test_refusal_fallback.py -> results-refusal-fallback.json)
     results = {**results, **load_results(RESULTS.with_name("results-refusal-fallback.json"))[1]}
+    # and the dock / browser tests [R81, R83, R84] (tests/test_dock_browser.py -> results-dock-browser.json)
+    results = {**results, **load_results(RESULTS.with_name("results-dock-browser.json"))[1]}
+    # and games in windows [R82] (tests/test_games_windows.py -> results-games-windows.json)
+    results = {**results, **load_results(RESULTS.with_name("results-games-windows.json"))[1]}
+    # and ✨ improve a picture [R85] (tests/test_picture_edit.py -> results-picture-edit.json)
+    results = {**results, **load_results(RESULTS.with_name("results-picture-edit.json"))[1]}
     ids, titles, notes = parse_requirements(REQ_DOC.read_text(encoding="utf-8"))
     lines, c = render(ids, titles, notes, results, ran_at)
     OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")

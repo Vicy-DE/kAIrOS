@@ -612,6 +612,355 @@ async def t_web_browse(ctx):
     return "vibe.browse: profile written; last shown page links here; explicit from -> referer path"
 
 
+@test("web_adult_rule_page_prompt", ["R57", "R86"])
+async def t_web_adult_rule(ctx):
+    """[SD run 2026-10-13] the page prompt the model gets: BROWSER_SYSTEM with the 18+ rule (keep the brand + theme,
+    fictional adults 25+, never minors, never real people, SFW stays SFW) for an adult address AND a SFW one (the rule
+    is conditional, the system prompt is the same); the address reaches the model verbatim; an uncensored primary still
+    gets the S5 limits line after it"""
+    s = kernel()
+    P = s.prompts
+    adult, sfw = "xhamster.com blonde woman with elven ears in the forest", "bakery-berlin.de - a family bakery"
+    with WebEnv(s, {}) as env:
+        await env.build(adult)
+        await env.build(sfw)
+        sys_a = next(p["system"] for p in env.prompts if p["address"] == adult)
+        sys_s = next(p["system"] for p in env.prompts if p["address"] == sfw)
+        assert P.ADULT_RULE_WEB in sys_a and sys_a == sys_s, "one conditional rule, the same prompt for both"
+        assert env.prompt_for(adult).startswith(f"The browser navigated to: {adult}"), env.prompt_for(adult)[:120]
+    final = s.uncensored_system(sys_a, "llm")
+    assert s.MANIFEST["llm"].get("uncensored") and final.endswith(P.UNCENSORED_LIMITS) and P.ADULT_RULE_WEB in final
+    return "BROWSER_SYSTEM carries the 18+ rule for both pages; address verbatim; S5 limits line still last"
+
+
+# ============================================================================= late pictures [SD run 2026-10-13]
+def _png(w, h, shade=128):
+    """a real w×h grayscale PNG (what the mock painter writes)"""
+    import struct
+    import zlib
+    raw = b"".join(b"\x00" + bytes([shade]) * w for _ in range(h))
+    chunk = lambda t, d: struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 0, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw, 1)) + chunk(b"IEND", b""))
+
+
+class LatePictures:
+    """kernel/server.py's /genimg with a SLOW mock painter (render_images patched: sleeps `delay` s per batch, then writes
+    real PNGs), a short GENIMG_WAIT, a small GENIMG_LIMIT and a private FILES_DIR; every request is counted"""
+
+    def __init__(self, server, wait=0.6, delay=1.5, limit=1, window=0.1):
+        self.s, self.wait, self.delay, self.limit, self.window = server, wait, delay, limit, window
+        self.dir = Path(tempfile.mkdtemp(prefix="kairos-late-"))
+        self.renders, self.fail, self.saved = [], set(), {}
+
+    def __enter__(self):
+        s = self
+
+        async def fake_render(kind, items, adult=False, expand=None):
+            s.renders.append([it["prompt"] for it in items])
+            await asyncio.sleep(s.delay)
+            out = []
+            for it in items:
+                if it["prompt"] in s.fail:
+                    out.append({"ok": False, "error": "mock painter failure"})
+                    continue
+                Path(it["out"]).parent.mkdir(parents=True, exist_ok=True)
+                Path(it["out"]).write_bytes(_png(it["w"], it["h"]))
+                out.append({"ok": True, "prompt": it["prompt"], "expanded": False})
+            return out
+        for name, val in (("render_images", fake_render), ("GENIMG_WAIT", self.wait), ("GENIMG_LIMIT", self.limit),
+                          ("GENIMG_WINDOW", self.window), ("FILES_DIR", self.dir)):
+            self.saved[name] = getattr(self.s, name)
+            setattr(self.s, name, val)
+        for d in (self.s.GENIMG_INFLIGHT, self.s.GENIMG_FAILED, self.s.GENIMG_LATE):
+            d.clear()
+        self.s.GENIMG_PENDING.clear()
+        return self
+
+    def __exit__(self, *exc):
+        for name, val in self.saved.items():
+            setattr(self.s, name, val)
+        for d in (self.s.GENIMG_INFLIGHT, self.s.GENIMG_FAILED, self.s.GENIMG_LATE):
+            d.clear()
+        self.s.GENIMG_PENDING.clear()
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+
+def _svg_width(body: bytes):
+    m = re.search(rb"<svg[^>]*\swidth='(\d+)'", body)
+    return int(m.group(1)) if m else None
+
+
+def _png_size(body: bytes):
+    import struct
+    return struct.unpack(">II", body[16:24]) if body[:8] == b"\x89PNG\r\n\x1a\n" else None
+
+
+@test("web_genimg_late_picture", ["R58", "R57"])
+async def t_genimg_late(ctx):
+    """the owner's xhamster picture (rendered ~7 min after its request; the request had given up at GENIMG_WAIT and the
+    page never asked again): a picture still rendering when the wait ends — or turned away at GENIMG_LIMIT — gets the
+    PENDING placeholder (odd width, no-store); a re-ask (?_r=n) is answered at once and queues a turned-away picture
+    once a slot is free; the finished picture reaches the re-ask; a failed one gets the FINAL placeholder (even width)
+    and no render loop; every served page carries the late-picture script, the one block of the shell's BRIDGE_SRC"""
+    import contextlib
+    import io
+    s = kernel()
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+    log = io.StringIO()
+    with LatePictures(s, wait=0.6, delay=1.5, limit=1) as lp, contextlib.redirect_stdout(log):
+        app = web.Application()
+        app.router.add_get("/genimg/{tail:.*}", s.h_genimg)
+        async with TestClient(TestServer(app)) as c:
+            async def get(path):
+                t0 = time.time()
+                r = await c.get(path)
+                return r.status, r.headers.get("Content-Type", ""), r.headers.get("Cache-Control", ""), await r.read(), time.time() - t0
+
+            # 1. the wait runs out before the slow painter is done: the PENDING placeholder, one pixel wider (513)
+            st, ct, cc, body, dt = await get("/genimg/a red fox on a cliff")
+            assert st == 200 and "svg" in ct and _svg_width(body) == 513 and "no-store" in cc, (st, ct, cc, body[:120])
+            assert 0.5 <= dt < 1.4, f"the first request holds GENIMG_WAIT (0.6 s): {dt:.2f}"
+            # 2. a re-ask is answered at once (never a held connection) and never starts a second render
+            st, ct, cc, body, dt = await get("/genimg/a red fox on a cliff?_r=1")
+            assert _svg_width(body) == 513 and dt < 0.4 and lp.renders == [["a red fox on a cliff"]], (dt, lp.renders)
+            # 3. the queue is full (GENIMG_LIMIT 1): a second picture is turned away AT ONCE — pending, not queued
+            st, ct, cc, body, dt = await get("/genimg/a blue whale?w=512&h=384")
+            assert _svg_width(body) == 513 and dt < 0.4 and len(lp.renders) == 1, (dt, lp.renders)
+            # 4. the fox is painted: the next re-ask gets the real picture
+            for _ in range(60):
+                if not s.GENIMG_INFLIGHT:
+                    break
+                await asyncio.sleep(0.1)
+            st, ct, cc, body, dt = await get("/genimg/a red fox on a cliff?_r=2")
+            assert st == 200 and _png_size(body) == (512, 512), (st, ct, body[:40])
+            # 5. the whale's re-ask finds a free slot: queued now, answered pending at once, then painted
+            st, ct, cc, body, dt = await get("/genimg/a blue whale?w=512&h=384&_r=1")
+            assert _svg_width(body) == 513 and dt < 0.4, dt
+            for _ in range(60):
+                if not s.GENIMG_INFLIGHT:
+                    break
+                await asyncio.sleep(0.1)
+            st, ct, cc, body, dt = await get("/genimg/a blue whale?w=512&h=384&_r=2")
+            assert _png_size(body) == (512, 384) and lp.renders[-1] == ["a blue whale"], (lp.renders, body[:40])
+            # 6. a failed render: the first request's wait ends pending, the re-ask after the failure gets the FINAL
+            #    placeholder (even width) and no new render; a fresh page load (no _r) tries again, as before
+            lp.fail.add("a broken vase")
+            st, ct, cc, body, dt = await get("/genimg/a broken vase")
+            assert _svg_width(body) == 513, body[:120]
+            for _ in range(60):
+                if not s.GENIMG_INFLIGHT:
+                    break
+                await asyncio.sleep(0.1)
+            n = len(lp.renders)
+            st, ct, cc, body, dt = await get("/genimg/a broken vase?_r=3")
+            assert _svg_width(body) == 512 and dt < 0.4 and len(lp.renders) == n, (body[:120], lp.renders)
+            lp.wait = s.GENIMG_WAIT = 3.0
+            st, ct, cc, body, dt = await get("/genimg/a broken vase")
+            assert _svg_width(body) == 512 and len(lp.renders) == n + 1, "a fresh request renders again; its failure is final"
+            # 7. a picture painted within the wait arrives in the first answer, as before (no placeholder at all)
+            st, ct, cc, body, dt = await get("/genimg/a quiet lake")
+            assert _png_size(body) == (512, 512) and 1.4 <= dt < 3.0, dt
+    out = log.getvalue()
+    assert "still rendering after 1 s" in out and "queue full (1 pictures in flight)" in out, out[-800:]
+    assert out.count("a late picture reached its page") == 2, out[-800:]      # the fox and the whale, once each
+    # every served page carries the script — the ONE block of the shell's BRIDGE_SRC (single source)
+    js = (REPO / "shell" / "shell.js").read_text()
+    bridge = re.search(r"const BRIDGE_SRC = `(.*?)`;\n", js, re.S).group(1).replace("<\\/script>", "</script>")
+    block = re.search(r"<script data-kairos-genimg>.*?</script>", bridge, re.S).group(0)
+    assert s.genimg_late_script() == block and block in s.bridge_src()
+    served = s.no_context_menu("<!DOCTYPE html><html><head><title>x</title></head><body><img src='/genimg/x'></body></html>")
+    assert served.count("data-kairos-genimg") == 1 and served.index("data-kairos-genimg") < served.index("<title>")
+    assert "naturalWidth % 2 === 1" in block and '"_r"' in block and "isConnected" in block and "3600000" in block
+    return ("pending placeholder (513 px, no-store) after the 0.6 s wait; re-ask at once, no second render; queue-full "
+            "turned away then queued by the re-ask; both late pictures delivered (2 journal lines); failure final (512 px), "
+            "no loop; in-wait picture unchanged; served pages carry the BRIDGE_SRC block")
+
+
+async def _cdp(port, url, expr, until, timeout=150, every=0.5):
+    """open `url` in the headless Chromium on `port` and evaluate `expr` (a JSON string) every `every` s until
+    until(value) is true -> the list of decoded values"""
+    import aiohttp
+    async with aiohttp.ClientSession() as cs:
+        ver = None
+        for _ in range(200):
+            try:
+                async with cs.get(f"http://127.0.0.1:{port}/json/version") as r:
+                    ver = await r.json()
+                break
+            except Exception:
+                await asyncio.sleep(0.1)
+        assert ver, "Chromium's DevTools endpoint never answered"
+        async with cs.put(f"http://127.0.0.1:{port}/json/new?{url}") as r:
+            target = await r.json()
+        ws = await cs.ws_connect(target["webSocketDebuggerUrl"], max_msg_size=0)
+        mid, seen, t0 = 0, [], time.time()
+        try:
+            while time.time() - t0 < timeout:
+                mid += 1
+                await ws.send_json({"id": mid, "method": "Runtime.evaluate",
+                                    "params": {"expression": expr, "returnByValue": True}})
+                while True:
+                    msg = await ws.receive_json(timeout=30)
+                    if msg.get("id") == mid:
+                        break
+                v = (msg.get("result") or {}).get("result", {}).get("value")
+                if isinstance(v, str):
+                    v = json.loads(v)
+                    seen.append(v)
+                    if until(v):
+                        return seen
+                await asyncio.sleep(every)
+        finally:
+            await ws.close()
+    raise AssertionError(f"timeout after {timeout} s; last state: {json.dumps(seen[-1] if seen else None)[:1500]}")
+
+
+REPORTER_JS = """
+function kReport(tag) {
+  const born = performance.timeOrigin, probes = {};
+  const probe = (u) => { if (!(u in probes)) { probes[u] = -1; const im = new Image(); im.onload = () => { probes[u] = im.naturalWidth; }; im.onerror = () => { probes[u] = 0; }; im.src = u; } return probes[u]; };
+  setInterval(() => {
+    const out = { rep: tag, born, imgs: [], bgs: [] };
+    for (const i of document.querySelectorAll("img")) out.imgs.push({ alt: i.alt, src: i.getAttribute("src"), w: i.complete ? i.naturalWidth : -1 });
+    for (const el of document.querySelectorAll("[data-bg]")) {
+      const p = getComputedStyle(el).backgroundImage.split('url("')[1];
+      const u = p ? p.slice(0, p.indexOf('"')) : "";
+      out.bgs.push({ id: el.getAttribute("data-bg"), url: u, w: u ? probe(u) : -1 });
+    }
+    if (window.parent !== window) parent.postMessage(out, "*"); else window.R[tag] = out;
+  }, 250);
+}
+"""
+
+
+@test("web_genimg_late_browser", ["R58", "R57", "R60", "R68"])
+async def t_genimg_late_browser(ctx):
+    """the late-picture script in a REAL headless Chromium, every place a picture can be: a /web/ page (the real h_web,
+    a cached page in a sandboxed iframe — an <img> and a CSS background), an app (a sandboxed srcdoc iframe with the
+    shell's real BRIDGE_SRC — an <img>, and vibe.browse()'s html from the real h_browse put in with innerHTML: an <img>
+    and a <style> background) and the shell's wallpaper helper (applyWallpaper/lateWallpaper lifted from shell.js).
+    GENIMG_WAIT 1 s, a 2 s mock painter, GENIMG_LIMIT 2: every picture first shows the pending placeholder (odd width),
+    then the real picture arrives with no reload (each frame's timeOrigin unchanged, h_web asked once)"""
+    chrome = _find_chrome()
+    if not chrome:
+        raise SkipTest("needs Chromium (kairos-fix-chromium:local) — the protocol itself: web_genimg_late_picture")
+    s = kernel()
+    from aiohttp import web
+    from aiohttp.test_utils import TestServer
+    hits = {"web": 0, "genimg": []}
+    page_addr, browse_addr = "late-pictures.kai", "late-browse.kai"
+    page = ("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Late pictures</title><style>"
+            ".hero{width:240px;height:90px;background:linear-gradient(rgba(0,0,0,.4),rgba(0,0,0,.4)),"
+            "url('/genimg/page hero background')}</style></head><body><div class='hero' data-bg='page-bg'></div>"
+            "<img alt='page picture' src='/genimg/page picture' style='width:120px'>"
+            "<script>" + REPORTER_JS + "kReport('page');</script></body></html>")
+    browse = ("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Browse</title><style>.b{width:200px;height:80px;"
+              "background:url('/genimg/browse background')}</style></head><body><div class='b' data-bg='browse-bg'></div>"
+              "<img alt='browse picture' src='/genimg/browse picture' style='width:100px'></body></html>")
+    wall = re.search(r"let wallpaperShown = null;\n.*?\n}\nfunction lateWallpaper\(.*?\n}\n", (REPO / "shell" / "shell.js").read_text(), re.S)
+    assert wall, "applyWallpaper / lateWallpaper not found in shell.js"
+    with WebEnv(s, {}) as env, LatePictures(s, wait=1.0, delay=2.0, limit=2, window=0.2) as lp:
+        env_dir_page = env.dir / f"{s.web_slug(page_addr)}.html"
+        env_dir_page.write_text(page)
+        (env.dir / f"{s.web_slug(browse_addr)}.html").write_text(browse)
+
+        async def h_web(request):
+            hits["web"] += 1
+            return await s.h_web(request)
+
+        async def h_genimg(request):
+            hits["genimg"].append(request.path_qs)
+            return await s.h_genimg(request)
+        state = {"top": ""}
+
+        async def h_top(request):
+            return web.Response(text=state["top"], content_type="text/html")
+        app = web.Application()
+        app.router.add_get("/web/{tail:.*}", h_web)
+        app.router.add_get("/genimg/{tail:.*}", h_genimg)
+        app.router.add_post("/api/browse", s.h_browse)
+        app.router.add_get("/t", h_top)
+        server = TestServer(app, host="127.0.0.1")
+        await server.start_server()
+        try:
+            base = f"http://127.0.0.1:{server.port}"
+            import aiohttp
+            async with aiohttp.ClientSession() as cs:
+                async with cs.post(base + "/api/browse", json={"address": browse_addr}) as r:
+                    browsed = (await r.json())["html"]
+            assert browsed.count("data-kairos-genimg") == 1, "vibe.browse html carries the script (inert under innerHTML)"
+            app_html = ("<!DOCTYPE html><html><head>" + s.bridge_src() + "<title>app</title></head><body>"
+                        "<img alt='app picture' src='/genimg/app picture?w=512&h=384' style='width:100px'>"
+                        "<div id='browse'></div><script>" + REPORTER_JS + "kReport('app');"
+                        "document.getElementById('browse').innerHTML = " + json.dumps(browsed).replace("</", "<\\/")
+                        + ";</script></body></html>")
+            state["top"] = ("<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>"
+                   "<div id='wallpaper' data-bg='wallpaper' style='width:64px;height:64px'></div>"
+                   "<img id='gone' alt='gone' src='/genimg/a picture whose element goes away' style='width:40px'>"
+                   f"<iframe sandbox='allow-scripts allow-forms' src='/web/{page_addr}'></iframe>"
+                   "<iframe id='app' sandbox='allow-scripts allow-pointer-lock'></iframe><script>"
+                   "window.R = {}; addEventListener('message', (e) => { if (e.data && e.data.rep) R[e.data.rep] = e.data; });"
+                   "document.getElementById('app').srcdoc = " + json.dumps(app_html).replace("</", "<\\/") + ";"
+                   "const $ = (q) => document.querySelector(q);" + wall.group(0) + REPORTER_JS +
+                   "applyWallpaper('/genimg/wallpaper picture'); kReport('top');"
+                   # removed while pending: its re-ask timer finds it disconnected and stops
+                   "const g = $('#gone'); g.addEventListener('load', () => { if (g.naturalWidth % 2) g.remove(); });"
+                   "</script></body></html>")
+            hist = {}
+
+            def done(v):
+                for tag, rep in v.items():
+                    for it in rep.get("imgs", []) + rep.get("bgs", []):
+                        key = f"{tag}:{it.get('alt') or it.get('id')}"
+                        hist.setdefault(key, []).append(it)
+                    hist.setdefault(f"born:{tag}", set()).add(rep.get("born"))
+                pics = [k for k in hist if not k.startswith("born:")]
+                pics = [k for k in pics if k != "top:gone"]  # the removed <img> is checked by its requests
+                return len(pics) == 6 and all(hist[k][-1]["w"] == 512 and "_r=" in (hist[k][-1].get("src") or hist[k][-1].get("url") or "")
+                                              for k in pics)
+            with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:   # Chromium may still write its profile
+                port = 9900 + os.getpid() % 90
+                br = subprocess.Popen([chrome, "--headless=new", "--no-sandbox", "--disable-gpu", "--no-first-run",
+                                       "--no-default-browser-check", f"--remote-debugging-port={port}",
+                                       f"--user-data-dir={td}/profile", "--window-size=900,700", "about:blank"],
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                t0 = time.time()
+                try:
+                    await _cdp(port, base + "/t", "JSON.stringify(window.R || {})", done, timeout=150)
+                finally:
+                    br.kill()
+                    br.wait()
+                took = time.time() - t0
+        finally:
+            await server.close()
+        page_after = env_dir_page.read_text()
+    pics = sorted(k for k in hist if not k.startswith("born:") and k != "top:gone")
+    assert pics == ["app:app picture", "app:browse picture", "app:browse-bg", "page:page picture", "page:page-bg",
+                    "top:wallpaper"], pics
+    for k in pics:                                   # placeholder first (odd width), the picture last
+        ws = [it["w"] for it in hist[k]]
+        if "src" in hist[k][-1]:                     # an <img>: the element itself showed the placeholder
+            assert any(w > 0 and w % 2 == 1 for w in ws), f"{k}: never showed the pending placeholder: {ws[:40]}"
+        # a CSS background: the script swaps the URL only after a pending answer (n >= 1) -> the final URL carries _r=
+        assert ws[-1] == 512 and "_r=" in (hist[k][-1].get("src") or hist[k][-1].get("url")), (k, ws[-12:], hist[k][-1])
+    for tag in ("page", "app", "top"):               # no reload: one document per frame the whole time
+        assert len(hist[f"born:{tag}"]) == 1, (tag, hist[f"born:{tag}"])
+    assert hits["web"] == 1, f"the /web/ page was requested {hits['web']}× — a reload"
+    gone = [q for q in hits["genimg"] if "goes%20away" in q or "goes away" in q]
+    assert len(gone) == 1, f"a removed <img> must not be asked again: {gone}"
+    assert page_after == page, "the cached page file is untouched (injection at serve time only)"
+    per = {}
+    for q in hits["genimg"]:
+        key = q.split("?")[0]
+        per[key] = per.get(key, 0) + 1
+    assert max(per.values()) <= 16, f"hammering: {per}"
+    return (f"6 pictures (page <img> + CSS bg, app <img>, vibe.browse innerHTML <img> + <style> bg, wallpaper): pending "
+            f"placeholder first, then the picture, no reload, cached file untouched; a removed <img> asked once; {took:.0f} s; "
+            f"{len(hits['genimg'])} /genimg requests, max {max(per.values())} per picture; {Path(chrome).name}")
+
+
 # ============================================================================= game exits at session end
 def _fake_x(path, answer=True):
     """an X-like unix socket: reads the 12-byte setup and answers 8 bytes (Failed: no auth) or stays silent"""

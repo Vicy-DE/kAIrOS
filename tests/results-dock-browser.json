@@ -1,0 +1,112 @@
+{
+ "at": "2026-10-15 13:29:35",
+ "tests": {
+  "db_web_address_table": {
+   "reqs": [
+    "R83",
+    "R23"
+   ],
+   "status": "pass",
+   "detail": "22 cases (the same table runs through browser.js webAddress in browser_e2e_search_opens_addresses)"
+  },
+  "db_web_page_reports": {
+   "reqs": [
+    "R83",
+    "R57",
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "loading/page/declined/blocked/cut reports; error page titles per kind; genimg script kept; vibe.browse unreported"
+  },
+  "db_web_improve_versions_revert": {
+   "reqs": [
+    "R84",
+    "R75",
+    "R86",
+    "R77"
+   ],
+   "status": "pass",
+   "detail": "v1\u2192v2 (purple)\u2192v3 (FAQ); prompt = previous HTML + profile + instruction + the 18+ rule; ?_v=1; revert to v1 (profile re-anchored); from_version 2 \u2192 v4; declined/blocked save nothing; cut shown once; regression kept as failed-v5; keep=3 drops the oldest; _fresh adds v6"
+  },
+  "db_search_addresses_system_apps": {
+   "reqs": [
+    "R83",
+    "R81",
+    "R23"
+   ],
+   "status": "pass",
+   "detail": "address first (web), site search, not for node.js; sysapps notes/files/browser; retired browser hidden, kept on disk"
+  },
+  "db_shell_static": {
+   "reqs": [
+    "R81",
+    "R83",
+    "R46",
+    "R13"
+   ],
+   "status": "pass",
+   "detail": "pinned catalogue without Files/Notes/News/generated browser; system-apps template; states + chips rule; bridge closed to /web/"
+  },
+  "db_r66_sandboxed_caller_not_trusted": {
+   "reqs": [
+    "R66",
+    "R83"
+   ],
+   "status": "pass",
+   "detail": "sandboxed fetch/beacon 403; Origin null only 403; cross-site only 403; same-site 403; sandboxed + wrong token 403; the shell (same-origin) 200; curl/kairos-bootlog (no headers) 200; sandboxed + the token 200; /api/game/version sandboxed 403"
+  },
+  "db_r86_address_path_real_block": {
+   "reqs": [
+    "R86",
+    "R83",
+    "R84"
+   ],
+   "status": "pass",
+   "detail": "10 block / 15 pass (address_words); /web/ \u00d73 blocked, 0 calls, not cached; age without a term = page; web \u2728 blocked, no version; censored primary: check point 3 after 1 call"
+  },
+  "dock_e2e_records_states": {
+   "reqs": [
+    "R81",
+    "R61",
+    "R68",
+    "R52"
+   ],
+   "status": "pass",
+   "detail": "1920: pinned + 5 user apps, no Files/Notes/News/generated browser; app glow\u21921.33 (no chip)\u2192restore; builtin New window/Close; game icon 1.33, X non-game chip only; viewer chip; maximized above the grown icon; \u229e system apps; remove from dock persisted; 1024: fits, \u229e +15; screen 1 dock (no chips)"
+  },
+  "browser_e2e_search_opens_addresses": {
+   "reqs": [
+    "R83",
+    "R23"
+   ],
+   "status": "pass",
+   "detail": "webAddress == web_address on the table; Enter on an address \u2192 browser (page report, dock glow); site search; website hit \u2192 same window"
+  },
+  "browser_e2e_navigation_history": {
+   "reqs": [
+    "R83",
+    "R57",
+    "R75"
+   ],
+   "status": "pass",
+   "detail": "link inside the frame \u2192 leaving/loading/page reports + progress bar; \u2190/\u2192/\u21bb (cache, no prompt); history panel; address bar; late picture placeholder\u2192picture in the frame, one document; notes declined/blocked/cut"
+  },
+  "browser_e2e_improve_revert": {
+   "reqs": [
+    "R84",
+    "R83",
+    "R75"
+   ],
+   "status": "pass",
+   "detail": "\u2728 note \u2192 stream \u2192 v2 (strip v1 v2); prompt = previous HTML + profile + instruction; \u2190v1 \u2192v2; v3; strip click \u2192 v1 is the page"
+  },
+  "browser_e2e_sandboxed_page_cannot_write": {
+   "reqs": [
+    "R66",
+    "R83"
+   ],
+   "status": "pass",
+   "detail": "page POSTs /api/store 403, /api/game/version 403, /api/store 403 (Origin null, cross-site), store clean; bridge closed to the page; app frame \u2192 bridge store 200; shell's own /api/store \u00d73 200 (same-origin)"
+  }
+ }
+}

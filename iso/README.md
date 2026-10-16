@@ -23,7 +23,7 @@ machines (R41/R50: `kairos-gpu-setup` picks the boot-VGA card for the display).
   **per connected display**, R52) showing the kAIrOS desktop from `http://localhost:1337`.
   A self-dreamed boot animation covers the kernel warm-up (R27).
 - **kAIrOS stack** at `/opt/vibeos`: kernel + shell + multi-arch engines (sm_89 + sm_120
-  PTX) + the **8 GB-tier models** (Gemma 4 26B-A4B-it, Krea 2 Turbo + encoder + VAE —
+  PTX) + the **8 GB-tier models** (the heretic Gemma 4 26B-A4B-it, Muse Q4_0 + encoder + VAE —
   exactly `scripts/check_tier_present.py manifests/tier-8gb.json --list`, R47) + the
   **bake-flagged add-ons** (`"bake": true` in the manifest: the translation `fast` model
   Index-Translate-2B 1.31 GB + the dictionaries 118 MB, so R71 translation and word lookup

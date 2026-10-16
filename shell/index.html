@@ -26,6 +26,7 @@
     <span class="mb-spacer"></span>
     <span class="mb-item hidden" id="mb-upgrade"></span>
     <span class="mb-item mb-btn" id="mb-wallpaper" title="Generate a new AI wallpaper">◐ wallpaper</span>
+    <span class="mb-item mb-btn" id="mb-wallpaper-improve" title="✨ improve the wallpaper — the picture editor paints its next version">✨</span>
     <!-- [R74] the clock is the system menu: click / Enter / Space / ↓ opens it -->
     <button class="mb-item mb-clock" id="mb-clock" translate="no" type="button" aria-haspopup="menu"
             aria-expanded="false" aria-controls="mb-sysmenu" title="Sleep, restart, shut down, install, about"></button>
@@ -84,23 +85,35 @@
     </div>
   </div>
 
+  <!-- [R81] the dock. These buttons are its PINNED part, as data: shell.js dockInit() reads them once and
+       renderDock() draws the dock from them + the user's apps (/api/apps) + the window records (DOM windows and
+       the kernel's X windows) — running + minimized = 1.33, running + shown = a glow. Files, Notes and News are
+       not pinned (owner 2026-10-15): they are in the system-apps template below, reachable through ⊞ Apps and
+       the search. [R83] The browser is the built-in (shell/browser.js), no longer a generated app. -->
   <div id="dock">
     <button class="dock-app" data-menu="1">⊞<span>Apps</span></button>
     <button class="dock-app" data-builtin="applauncher">🚀<span>App Launcher</span></button>
     <button class="dock-app" data-launch="✨">✨<span>Summon</span></button>
     <span class="dock-sep"></span>
-    <button class="dock-app" data-app="notes" data-prompt="a notes app with a sidebar list of notes, autosaving via vibe.store">📝<span>Notes</span></button>
-    <button class="dock-app" data-app="news" data-prompt="a news reader for 'The Local Times', a newspaper from a parallel universe. Use vibe.ask to imagine today's headlines and articles as JSON and render them beautifully">📰<span>News</span></button>
-    <button class="dock-app" data-app="browser" data-prompt="the kAIrOS web browser for the imaginary web. Follow the browser recipe exactly: a slim top bar (back, forward, ↻ reload, an address input, a bookmark star) above one full-size iframe pointing at /web/. Keep it simple and bug-free — every control has an id, links inside pages navigate the iframe by themselves.">🌐<span>Browser</span></button>
+    <button class="dock-app" data-builtin="browser">🌐<span>Browser</span></button>
     <span class="dock-sep"></span>
     <button class="dock-app" data-builtin="imagine">🖼️<span>Imagine</span></button>
     <button class="dock-app" data-builtin="motion">🎬<span>Motion</span></button>
     <button class="dock-app" data-builtin="arcade">🕹️<span>Arcade</span></button>
     <button class="dock-app" data-builtin="melody">🎵<span>Music</span></button>
     <span class="dock-sep"></span>
-    <button class="dock-app" data-app="files" data-prompt="the kAIrOS file manager: two-pane browser over vibe.fs starting at / (partitions /system and /data). Navigate folders, view and edit text files (save via vibe.fs.write), create folders, delete entries, breadcrumbs, and a clearly-marked red 'Format /data' factory-reset button calling vibe.fs.format(). Show read-only errors from /system gracefully">📁<span>Files</span></button>
     <button class="dock-app" data-app="settings" data-prompt="the kAIrOS system settings app: reads vibe.settings.get(), lets the user change the OS name, accent and accent2 colors (color pickers + live preview swatches), set or clear the wallpaper URL. A 'Network' section with three parts, all required: 1. WiFi per the wifi-manager recipe (bars, a password field only if needs is 'password', a Sign in button = vibe.hw.wifi.signin() if connectivity is 'portal'); 2. Bluetooth (vibe.hw.bluetooth: the devices with a kind icon and Connect/Disconnect, a Scan button listing found devices with Pair, show the code if pair() answers enter_code); 3. an airplane-mode switch (vibe.hw.airplane.set). Keep the code compact (the OS already styles buttons and inputs: little CSS, one small render function per section, no comments). An 'AI' section reads vibe.models() to pick the image model (m.models) and tune steps/scheduler, and to pick the coder LLM (m.llm: default = the big brain, fast = the small quick one; vibe.settings.set('llm_model', key), download an absent add-on with vibe.models.download(key)). A 'Language' section: a picker for the OS language (vibe.settings language: en/de/es/fr/it/ja/ru, rendered from vibe.models() m.translation.languages) and a translation on/off switch (vibe.settings translation), a fast/quality choice (translation_quality) and a download button for the translation add-on when m.translation.present.fast is false (vibe.models.download('translation')); below it the dictionaries and Wiktionary add-ons from m.extras (keys dictionaries and wiktionary_&lt;lang&gt;, a download button each while present is false). A 'System' section shows vibe.system.setup() info (GPU VRAM, current model tier, available tiers with download size and presence) and lets the user start a tier upgrade via vibe.system.upgrade(tier). A danger zone offers factory reset via vibe.fs.format() behind an in-page two-step confirmation (never window.confirm). Apply instantly with vibe.settings.set; render hardware and setup fields (percent, name, GB numbers), never whole objects">⚙️<span>Settings</span></button>
   </div>
+
+  <!-- [R81] system apps that are not pinned: ⊞ Apps lists them, the search finds them by name (openSysApp) -->
+  <template id="system-apps">
+    <button class="dock-app" data-app="notes" data-prompt="a notes app with a sidebar list of notes, autosaving via vibe.store">📝<span>Notes</span></button>
+    <button class="dock-app" data-app="news" data-prompt="a news reader for 'The Local Times', a newspaper from a parallel universe. Use vibe.ask to imagine today's headlines and articles as JSON and render them beautifully">📰<span>News</span></button>
+    <button class="dock-app" data-app="files" data-prompt="the kAIrOS file manager: two-pane browser over vibe.fs starting at / (partitions /system and /data). Navigate folders, view and edit text files (save via vibe.fs.write), create folders, delete entries, breadcrumbs, and a clearly-marked red 'Format /data' factory-reset button calling vibe.fs.format(). Show read-only errors from /system gracefully">📁<span>Files</span></button>
+  </template>
+
+  <!-- [R81] the dock icons' right-click menu (close, new window, remove from / keep in the dock) -->
+  <div id="dock-menu" class="hidden" role="menu" aria-label="Dock icon"></div>
 
   <div id="launcher" class="hidden">
     <div class="launcher-box">
@@ -114,5 +127,8 @@
 </div>
 
 <script src="/shell/shell.js"></script>
+<script src="/shell/browser.js"></script>   <!-- [R83] the built-in browser + [R84] ✨ improve a website -->
+<script src="/shell/games.js"></script>     <!-- [R82] games in desktop window frames, with ✨ improve -->
+<script src="/shell/pictures.js"></script>  <!-- [R85] the picture viewer: ✨ improve a picture, its versions -->
 </body>
 </html>

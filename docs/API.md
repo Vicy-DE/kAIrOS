@@ -15,7 +15,7 @@ This document is itself stored on the OS at `/system/docs/API.md` and served at 
 | `vibe.images(prompts)` / `vibe.images(prompt, count)` | array of PNG URLs (in prompt order; `null` = that picture failed) | **several pictures in one run**: the model is loaded once for the whole list (a gallery of 4 ≈ 1 load + 4 renders instead of 4 loads). Options object instead of `count`: `{count, width, height, model, adult, expand}`. ≤ 12 per call; minutes for a long list — show progress |
 | `vibe.video(prompt)` | URL of generated MP4 | minutes — explicit user action only |
 | `vibe.vision(image, prompt)` | string | the OS **looks at a picture** [R70]: `image` = a `data:image/…;base64` URL (e.g. `canvas.toDataURL()`), a `/files/…` or `/genimg/…` URL, or `"screen"` / `"screen:N"` (the kiosk display / monitor N); seconds (model swap + one look); an add-on — try/catch |
-| `vibe.game(prompt)` | `{slug, running, attempt, version, gate, window, pid}` | forge + launch a pygame game window — `running:true` = its window opened on the desktop (`gate:"mapped"`) |
+| `vibe.game(prompt)` | `{slug, running, attempt, version, gate, window, pid}` | play a pygame game in its own desktop window: an existing game runs its current version at once, a new one is forged first (minutes) — `running:true` = its window opened on the desktop (`gate:"mapped"`); ✨ improve in that window evolves it |
 | `vibe.forge(prompt)` | `true` | start a full **development cycle** in a new window: the OS writes the app AND generates the resources it needs (images, a music track, a video clip) — what the App Launcher uses |
 
 ## Filesystem — Android-style partitions
@@ -175,9 +175,9 @@ experiment.** Configuration lives in normal settings keys:
 
 | settings key | values | effect |
 |---|---|---|
-| `image_model` | `default` (Krea 2 (uncensored) — Krea 2 Turbo + the Kroma v0.3 LoRA, photoreal, no safety filter, ~80 s at 1024² on 8 GB, ~47 s per picture in a batch) · `safe` (Krea 2 (safe, faster) — the stock Krea 2, safety-tuned: clothes people, ~62 s / ~38 s) · `qwen` (Qwen-Image-2.1 — best text rendering, ~100 s) · `classic` (Z-Image-Turbo — fastest, ~27 s) · `uncensored` (= `default` since v7.5 [R76]) · `chroma` (Chroma1-HD — uncensored FLUX-family, slow, ~4 min) | which model renders `vibe.image()` / `vibe.images()` |
+| `image_model` | `default` (Muse — Muse v3.5 Extended Q4_0, a Krea 2 fine-tune, uncensored, no LoRA, photoreal, ~52 s at 1024² on 8 GB) · `safe` (Muse SFW — the same model with the SFW prompt rules: clothes people, ~58 s) · `qwen` (Qwen-Image-2.1 — best text rendering, ~100 s) · `classic` (Z-Image-Turbo — fastest, ~27 s) · `uncensored` (= `default` since v7.5 [R76]) · `chroma` (Chroma1-HD — uncensored FLUX-family, slow, ~4 min) | which model renders `vibe.image()` / `vibe.images()` |
 | `image_expand` | `auto` (default) · `on` · `off` | **prompt expansion**: before a Krea-family model (`default`, `safe`) renders, the OS rewrites the prompt with Krea's official expander rules (a paragraph with medium, light, composition; text in quotes kept) — by the coder LLM that is loaded anyway (`image_expander` below), no model swap. `auto` = on for the models that have an expander (`vibe.models()` → `models[].expander`), `off` = render prompts exactly as typed. Prompts the OS writes itself (the wallpaper scene, app icons, forge pictures) are never expanded a second time |
-| `image_expander` | `auto` (default) · `llm` · `encoder` | [R79] **which model expands**: `llm` = the resident coder LLM (Gemma 4 on 8/16 GB, thinking off; `auto` = this unless the model's section says otherwise), `encoder` = the image model's own Qwen3-VL-4B text encoder under llama-server (the v7.5 way: one extra model load per picture on an 8 GB GPU). `vibe.models()` → `expand.expander.effective` |
+| `image_expander` | `auto` (default) · `llm` · `encoder` | [R79] **which model expands**: `llm` = the resident coder LLM (the heretic Gemma 4 on 8/16 GB, thinking off; `auto` = this unless the model's section says otherwise), `encoder` = the image model's own Qwen3-VL-4B text encoder under llama-server (the v7.5 way: one extra model load per picture on an 8 GB GPU). `vibe.models()` → `expand.expander.effective` |
 | `image_steps` | number or null | diffusion steps (null = model default) |
 | `image_sampler` | e.g. `euler`, `er_sde`, `dpm++2m` | sampling method |
 | `image_scheduler` | e.g. `simple`, `beta`, `karras` | sigma scheduler |
@@ -188,8 +188,8 @@ possible: `POST /api/image {"prompt", "model": "qwen"}`; likewise `"expand": fal
 the prompt verbatim for one call, `"adult": true` picks the expander's 18+ rules. Requested
 resolutions are auto-fitted to the model's VRAM budget (aspect kept, snapped to 64).
 
-Only Krea 2 is baked into the shipped OS — as the **default** (with the Kroma v0.3 LoRA,
-uncensored) and as **safe** (the same files without the LoRA); `qwen`, `classic`
+Only Muse is baked into the shipped OS — as the **default** (uncensored, no LoRA) and as
+**safe** (the same files with the SFW prompt rules); `qwen`, `classic`
 and `chroma` are **add-ons** — `vibe.models()` reports them with `addon:true,
 present:false, download_gb` (and `licence` where one applies: Qwen-Image-2.1 is under the
 Qwen Research licence). Fetch one with `await vibe.models.download("qwen")`
@@ -213,6 +213,10 @@ const wide = await vibe.images(["hero shot", "footer art"], { width: 1024, heigh
 order (`null` where a picture failed), `results` = per-picture records (`prompt` as rendered,
 `expanded`, `seed`, `error`). The job is `done` when at least one picture rendered. Pictures
 written as `<img src="/genimg/…">` on one page are batched the same way automatically.
+A `/genimg/…` picture that takes longer than its request's wait (6 min), or arrives while the painter's
+queue is full, first shows a "still painting…" placeholder and then swaps itself in when it is ready —
+in every app and every imaginary-web page, for `<img>` and CSS backgrounds alike; write no reload or
+retry code for it.
 
 ## Programming wiki
 
@@ -245,55 +249,64 @@ of JSON each) — use them as a system-wide preference store.
 ### The coder LLM — default brain or fast mode
 
 The OS writes apps, pages and games with its coder LLM. On the 8 GB and 16 GB tiers the
-default is **Gemma 4 26B-A4B-it** (the only model whose generated apps passed the feature
-test: 36/37 functional items; 3–5 min per app on an 8 GB card). **Fast mode** switches to the
+default is **Gemma 4 26B-A4B-it** — since 2026-10-10 its uncensored *heretic* edition, marked
+`"uncensored": true` (the feature test was measured on the stock model of the same architecture:
+36/37 functional items; 3–5 min per app on an 8 GB card). **Fast mode** switches to the
 small **Qwen2.5-Coder-7B** (≈ 40 s per app, simpler and less reliable results), a
 downloadable add-on (4.7 GB):
 
 | settings key | values | effect |
 |---|---|---|
-| `llm_model` | `default` (the tier's brain) · `fast` (the `llm_fast` add-on) · `uncensored` (the `llm_uncensored` add-on [R86]) | which model answers `vibe.ask()`, writes apps (`/api/app`), pages (`/web/…`) and games. The kernel restarts its language model on the next request after a change. A `fast` / `uncensored` choice whose add-on is not downloaded keeps serving the default — `vibe.models()` → `llm_setting.fallback` says so |
+| `llm_model` | `default` (the tier's brain — on 8/16 GB the uncensored heretic Gemma 4 26B-A4B itself since 2026-10-10 [R86 round 4]) · `fast` (the `llm_fast` add-on) · `uncensored` (only on a tier with an `llm_uncensored` add-on section [R86]) | which model answers `vibe.ask()`, writes apps (`/api/app`), pages (`/web/…`) and games. The kernel restarts its language model on the next request after a change. A `fast` / `uncensored` choice whose add-on is not downloaded keeps serving the default — `vibe.models()` → `llm_setting.fallback` says so |
 
-`vibe.models()` → `llm: [{key: "default"|"fast"|"uncensored", name, present, addon, download_gb,
-download_key, downloading, selected, active}]` + `llm_setting: {setting, effective, fallback, modes}`;
-`vibe.models.download(entry.download_key)` fetches an add-on — `"fast"` for the fast coder,
-`"llm_uncensored"` for the decensored LLM (the bare key `"uncensored"` names the baked image model, see
-*Uncensored image model*); `GET /api/status` → `llm` (the effective
+`vibe.models()` → `llm: [{key: "default"|"fast"(|"uncensored"), name, present, addon, download_gb,
+download_key, downloading, selected, active}]` + `llm_setting: {setting, effective, fallback, modes}` (`modes` lists
+only what the tier has: `["default", "fast"]` on 8/16 GB); `vibe.models.download(entry.download_key)` fetches an
+add-on — `"fast"` for the fast coder, `"llm_uncensored"` where a tier has that section (the bare key `"uncensored"`
+names the baked image model, see *Uncensored image model*); `GET /api/status` → `llm` (the effective
 model's name) and `llm_options`. [R80] `GET /api/status` → `gpu: {kind, key, name, full_name, since, loading}` =
 what is resident on the GPU right now (`kind` llm | llm_fast | llm_uncensored | expander | vision | translation |
-image | video | music | none; `name` as the menubar shows it, e.g. "Gemma 4 26B-A4B-it", "Krea 2 · Kroma"; an
+image | video | music | none; `name` as the menubar shows it, e.g. "Gemma 4 26B-A4B-it ultra-uncensored heretic", "Muse"; an
 image session keeps it through its 8-s idle window).
 
-**The refusal fallback [R86]** (`docs/REFUSAL-FALLBACK-2026-10-09.md`): when the LLM declines a request
-("I cannot fulfill this request…") instead of answering, the kernel never returns or caches the refusal. It
+**The refusal fallback [R86]** (`docs/REFUSAL-FALLBACK-2026-10-09.md`, round 4 in its §11): when the LLM declines a
+request ("I cannot fulfill this request…") instead of answering, the kernel never returns or caches the refusal. It
 retries on the ladder of the tier manifest's `refusal_fallback.ladder` — `preamble` (the same model with the
-18+ system preamble, no swap), then `llm_uncensored` (the decensored add-on, swapped in like `fast`, back on
-the next request; skipped while not downloaded) — and only when every rung declined does the request fail
-with a plain error: `vibe.ask()` rejects / `POST /api/ask` → `502 {"error": "the model declined this request
-… vibe.models.download('llm_uncensored')"}`, `/web/…` shows its error page (nothing cached), `/api/browse`
-→ `502 {"error", "address"}`, `/api/app` sends `event: error`. While an app streams, a refusal restarts the
+18+ system preamble, no swap), then `llm_uncensored` (the uncensored LLM: a tier's `llm_uncensored` add-on section, else
+the default itself when the manifest flags it `"uncensored": true` — the heretic Gemma 4 on 8/16 GB, so this rung serves
+fast mode and is skipped when the model that declined IS that model) — and only when every rung declined is the request
+DECLINED, never a 502: `vibe.ask()` rejects / `POST /api/ask` → `422 {"error": "the model declined this request …
+— rephrase the request, or ✨ improve the result"}`, `/web/…` shows its error page (nothing cached), `/api/browse`
+→ `422 {"error", "address"}`, `/api/app` sends `event: error`. While an app streams, a refusal restarts the
 generation on the next rung and the stream carries `event: refusal` `data: {from, to, to_name, reason, kind,
 message}` (the shell resets its code view and toasts the message) — before the real app's `delta`s, or, when
 the refusal only shows at the end of a document, after them (round 2: the whole stream is judged again); the
 app's spec step reports its own climb the same way, and the rung that answered then serves the whole summon
-(the stream, every repair round) without restarting at the model that declined. A refusal that itself names
-minors ends the ladder with the minors guard's 400 / `error` instead.
+(the stream, every repair round) without restarting at the model that declined.
 `GET /api/status` → `last_fallback: {at, from, to, kind, reason, prompt}` (null until one happened) and
 `refusal_fallback: {ladder, expander_ladder, uncensored: {available, reason, section, download_key}, count,
 blocked, last}`; `vibe.models()` carries `refusal_fallback` too. The image-prompt expander has its own cheap
 rungs (`expander_ladder`: the same LLM with the 18+ preamble, then the image model's own encoder with the 18+
 rules); when every rung refuses, the picture is declined (`/api/image` job `error: "the prompt writer declined
 this picture …"`, `/api/images` result `declined: true`) — the raw prompt renders only on an engine error.
-**The minors guard** runs before any of this: a request that pairs a sexual term with a minor /
-childlike indicator fails at once — `400 {"error": "kAIrOS does not create sexual content involving minors
-or childlike characters"}` on `/api/ask`, `/api/image`, `/api/images`, `/api/game`, `/api/browse`,
-`/api/app/{id}/modify`, `/api/vision`, `/api/video`, `/api/music` (caption or lyrics), `/api/search`;
-`/api/app` → `event: error`; `/genimg/…` → an SVG placeholder ("not rendered"); `/web/…` → the error page —
-nothing is generated, rendered or cached. With the translation layer on, the request's English is guarded
-too; a list of content parts or any JSON is judged as its text. Content cached before the guard knew the form
-is hidden — not in `vibe.apps()` or `/api/status`, `/app/{id}` → 403, a cached page not served — and moved to
-`cache/quarantine/` (with its icon) only when the owner summons that prompt again; a `/genimg` picture of a
-blocked description is quarantined on the request.
+**The narrow minors block** (round 4, its lists round 4b; the lexical guard of rounds 1–3 is gone): a request that pairs
+an explicit under-18 age (a number 0–17 or its number word with an age unit) or word (underage, under 18 / under the age
+of 18, younger than / below / not yet 18, under 16, under-18s, unter 18 / 16, jünger als 18, minderjährig, nicht
+volljährig, preteen, prepubescent) with a sexual term (German compounds such as Sexvideo / Nacktvideo / Erotikfilm
+included), or names csam / pthc / child porn / kiddie porn / Kinderporno / jailbait (loli / shota with a sexual term),
+fails with `400 {"error": "kAIrOS does not create sexual content involving minors (an under-18 age or
+term together with a sexual term) — if this is about adults, rephrase it without the age"}` — at exactly four points:
+every media render's entry (`/api/image`, `/api/images`, `/genimg/…` → an SVG placeholder, `/api/video`, `/api/music`
+caption or lyrics; nothing is queued, rendered or cached), the final image / video prompt right before sd renders it,
+a text request the model REFUSED (once, before any rung; with the translation layer on its English too), and the entry
+of every text request when the primary LLM is uncensored (the 8/16 GB default): `/api/ask`, `/api/game`, `/api/browse`,
+`/api/app/{id}/modify` → 400, `/api/app` → `event: error`, `/web/…` → the error page. A request a censored model
+answers is never checked; ages 18+, an age difference ("10 years older"), measurements ("under 18 Euro / degrees / %"),
+"minor(s)", negated disclaimers and an adult site's age gate ("if you are under 18, leave", "visitors under 18 are not
+allowed") never fire; a list of content parts or any JSON is judged as its text. Cached content is never checked, hidden
+or moved (a cached app's summon opens it like its host page). Every request the uncensored default serves carries one
+limits line at the end of its system prompt [round 4b]: never sexual content involving minors or anyone who looks
+underage, never sexual content about real, identifiable people.
 `vibe.models.download("uncensored")` stays the (baked) image model; `POST /api/models/download {"model":
 "uncensored", "kind": "llm"}` means the LLM add-on (= `download_key` `llm_uncensored`).
 
@@ -415,6 +428,10 @@ Image/video generations always use a fresh random seed — results are never rep
   never triggers a repair round; a global `prompt()`/`confirm()` call does.
 - The OS confirmation's OK button is disabled for the first 0.7 s (countdown in its label): a
   click that was already on its way cannot consent.
+- Two answers to handle like any rejection: a generation the model cut off at its length limit
+  comes back once with `truncated: true` + a `warning` (`vibe.browse()`, a game job, app modify /
+  repair) and is not saved — ask again for a fresh one; an engine that is not installed answers
+  `503 {"error": "… is not installed …", "engine", "missing": true}` (the bridge rejects with it).
 - Look modern and futuristic: dark glass, neon violet/cyan, rounded, smooth.
 
 ## Music generation
@@ -448,14 +465,13 @@ LLM's GPU slot for the call and the coder LLM reloads on the next LLM request. `
 
 ## Uncensored image model
 
-Since v7.5 [R76] the **default** image model is uncensored: Krea 2 Turbo + the Kroma v0.3 LoRA
-(lodestones' Krea 2 fine-tune without the safety tuning, applied at runtime — same look, text
-intact). Its prompt expander keeps people exactly as requested (no clothing added over requested
+Since 2026-10-10 the **default** image model is Muse v3.5 Extended Q4_0 — a Krea 2 fine-tune by
+Stable Yogi, uncensored, no LoRA (v7.5's default was Krea 2 Turbo + the Kroma v0.3 LoRA [R76]). Its prompt expander keeps people exactly as requested (no clothing added over requested
 nudity, no nudity nobody asked for; whenever nudity or sex is requested every person is an adult
 of 25+, never minors, never real people). `"uncensored": true` (and `image_model` `uncensored`)
 now simply means the default, with the expander's 18+ rules for that call; `model: "safe"` /
-`image_model` `safe` is the stock, safety-tuned Krea 2 (≈ 20 % faster). The job record says which
-LoRA was applied (`lora`, null = stock). Chroma1-HD stays reachable as `model: "chroma"`
+`image_model` `safe` renders the same Muse files with the SFW prompt rules. The job record says
+which LoRA was applied (`lora`, null = none — the default has none). Chroma1-HD stays reachable as `model: "chroma"`
 (uncensored FLUX family, ~4× slower). Same job flow as normal images.
 
 ## Boot timing (the boot screen's loading bar) [R73]
@@ -486,3 +502,53 @@ on loopback. For anyone else:
   the token is in `/run/kairos/token` on the machine (root, or the kiosk user).
 - `GET /api/token` hands the token to loopback callers only; the shell uses it, and an
   operator can open `http://<ip>:1337/?token=<value>` to get a fully working remote desktop.
+
+## The desktop's browser routes (the shell only — not for apps) [R83/R84]
+
+Apps keep using `vibe.browse()` / `<iframe src="/web/…">`. The built-in browser (`shell/browser.js`) adds:
+
+| route | what |
+|---|---|
+| `GET /web/<address>?_v=<n>` | version `n` of an improved page, as it was (the browser's ←); the cache is untouched |
+| `GET /web/<address>?_cut=<token>` | an improvement cut at the length limit, shown ONCE with its note, never saved |
+| `POST /api/web/improve` `{address, instruction?, from_version?}` | SSE: `delta` (the new page's code), `refusal` (the next rung of R86's ladder starts), `done {version, current, versions, title, checks}` or `done {truncated, note, cut}`, `fallback {message, version}` (worse than the previous version: not used), `error {message, kind: error\|declined\|blocked}`. 404 for a page that is not cached |
+| `GET /api/web/versions?address=` | `{address, cached, current, versions: [{v, at, title, instruction, by}], keep}` |
+| `POST /api/web/version` `{address, version}` | the revert: that version is the page `/web/` serves again (no version is deleted); 404 for an unknown one |
+
+Every `/web/` document carries `<script data-kairos-page>`: it posts `{kairosPage: {address, state, title, message?,
+note?, version?, current?, versions?, elapsed?}}` to its parent frame — `state` = `page` · `loading` · `error` ·
+`declined` · `blocked` · `cut` · `leaving` (a link or a form was used). `GET /api/desktop-search` answers an address as
+its first result `{"type": "web", "address"}` and the system apps by name `{"type": "sysapp", "app_id"}`; the
+generated `browser` app is no longer listed in `/api/apps`. These routes are open like the generation routes (R66).
+
+## Games in windows — the shell's routes (not for apps) [R82]
+
+A game runs in a desktop window frame (`shell/games.js`); the kernel glues the pygame X window over the frame's body
+(`kernel/wm.py`). Apps keep using `vibe.game(prompt)`.
+
+| route | what |
+|---|---|
+| `POST /api/game` `{prompt \| slug, evolve?, instruction?, restart?, frame?}` | → `{job, slug, forge}`; poll `GET /api/job/<job>` (`stage` says what the forge does). An existing game without `evolve` RUNS its current version (no LLM; `already:true` when it runs; `restart` ends it first); a new game or `evolve` (✨, `instruction` = the user's request) FORGES the next version — R77 checks, R86 ladder; a failed one leaves the running version (`fallback`, `kept_running`). `frame` = `{id, screen, x, y, w, h, vw, vh, sx, sy, dpr, cx, cy}`: the frame body in CSS px + the page's viewport and window. Errors: 400 `kind:"blocked"`, 409 being improved, 503 no engine; a job error carries `error_kind` (declined / blocked / start / error) |
+| `GET /api/game/versions?slug=` | `{slug, prompt, current, versions: [{v, at, by: forged\|improved, instruction}], failed, running, busy}` |
+| `POST /api/game/version` `{slug, version}` | the way back: that version is the game again (`main.py`); nothing is deleted. 404 unknown, 409 while it is being improved |
+| `POST /api/frames/{id}/{op}` | the frame ↔ game-window pair (guarded, R66): `place` / `follow` (the body's rect; `follow` does not wait for the read-back) → `{x, y, w, h, body, fixed, css}`; `snapshot` → `image/bmp` (the game's own pixels) + header `X-Kairos-Frame: {rect, body, css, ms}`; `cover` / `uncover {focus: true\|false\|"keep"}` (the game drops under the desktop + is frozen / comes back); `minimize` / `restore {focus}`; `focus`; `close`; `adopt {xid, x, y, w, h, …}` (a running game into this frame); `release` |
+
+`GET /api/windows` (+ `/stream`) lists the pairs as `frames: [{id, screen, slug, title, pid, xid, covered, minimized,
+ended}]` and marks every paired window with `frame`.
+
+
+## Pictures — ✨ improve a picture, its versions (the shell's routes, not for apps) [R85]
+
+Muse paints a picture; the tier's **picture editor** (`vibe.models()` → `extras[]` key `image_edit`: a Qwen image-edit
+model, an add-on the media image pre-installs) paints its next version from the user's words. The desktop's picture
+viewer (`shell/pictures.js`: the quick viewer, a click in the Imagine gallery, the menubar ✨ next to ◐ wallpaper) uses:
+
+| route | what |
+|---|---|
+| `POST /api/image/improve` `{picture, instruction?}` | → `{job, root, from_version, model}`; poll `GET /api/job/<job>`: `done` → `result` = the new version's URL + `{root, version, current, versions, seed, ms, model}`, `error` → `{error, blocked?}`. `picture` = a `/files/images/…` or `/genimg/…` URL the OS painted (a version URL `/files/images/versions/<root>/v<N>.png` continues that chain from N); `instruction` = what to change, in any language (translated to English when the translation layer is on); empty = "improve the quality, keep the content". 400 not a picture the OS painted, or the minors block (`blocked: true`); 404 no such file; 409 the editor add-on is not installed (`download_key: "image_edit"`); 415 not a PNG; 503 no image engine |
+| `GET /api/image/versions?picture=<url>` or `?root=<root>` | `{root, current, url, source, versions: [{v, url, at, by: original\|improve, instruction, parent, model, seed, ms, w, h}], keep}` — a picture never improved is its own v0 (`root: null`) |
+| `POST /api/image/version` `{root \| picture, version}` | the revert: that version becomes the picture's current one (nothing is deleted). 404 unknown, 409 while the picture is being improved |
+
+v0 is the original (copied into the chain), v1… the edits; up to 16 versions per picture are kept (v0 and the current
+always). The chain lives in the media cache (`/files/images/versions/<root>/`), which evicts a whole chain at a time,
+never one version of it. These routes are open like the generation routes (R66): they write only the media cache.

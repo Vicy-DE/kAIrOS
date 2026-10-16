@@ -879,6 +879,75 @@ async def t_dsearch(s):
     return f"never empty; create-actions present; {len(sparks)} distinct sparks in 6 calls"
 
 
+@run_test("http_desktop_search_web_address", ["R83", "R81", "R23"])
+async def t_dsearch_address(s):
+    """[R83] an address typed into the desktop search is the FIRST result and opens in the built-in browser
+    ({type: web}); words after a host are the site's search; [R81] the system apps that left the dock are found by
+    name ({type: sysapp}); the retired generated browser app is listed nowhere (its cache stays on disk)"""
+    d = VDIR / "cache" / "apps" / "browser"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "meta.json").write_text(json.dumps({"app_id": "browser", "prompt": "the kAIrOS web browser", "version": 1}))
+    (d / "app.html").write_text("<!DOCTYPE html><html><body>old generated browser</body></html>")
+    try:
+        async def q(text):
+            async with s.get(f"{BASE}/api/desktop-search", params={"q": text}) as r:
+                return (await r.json())["results"]
+        r = await q("oppenheimer.com")
+        assert r[0]["group"] == "web" and r[0]["action"] == {"type": "web", "address": "oppenheimer.com"}, r[0]
+        r = await q("www.x.de/y red bikes")
+        assert r[0]["action"]["address"] == "www.x.de/y?q=red bikes", r[0]
+        assert all(x["group"] != "web" for x in await q("node.js tutorial"))
+        r = await q("news")
+        assert any(x["action"] == {"type": "sysapp", "app_id": "news"} for x in r), r
+        r = await q("browser")
+        assert any(x["action"] == {"type": "sysapp", "app_id": "browser"} for x in r)
+        assert not any(x["action"].get("type") == "app" and x["action"].get("app_id") == "browser" for x in r), r
+        async with s.get(f"{BASE}/api/apps") as rr:
+            assert "browser" not in [a["app_id"] for a in (await rr.json())["apps"]]
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    return "address first ({type: web}); site search ?q=; node.js stays a search; sysapps by name; the generated browser hidden"
+
+
+@run_test("http_web_improve_versions_revert", ["R84", "R57", "R86"])
+async def t_web_improve(s):
+    """[R84] ✨ improve a website through the real kernel + the mock llama-server: POST /api/web/improve streams v2
+    (the mock's page writer names the instruction), /web/ serves v2 and reports {version, versions}, ?_v=1 is the page
+    as it was, POST /api/web/version makes v1 the page again (nothing deleted); a declined improvement ([refuse-always],
+    every rung) and a length-cut one save nothing"""
+    import re as _re
+    addr = "improve.page/home"
+    async with s.post(f"{BASE}/api/browse", json={"address": addr, "fresh": True}) as r:
+        assert r.status == 200 and "Mock Imaginary Site" in (await r.json())["html"]
+    ev = await sse_collect(s, f"{BASE}/api/web/improve", {"address": addr, "instruction": "make it purple"})
+    names = [e for e, _ in ev]
+    assert names[0] == "delta" and names[-1] == "done", names
+    done = ev[-1][1]
+    assert done["version"] == 2 and [v["v"] for v in done["versions"]] == [1, 2] and done["title"] == "Mock Imaginary Site v2", done
+
+    async def page(extra=""):
+        async with s.get(f"{BASE}/web/{addr}{extra}") as r:
+            html = await r.text()
+        return html, json.loads(_re.search(r"<script data-kairos-page>\(function\(\)\{var d=(.*?);function post", html).group(1))
+    html, rep = await page()
+    assert "improved v2: make it purple" in html and rep["version"] == 2 and rep["versions"] == 2, rep
+    html, rep = await page("?_v=1")
+    assert "improved" not in html and rep["version"] == 1 and rep["current"] == 2, rep
+    async with s.post(f"{BASE}/api/web/version", json={"address": addr, "version": 1}) as r:
+        rv = await r.json()
+    assert r.status == 200 and rv["current"] == 1 and len(rv["versions"]) == 2, rv
+    html, rep = await page()
+    assert "improved" not in html and rep["version"] == 1, rep
+    ev = await sse_collect(s, f"{BASE}/api/web/improve", {"address": addr, "instruction": "[refuse-always] again"})
+    assert ev[-1][0] == "error" and ev[-1][1]["kind"] == "declined" and "every available model" in ev[-1][1]["message"], ev[-1]
+    ev = await sse_collect(s, f"{BASE}/api/web/improve", {"address": addr, "instruction": "longer [length-stop]"})
+    assert ev[-1][0] == "done" and ev[-1][1]["truncated"] is True and ev[-1][1]["cut"], ev[-1]
+    async with s.get(f"{BASE}/api/web/versions", params={"address": addr}) as r:
+        vs = await r.json()
+    assert vs["current"] == 1 and [v["v"] for v in vs["versions"]] == [1, 2], vs
+    return "v2 streamed (instruction in the page); /web/ reports version 2 of 2; ?_v=1; revert to v1; declined + cut save nothing"
+
+
 @run_test("http_first_boot_setup", ["R18"])
 async def t_setup(s):
     async with s.get(f"{BASE}/api/setup") as r:
@@ -1035,15 +1104,18 @@ async def t_music_language_http(s):
 @run_test("http_music_engine_missing", ["R31", "R47"])
 async def t_music_engine_missing(s):
     """No acestep.cpp binaries (the normal state of a dev box and of every image built
-    before the engine was added) must be a clean 400, never a FileNotFoundError."""
+    before the engine was added) must be a clean error, never a FileNotFoundError — since
+    2026-10-14 the 503 every generation route answers for a missing engine (was a 400)."""
     link = VDIR / "bin" / "ace-lm"
     target = os.readlink(link)
     link.unlink()
     try:
         async with s.post(f"{BASE}/api/music", json={"prompt": "no engine"}) as r:
-            assert r.status == 400, f"expected 400, got {r.status}"
-            err = (await r.json())["error"]
+            assert r.status == 503, f"expected 503, got {r.status}"
+            j = await r.json()
+            err = j["error"]
         assert "not installed" in err and "ace-lm" in err and "Traceback" not in err, err
+        assert j.get("engine") == "ace-lm" and j.get("missing") is True, j
         async with s.get(f"{BASE}/api/models") as r:
             mu = next(e for e in (await r.json())["extras"] if e["key"] == "music")
         assert mu["addon"] is True and mu["engine"] is False and mu["available"] is False, mu
@@ -1060,7 +1132,7 @@ async def t_music_engine_missing(s):
         assert m["music"].get("addon") is True, f"{t}: music must be an add-on"
         baked = {e["file"] for e in server.manifest_files(m)}
         assert not any(f.startswith("music/") for f in baked), f"{t}: music files leak into the tier set"
-    return "engine absent -> 400 'not installed' (no traceback), /api/models reports it; music is an add-on"
+    return "engine absent -> 503 'not installed' (no traceback), /api/models reports it; music is an add-on"
 
 
 @run_test("unit_manifest_cmd_matches_built_engines", ["R31", "R8"])
@@ -2929,6 +3001,50 @@ async def t_bootlog_accuracy(_):
     return "no echo on captured data, X files resolved after the wait, taint notice excluded (pipeline run), degraded -> WARN"
 
 
+@run_test("unit_bootlog_optional_debug_firmware", ["R51"])
+async def t_bootlog_debug_firmware(_):
+    """[SD run 2026-10-13] the owner's microSD run was WARN for one line only: iwlwifi's optional debug firmware
+    (`firmware: failed to load iwl-debug-yoyo.bin (-2)`, Debian ships none). The script's own firmware block runs here
+    (a stub dmesg + check) over the run's REAL dmesg firmware lines: PASS, naming the debug file; a real firmware failure
+    next to it still WARNs; the "Direct firmware load … failed" form of a debug file is benign too."""
+    import re, subprocess, tempfile
+    bl = (REPO / "iso" / "config" / "includes.chroot" / "usr" / "local" / "sbin" / "kairos-bootlog").read_text()
+    m = re.search(r"^FWOPT=.*?^else check firmware PASS [^\n]*fi\n", bl, re.S | re.M)
+    assert m, "the firmware block (FWOPT= … else check firmware PASS …; fi) not found"
+    block = m.group(0)
+    owner = ("[    2.680309] [drm] Loading DMUB firmware via PSP: version=0x08004E00\n"
+             "[    2.680633] [drm] Found VCN firmware Version ENC: 1.23 DEC: 9 VEP: 0 Revision: 15\n"
+             "[    8.705921] systemd[1]: systemd-hibernate-clear.service - Clear Stale Hibernate Storage Info skipped, unmet "
+             "condition check ConditionPathExists=/sys/firmware/efi/efivars/HibernateLocation-8cf2644b\n"
+             "[    9.795328] iwlwifi 0000:02:00.0: firmware: failed to load iwl-debug-yoyo.bin (-2)\n"
+             "[    9.795337] iwlwifi 0000:02:00.0: firmware: failed to load iwl-debug-yoyo.bin (-2)\n"
+             "[    9.795346] iwlwifi 0000:02:00.0: firmware: failed to load iwl-debug-yoyo.bin (-2)\n"
+             "[    9.795348] iwlwifi 0000:02:00.0: loaded firmware version 89.4d42c933.0 ty-a0-gf-a0-89.ucode op_mode iwlmvm\n")
+    cases = {
+        "owner_run": (owner, "PASS"),
+        "direct_form": ("[ 3.1] iwlwifi 0000:00:14.3: Direct firmware load for iwl-debug-yoyo.bin failed with error -2\n", "PASS"),
+        "real_failure_too": (owner + "[ 4.2] amdgpu 0000:05:00.0: firmware: failed to load amdgpu/dcn_3_5_dmcub.bin (-2)\n", "WARN"),
+        "real_failure_only": ("[ 4.2] bluetooth hci0: Direct firmware load for intel/ibt-0040-1050.sfi failed with error -2\n", "WARN"),
+        "clean": ("[ 2.6] [drm] Loading DMUB firmware via PSP: version=0x08004E00\n", "PASS"),
+    }
+    got = {}
+    with tempfile.TemporaryDirectory() as td:
+        for name, (dmesg, want) in cases.items():
+            f = Path(td) / f"{name}.txt"
+            f.write_text(dmesg)
+            sh = (f"dmesg() {{ cat '{f}'; }}\ncheck() {{ printf '%s|%s|%s\\n' \"$1\" \"$2\" \"$3\"; }}\n" + block)
+            r = subprocess.run(["sh", "-c", sh], capture_output=True, text=True, timeout=30)
+            assert r.returncode == 0 and r.stdout.count("\n") == 1, (name, r.stdout, r.stderr)
+            chk, st, detail = r.stdout.strip().split("|", 2)
+            got[name] = (st, detail)
+            assert chk == "firmware" and st == want, (name, st, detail)
+    assert "iwl-debug-yoyo.bin" in got["owner_run"][1] and "benign" in got["owner_run"][1], got["owner_run"]
+    assert "dcn_3_5_dmcub" in got["real_failure_too"][1] and "yoyo" not in got["real_failure_too"][1], got["real_failure_too"]
+    assert got["clean"][1] == "no firmware load failures in dmesg", got["clean"]
+    return (f"the owner's dmesg -> PASS ({got['owner_run'][1][:90]}); Direct-load form PASS; a real failure WARNs "
+            f"with or without the debug line; clean PASS")
+
+
 @run_test("unit_failure_capture_bounded", ["R51", "R63"])
 async def t_failure_capture_bounded(_):
     """D10: a crash-looping kernel triggered the failure capture every 3 s forever (86
@@ -3502,9 +3618,11 @@ class _FakeX:
     def set_error_handler(self, h): pass
 
     # windows
-    def add(self, xid, inst, cls, title, x, y, w, h, pid=0, wtype="_NET_WM_WINDOW_TYPE_NORMAL", ignores_close=False):
+    def add(self, xid, inst, cls, title, x, y, w, h, pid=0, wtype="_NET_WM_WINDOW_TYPE_NORMAL", ignores_close=False,
+            hints=None):
+        """hints [R82]: WM_NORMAL_HINTS (min_w, min_h, max_w, max_h) — SDL's fixed-size window has min == max"""
         self.wins[xid] = dict(inst=inst, cls=cls, title=title, x=x, y=y, w=w, h=h, pid=pid, wtype=wtype,
-                              mapped=True, states=set(), ignores_close=ignores_close)
+                              mapped=True, states=set(), ignores_close=ignores_close, hints=hints, props={})
         self.order.append(xid)
         if not self.active:
             self.active = xid
@@ -3546,6 +3664,14 @@ class _FakeX:
                 assert xid == srv.ROOT and event_mask & 0x100000, "EWMH messages go to the root with SubstructureRedirect"
                 srv.handle(*ev)
             def change_attributes(self, **kw): srv._chk()
+            def change_property(self, atom, typ, fmt, data, mode=0):          # [R82] WM_TRANSIENT_FOR
+                self._win()["props"][atom] = (typ, list(data))
+            def delete_property(self, atom):                                 # [R82]
+                self._win()["props"].pop(atom, None)
+            def get_wm_normal_hints(self):                                   # [R82]
+                h = self._win().get("hints")
+                return None if h is None else type("H", (), {"flags": 16 | 32, "min_width": h[0], "min_height": h[1],
+                                                              "max_width": h[2], "max_height": h[3]})()
             def get_image(self, x, y, w, h, fmt, mask):
                 """XGetImage of the root: depth-24 BGRX rows, one flat colour [R70]"""
                 srv._chk(); assert xid == srv.ROOT and fmt == 2 and mask == 0xffffffff
@@ -3940,6 +4066,145 @@ async def t_wm_frozen(_):
                 p.wait()
 
 
+@run_test("unit_wm_frame_pairing", ["R82", "R68", "R52", "R70"])
+async def t_wm_frames(_):
+    """[R82] the frame <-> game-window pairs live in kernel/wm.py (D0 REPORT §7), keyed by the desktop frame's id.
+    Against the fake X + openbox: a game registered with a frame is paired the moment its window is listed — made
+    transient for the kiosk of the frame's screen (openbox keeps a transient above the focused fullscreen kiosk) and
+    centred in the frame's body (CSS px -> root px through that kiosk: origin + its width / the page's viewport, so a
+    2x screen works); follow (no read-back) and place (verified) move it with the frame; snapshot grabs its pixels and
+    says where they lie in the body (CSS px); cover / minimize iconify + SIGSTOP it, uncover / restore thaw + map it —
+    held while the other flag is still set — and hand the keyboard back to the window that had it unless the frame is
+    focused; adopt puts a running game into a new frame (only one the kernel launched); a game's end is recorded on
+    its frame; close ends it and drops the record; every snapshot lists the frames and marks paired windows.
+    Covered = out of the kiosk's group + restacked below it + frozen (still mapped: a snapshot must not thaw it);
+    minimized = out of the group + iconified + frozen (openbox drops the kiosk's focus when a transient of it is
+    iconified — measured in Xvfb + openbox; tests/test_games_windows.py proves the real stacking)."""
+    import subprocess, tempfile
+    g1 = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    g2 = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    g3 = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    procs = (g1, g2, g3)
+    state = lambda p: wm._proc_state(p.pid)
+    with tempfile.TemporaryDirectory() as td:
+        h = _WMHarness(td); wm = h.wm
+        try:
+            fx = h.new_server((0x101, "chromium", "Chromium", "kAIrOS", 0, 0, 1920, 1080, 100),
+                              (0x102, "chromium", "Chromium", "kAIrOS", 1920, 0, 1280, 720, 101))
+            fx.monitors = [(0, 0, 1920, 1080, True), (1920, 0, 1280, 720, False)]
+            fx.add(0x202, "pygame", "pygame", "Snake", 700, 400, 960, 540, pid=g1.pid, hints=(960, 540, 960, 540))
+            fx.add(0x303, "pygame", "pygame", "Pong", 0, 0, 640, 480, pid=g2.pid, hints=(640, 480, 640, 480))
+            fx.add(0x404, "pygame", "pygame", "Tetris", 50, 60, 800, 600, pid=g3.pid, hints=(800, 600, 800, 600))
+            fx.add(0x505, "python3", "python3", "Stranger", 10, 10, 300, 200, pid=4194305)
+            fx.active = 0x101
+            svc = wm.WindowService()
+            f1 = {"id": "s0-win1-a", "screen": 0, "x": 100, "y": 80, "w": 1000, "h": 600, "vw": 1920, "vh": 1080}
+            svc.register_game(g1.pid, "snake", "Snake", frame=f1)
+            svc.register_game(g2.pid, "pong", "Pong", frame={"id": "s1-win1-b", "screen": 1, "x": 10, "y": 20, "w": 500,
+                                                             "h": 300, "vw": 640, "vh": 360, "sx": 960, "sy": 0, "dpr": 2})
+            svc.register_game(g3.pid, "tetris", "Tetris")                      # launched without a frame
+            r = await svc.list()
+            snake = next(w for w in r["windows"] if w["id"] == 0x202)
+            assert snake["frame"] == "s0-win1-a" and svc.frames["s0-win1-a"]["xid"] == 0x202, snake
+            assert fx.wins[0x202]["props"].get(68) == (33, [0x101]), "transient for the kiosk of screen 0"
+            assert (fx.wins[0x202]["x"], fx.wins[0x202]["y"]) == (120, 110), "centred in the body: 100+20, 80+30"
+            assert (fx.wins[0x303]["props"].get(68), fx.wins[0x303]["x"], fx.wins[0x303]["y"]) == ((33, [0x102]), 2120, 100), \
+                "screen 1 at 2x: body root (1940, 40, 1000, 600), the 640x480 game centred"
+            assert next(w for w in r["windows"] if w["id"] == 0x404)["frame"] is None
+            fr = {f["id"]: f for f in r["frames"]}
+            assert fr["s0-win1-a"]["slug"] == "snake" and fr["s0-win1-a"]["pid"] == g1.pid and fr["s1-win1-b"]["screen"] == 1, fr
+            # follow (the drag: no read-back) and place (verified)
+            f1m = dict(f1, x=300, y=200)
+            r = await svc.frame_op("s0-win1-a", "follow", f1m)
+            assert r["ok"] and r["detail"]["verified"] is None and (fx.wins[0x202]["x"], fx.wins[0x202]["y"]) == (320, 230), r
+            r = await svc.frame_op("s0-win1-a", "place", dict(f1m, w=960, h=540))
+            d = r["detail"]
+            assert r["ok"] and d["verified"] and (d["x"], d["y"]) == (300, 200) and d["fixed"] is True, r
+            assert d["css"] == {"x": 0.0, "y": 0.0, "w": 960.0, "h": 540.0}, d["css"]
+            r = await svc.frame_op("s0-win1-a", "place", {"x": 1, "y": 2})
+            assert r["status"] == 400 and "x y w h" in r["error"], r
+            # the snapshot: the game's own pixels + where they lie in the body
+            r = await svc.frame_op("s0-win1-a", "snapshot")
+            d = r["detail"]
+            assert r["ok"] and len(d["image"]) == 960 * 540 * 4 and d["rect"] == [300, 200, 960, 540] and fx.grabbed[-1] == (300, 200, 960, 540)
+            assert d["css"] == {"x": 0.0, "y": 0.0, "w": 960.0, "h": 540.0}, d
+            # covered: out of the kiosk's group, restacked under it, frozen — still mapped; the keyboard stays put
+            fx.active = 0x101
+            r = await svc.frame_op("s0-win1-a", "cover")
+            await asyncio.sleep(0.05)
+            assert r["ok"] and r["detail"]["lowered"] and r["detail"]["frozen"] and state(g1) == "T", r
+            assert fx.wins[0x202]["mapped"] and 68 not in fx.wins[0x202]["props"] and fx.active == 0x101, fx.wins[0x202]
+            assert [m for m in fx.sent if m[0] == 0x202][-1][1:] == ("_NET_RESTACK_WINDOW", [2, 0x101, 1, 0, 0])
+            await svc.list(); await asyncio.sleep(0.05)
+            assert state(g1) == "T", "a snapshot must not thaw a covered (mapped) game"
+            assert (await svc.frame_op("s0-win1-a", "focus"))["detail"] == {"held": True}
+            r = await svc.frame_op("s0-win1-a", "uncover", {"focus": "keep"})
+            await asyncio.sleep(0.05)
+            assert r["ok"] and r["detail"]["raised"], r
+            assert state(g1) == "S", ("not thawed", state(g1))
+            assert fx.active == 0x101, ("the keyboard moved", hex(fx.active))
+            assert fx.wins[0x202]["props"].get(68) == (33, [0x101]), fx.wins[0x202]["props"]
+            assert any(m[0] == 0x202 and m[1] == "_NET_RESTACK_WINDOW" and m[2][:3] == [2, 0, 0] for m in fx.sent[-3:]), fx.sent[-3:]
+            # the game had the keyboard when it was covered: it hands it to the desktop and gets it back ("keep")
+            fx.active = 0x202
+            await svc.frame_op("s0-win1-a", "cover")
+            assert fx.active == 0x101, "the covering desktop gets the keyboard"
+            await svc.frame_op("s0-win1-a", "uncover", {"focus": "keep"})
+            assert fx.active == 0x202, "and the game gets it back"
+            # minimized (the frame's _ / the dock): out of the group, iconified, frozen; back with the keyboard
+            fx.active = 0x101
+            await svc.frame_op("s0-win1-a", "minimize"); await asyncio.sleep(0.05)
+            assert not fx.wins[0x202]["mapped"] and state(g1) == "T" and 68 not in fx.wins[0x202]["props"]
+            r = await svc.frame_op("s0-win1-a", "restore", {"focus": True})
+            assert r["ok"] and fx.wins[0x202]["mapped"] and fx.active == 0x202 and fx.wins[0x202]["props"].get(68) == (33, [0x101]), r
+            # both flags: restore is held while still covered; uncover shows it
+            await svc.frame_op("s0-win1-a", "cover"); await svc.frame_op("s0-win1-a", "minimize")
+            r = await svc.frame_op("s0-win1-a", "restore", {"focus": True})
+            assert r["detail"] == {"held": "covered"} and not fx.wins[0x202]["mapped"], r
+            r = await svc.frame_op("s0-win1-a", "uncover", {"focus": True})
+            await asyncio.sleep(0.05)
+            assert r["ok"] and fx.wins[0x202]["mapped"] and state(g1) == "S", r
+            # adopt: a running game into a new frame (a reloaded page); never a stranger
+            r = await svc.frame_op("s0-win7-c", "adopt", {"xid": 0x404, "x": 0, "y": 40, "w": 820, "h": 620, "vw": 1920, "vh": 1080})
+            assert r["ok"] and svc.frames["s0-win7-c"]["xid"] == 0x404 and svc.registry.lookup(g3.pid)["frame"] == "s0-win7-c", r
+            assert (fx.wins[0x404]["x"], fx.wins[0x404]["y"]) == (10, 50)
+            r = await svc.frame_op("s0-win8-d", "adopt", {"xid": 0x505, "x": 0, "y": 40, "w": 820, "h": 620, "vw": 1920})
+            assert r["status"] == 400 and "not a game the kernel launched" in r["error"], r
+            r = await svc.frame_op("s0-win9-e", "adopt", {"xid": 0x404, "x": 0, "y": 40, "w": 820, "h": 620, "vw": 1920})
+            assert r["ok"] and "s0-win7-c" not in svc.frames, "a game is in one frame: the old record goes"
+            # the end of a game is recorded on its frame; release drops a record
+            svc.frame_ended(g2.pid, {"returncode": 1, "after_s": 3.0, "killed": False, "crash": "RuntimeError: boom"})
+            e = next(f for f in svc.frames_out() if f["id"] == "s1-win1-b")["ended"]
+            assert e["pid"] == g2.pid and e["crash"] == "RuntimeError: boom", e
+            assert (await svc.frame_op("s1-win1-b", "release"))["ok"] and "s1-win1-b" not in svc.frames
+            # errors
+            assert (await svc.frame_op("nope", "cover"))["status"] == 404
+            assert (await svc.frame_op("s0-win1-a", "explode"))["status"] == 400
+            # close: the game ends (WM close) and the record goes
+            r = await svc.frame_op("s0-win1-a", "close")
+            assert r["ok"] and 0x202 not in fx.wins and "s0-win1-a" not in svc.frames, r
+            # no X: the record still follows the shell, the answer says why
+            old = h.hw.X11_SOCKETS; h.hw.X11_SOCKETS = Path(td) / "none"
+            try:
+                r = await svc.frame_op("s0-win9-e", "cover")
+                assert r["status"] == 503 and svc.frames["s0-win9-e"]["covered"] is True, r
+            finally:
+                h.hw.X11_SOCKETS = old
+            return ("paired on listing (transient for its screen's kiosk, centred; screen 1 at 2x), follow/place, "
+                    "snapshot 960x540 + CSS offset, cover/uncover (keyboard handed back), minimize/restore, held while "
+                    "covered, adopt (strangers refused, one frame per game), ended, release, close, no X -> 503")
+        finally:
+            h.restore()
+            for p in procs:
+                if p.poll() is None:
+                    try:
+                        os.killpg(p.pid, 18)
+                    except OSError:
+                        pass
+                    p.kill()
+                p.wait()
+
+
 @run_test("http_kernel_stops_with_open_streams", ["R68", "R63", "R62"])
 async def t_kernel_stop(_):
     """D-R68-3: `systemctl stop kairos` = SIGTERM while a client holds GET /api/windows/stream
@@ -4115,7 +4380,7 @@ async def t_desktop_r68_static(_):
     assert handler in bridge, "apps: the injected bridge suppresses the menu inside the sandboxed iframe"
     assert handler in js.replace(bridge, ""), "desktop page: document-level contextmenu handler"
     srv = (REPO / "kernel" / "server.py").read_text()
-    assert "NO_CONTEXT_MENU" in srv and srv.count("no_context_menu(html)") >= 3 and "{refresh}{NO_CONTEXT_MENU}" in srv, "/web/ + vibe.browse pages"
+    assert "NO_CONTEXT_MENU" in srv and srv.count("no_context_menu(html") >= 3 and "{refresh}{NO_CONTEXT_MENU}" in srv, "/web/ + vibe.browse pages"   # [R83] (html, report) on /web/
     assert 'addEventListener("contextmenu"' in (REPO / "shell" / "boot-wait.html").read_text()
     sys.path.insert(0, str(REPO / "kernel")); import server
     out = server.no_context_menu("<!DOCTYPE html><html><head><title>x</title></head><body></body></html>")
@@ -4305,8 +4570,8 @@ async def t_game_crash_record(s):
         raise SkipTest("pygame not installed yet (arrives with engine install)")
     import signal as _signal
 
-    async def forge(prompt):
-        async with s.post(f"{BASE}/api/game", json={"prompt": prompt}) as r:
+    async def forge(prompt, **extra):
+        async with s.post(f"{BASE}/api/game", json=dict({"prompt": prompt}, **extra)) as r:
             jid = (await r.json())["job"]
         return jid, (await poll_job(s, jid, timeout=120))["result"]
 
@@ -4350,13 +4615,14 @@ async def t_game_crash_record(s):
     async with s.get(f"{BASE}/api/desktop-search", params={"q": "crashy"}) as r:
         ds = await r.json()
     hit = next(x for x in ds["results"] if x["group"] == "games" and "crashy" in x["title"])
-    assert "crashed after" in hit["sub"] and "RuntimeError" in hit["sub"] and "relaunch" in hit["sub"], hit
+    assert "crashed after" in hit["sub"] and "RuntimeError" in hit["sub"] and "✨ improve" in hit["sub"], hit
     txt = log()
     assert f"game {slug} v1 (pid {r2['pid']}) crashed after the job reported it running: exit code 1 after" in txt \
         and "no automatic repair" in txt, "journal line missing"
     assert txt.count("self-repairing") == repairs, "a crash after success must not start a repair on its own [R35]"
-    # (3) the relaunch carries the bug report: the healthy game comes back, the record is cleared
-    jid3, r3 = await forge("test crashy ball [dies after 8s]")
+    # (3) ✨ improve carries the bug report (since R82 a plain launch runs the current version): the healthy game
+    # comes back, the record is cleared
+    jid3, r3 = await forge("test crashy ball [dies after 8s]", evolve=True)
     assert r3["running"] is True and r3["attempt"] == 1 and r3["version"] == 2 and r3["pid"] != r2["pid"], r3
     assert "dies after" not in (gdir / "main.py").read_text(), "without the BUG REPORT the mock forge returns the crashing game again"
     assert (gdir / "history" / "v1.py").read_text().count("dies after 8s") == 1
@@ -4372,8 +4638,120 @@ async def t_game_crash_record(s):
     assert "last_crash" not in json.loads((gdir / "meta.json").read_text())
     assert f"game {slug} (pid {r3['pid']}) ended after" in log()
     return (f"in-gate crash repaired with its traceback (attempt 2); post-success crash {crash['after_s']} s in -> "
-            "journal + meta.json + job + /api/apps + desktop search, no auto-repair; relaunch got the BUG REPORT, "
+            "journal + meta.json + job + /api/apps + desktop search, no auto-repair; ✨ improve got the BUG REPORT, "
             "v2 healthy, record cleared; SIGTERM end = exit 0, no record")
+
+
+@run_test("http_game_launch_runs_improve_evolves_versions", ["R82", "R7", "R35", "R77", "R86"])
+async def t_game_r82(s):
+    """[R82] launch = run, ✨ = evolve. Against the suite kernel (mock forge, no X: the survival probe): a new game is
+    forged once (forge:true); POST /api/game for an existing game RUNS its current version — no LLM request, no new
+    version, main.py untouched; while it runs the same call answers at once (already); ✨ (evolve + instruction) sends
+    the USER IMPROVEMENT REQUEST + the previous source to the forge, v2 passes the R77 checks, ends the running v1
+    (asked for: no crash record) and takes its place; GET /api/game/versions lists v1/v2 with the instruction;
+    POST /api/game/version brings v1 back (v2 kept in history/), restart runs it; the next ✨ builds v3 from v1; the
+    minors block runs on the instruction at the entry (400, no LLM request); unknown slugs/versions 404/400; a slug
+    the shell sends back is taken verbatim (a 48-char slug may end in "-")."""
+    try:
+        import pygame  # noqa: F401
+    except ImportError:
+        raise SkipTest("pygame not installed yet (arrives with engine install)")
+    import signal as _signal
+    msglog = VDIR / "llama-msgs.log"
+    msgs = lambda: [json.loads(ln) for ln in msglog.read_text().splitlines()] if msglog.exists() else []
+    prompt = f"r82 neon bouncer {int(time.time()) % 100000}"
+    sys.path.insert(0, str(REPO / "kernel")); import server
+    slug = server.slugify(prompt)
+    gdir = VDIR / "games" / slug
+    # the slug the shell sends back is the game's own, verbatim — slugify cuts at 48 chars after stripping, so a slug can
+    # end in "-" (the GPU check's ✨ forged a NEW game when the kernel slugified it again); never a path
+    cut = server.slugify("neon asteroid miner: steer a small ship with the arrow keys, mine glowing asteroids")
+    assert cut.endswith("-") and server.game_slug(cut) == cut and server.slugify(cut) != cut, cut
+    assert server.game_slug("../../etc") == server.slugify("../../etc") and "/" not in server.game_slug("a/b")
+
+    async def post(body, timeout=120):
+        async with s.post(f"{BASE}/api/game", json=body) as r:
+            j = await r.json()
+            if r.status != 200:
+                return r.status, j
+        return 200, dict(j, result=(await poll_job(s, j["job"], timeout=timeout))["result"])
+    pids = []
+    try:
+        st, j = await post({"prompt": prompt})
+        r1 = j["result"]
+        assert st == 200 and j["forge"] is True and r1["running"] and r1["version"] == 1 and r1["slug"] == slug, j
+        pids.append(r1["pid"])
+        v1 = (gdir / "main.py").read_text()
+        n = len(msgs())
+        st, j = await post({"slug": slug})
+        assert st == 200 and j["forge"] is False and j["result"]["already"] is True and j["result"]["pid"] == r1["pid"], j
+        os.killpg(r1["pid"], _signal.SIGTERM)
+        await asyncio.sleep(1.0)
+        st, j = await post({"slug": slug})
+        r2 = j["result"]
+        assert st == 200 and j["forge"] is False and r2["running"] and r2["launched_only"] and r2["version"] == 1 \
+            and r2["pid"] != r1["pid"], j
+        pids.append(r2["pid"])
+        assert len(msgs()) == n, "a launch must not ask the LLM (launch = run the current version)"
+        assert (gdir / "main.py").read_text() == v1, "a launch must not change the game"
+        assert not (gdir / "history").exists() or not list((gdir / "history").glob("v*.py")), "a launch makes no version"
+        # ✨ improve with a request
+        st, j = await post({"slug": slug, "evolve": True, "instruction": "make the ball green"})
+        r3 = j["result"]
+        assert st == 200 and j["forge"] is True and r3["running"] and r3["version"] == 2 and r3["evolved_from"] == 1 \
+            and r3["instruction"] == "make the ball green", j
+        pids.append(r3["pid"])
+        forge = [m for m in msgs()[n:] if "game forge" in m["system"]]
+        assert forge and "USER IMPROVEMENT REQUEST: make the ball green" in forge[0]["user"] \
+            and "PREVIOUS VERSION SOURCE (v1):" in forge[0]["user"] and "TOP priority" in forge[0]["user"], forge[:1]
+        assert "mock game · make the ball green" in (gdir / "main.py").read_text(), (gdir / "main.py").read_text()[:300]
+        assert (gdir / "history" / "v1.py").read_text() == v1, "history/v1.py is not v1"
+        assert server.wm._proc_state(r2["pid"]) in ("", "Z"), "the running v1 ended before v2 took its place"
+        meta = json.loads((gdir / "meta.json").read_text())
+        assert meta["version"] == 2 and "last_crash" not in meta and meta["versions"]["2"]["instruction"] == "make the ball green", meta
+        async with s.get(f"{BASE}/api/game/versions", params={"slug": slug}) as r:
+            vs = await r.json()
+        assert vs["current"] == 2 and [v["v"] for v in vs["versions"]] == [1, 2] and vs["versions"][1]["instruction"] == "make the ball green" \
+            and vs["versions"][0]["by"] == "forged" and vs["running"] is True, vs
+        # the way back: v1 is the game again, v2 kept; restart runs it in place of the running v2
+        async with s.post(f"{BASE}/api/game/version", json={"slug": slug, "version": 1}) as r:
+            rv = await r.json()
+        assert rv["current"] == 1 and [v["v"] for v in rv["versions"]] == [1, 2], rv
+        assert (gdir / "main.py").read_text() == v1 and "make the ball green" in (gdir / "history" / "v2.py").read_text()
+        st, j = await post({"slug": slug, "restart": True})
+        r4 = j["result"]
+        assert st == 200 and j["forge"] is False and r4["version"] == 1 and r4["pid"] != r3["pid"], j
+        pids.append(r4["pid"])
+        assert "last_crash" not in json.loads((gdir / "meta.json").read_text()), "a restart's end is not a crash"
+        # the next ✨ builds v3 from v1
+        n = len(msgs())
+        st, j = await post({"slug": slug, "evolve": True, "instruction": "add a second ball"})
+        assert st == 200 and j["result"]["version"] == 3, j
+        pids.append(j["result"]["pid"])
+        forge = [m for m in msgs()[n:] if "game forge" in m["system"]]
+        assert forge and "PREVIOUS VERSION SOURCE (v1):" in forge[0]["user"] and "add a second ball" in forge[0]["user"], \
+            [m["user"][:200] for m in forge]
+        # errors: the minors block on the instruction (no LLM request), unknown slug / version
+        n = len(msgs())
+        st, j = await post({"slug": slug, "evolve": True, "instruction": "hentai game with a loli"})
+        assert st == 400 and j.get("kind") == "blocked" and len(msgs()) == n, (st, j)
+        async with s.post(f"{BASE}/api/game/version", json={"slug": slug, "version": 9}) as r:
+            assert r.status == 404, ("version 9", r.status, await r.text())
+        async with s.post(f"{BASE}/api/game/version", json={"slug": slug, "version": "x"}) as r:
+            assert r.status == 400, ("version x", r.status, await r.text())
+        async with s.get(f"{BASE}/api/game/versions", params={"slug": "no-such-game-r82"}) as r:
+            assert r.status == 404, ("unknown slug", r.status, await r.text())
+        async with s.post(f"{BASE}/api/frames/nope/cover", json={}) as r:
+            assert r.status in (404, 503), ("unknown frame", r.status, await r.text())
+    finally:
+        for pid in pids:                         # SIGTERM = SDL's QUIT: an end, not a crash record
+            try:
+                os.killpg(pid, _signal.SIGTERM)
+            except (ProcessLookupError, PermissionError, TypeError):
+                pass
+    return ("forged once; a launch ran v1 with 0 LLM requests (already-running answered at once); ✨ 'make the ball "
+            "green' -> v2 from the request + v1 source, v1 ended (no crash); versions v1/v2; revert to v1 + restart; "
+            "next ✨ -> v3 from v1; minors block on the instruction 400; 404/400 for unknown slug/version")
 
 
 @run_test("unit_knowledge_base_wikipedia_mini", ["R32"])
@@ -4898,7 +5276,13 @@ async def t_manifest_2026_09(_):
             sec = m[key]
             assert "diffusion" in sec and "vae" in sec and ("text_encoder" in sec or "t5xxl" in sec) and sec.get("max_pixels"), (t, key)
             for e in (sec["diffusion"], sec["vae"], sec.get("text_encoder") or sec["t5xxl"]):
-                assert e["file"].startswith("image/") and e["url"].startswith("https://huggingface.co/") and e["size_gb"] > 0, (t, key, e)
+                # [Muse 2026-10-10] the Muse DiT (image / image_safe) is the author's civitai download — baked in every
+                # tier, so the URL is informational (the kernel's aria2c downloader has no host assumption anyway);
+                # every other file stays a Hugging Face LFS URL
+                url_ok = e["url"].startswith("https://huggingface.co/") or (
+                    key in ("image", "image_safe") and e is sec["diffusion"]
+                    and e["url"] == "https://civitai.com/api/download/models/3258948")
+                assert e["file"].startswith("image/") and url_ok and e["size_gb"] > 0, (t, key, e)
             assert "--offload-to-cpu" not in sec["gen_args"], (t, key)
         assert "expander" not in m["image_classic"] and "expander" not in m["image_qwen"], f"{t}: only the Krea family expands"
     # the test variants: the 8 GB tier with another brain
@@ -4915,7 +5299,7 @@ async def t_manifest_2026_09(_):
         assert llm["file"].startswith("llm/") and llm["url"].startswith("https://huggingface.co/") and llm["size_gb"] > 0
         assert int(llm["serve_args"][llm["serve_args"].index("-c") + 1]) >= 16384
         assert "python_llm" in v and v["python_llm"] == {"shared_with": "llm"}
-    return "4 tiers: 18+ = default + Kroma v0.3 LoRA (sha256), image_safe, Chroma via image_chroma (--model-args), Qwen-2.1 sha/sizes, floors 2026-09-27; 3 test variants = tier-8gb + llm"
+    return "4 tiers: 18+ = default = Muse Q4_0 (sha256, no LoRA, civitai URL), image_safe = the same files, Chroma via image_chroma (--model-args), Qwen-2.1 sha/sizes, floors 2026-09-27; 3 test variants = tier-8gb + llm"
 
 
 @run_test("unit_prompt_expansion_helpers", ["R34", "R42"])
@@ -4934,7 +5318,7 @@ async def t_expansion_helpers(_):
     two = "First paragraph that is long enough to count as a candidate line.\nSecond paragraph, also long enough, wins."
     assert server.clean_expansion(two) == "Second paragraph, also long enough, wins."
     # which expander for which section (the settings value passed explicitly = no /data read)
-    # [R76] the default (Krea 2 + Kroma LoRA) expands with the neutral rules, the stock `safe` with the SFW ones
+    # [R76 → Muse] the default (Muse, uncensored) expands with the neutral rules, `safe` (the same DiT) with the SFW ones
     assert server.expander_for("image", setting="auto") == "krea-neutral"
     assert server.expander_for("image", setting="on") == "krea-neutral"
     assert server.expander_for("image", setting="off") is None
@@ -5185,7 +5569,7 @@ async def t_sampling_merge(_):
     g = json.loads((V / "tier-8gb-gemma4-26b.json").read_text())["llm"]
     assert g["sampling"] == {"temperature": 1.0, "top_k": 64, "top_p": 0.95} and g["chat_template_kwargs"] == {"enable_thinking": False} \
         and "--reasoning" in g["serve_args"] and "-ngl" not in g["serve_args"] and "--n-cpu-moe" not in g["serve_args"] \
-        and g["file"] == "llm/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf" and g["size_bytes"] == 13597177568, g
+        and g["file"] == "llm/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf" and g["size_bytes"] == 13917722144 and g["uncensored"] is True, g   # [R86 round 4] the heretic default
     c = json.loads((V / "tier-8gb-coder7b.json").read_text())["llm"]
     m8 = json.loads((REPO / "manifests" / "tier-8gb.json").read_text())
     # since 2026-09-28 the tier's brain IS the gemma variant and coder7b is its `llm_fast` add-on
@@ -5239,24 +5623,25 @@ async def t_next_set(_):
 
 # ---------------- fixes 2026-09-28 (docs/FIXES-2026-09-28.md) ----------------
 
-GEMMA_SHA = "babd1e389d386352f71600765d37390f7dc993fbfad6725caccf996ffe34aecf"
+GEMMA_SHA = "e2f223775fa6e4e2129b7d7802fa7326b8da3fe261e8834baf65b722f9df3742"   # [R86 round 4, 2026-10-10] the heretic i1-IQ4_XS (stock UD-IQ4_XS: babd1e38…)
 CODER7B_SHA = "9a961bb225cb2b9fd84b2297df0d53089895c049d7d9dc5f5f8aebbcd3247872"
 
 
 @run_test("unit_manifests_gemma4_and_fast_mode", ["R3", "R5", "R47"])
 async def t_gemma_fast_manifests(_):
-    """A1/A2: the 8 GB and 16 GB tiers serve Gemma 4 26B-A4B-it with exactly the argv the feature
-    test proved (no -ngl: --fit places the MoE; thinking off both ways; vendor sampling; HF sha256
-    + byte size) and carry the `llm_fast` add-on (Qwen2.5-Coder-7B, the previous 8 GB brain) that
+    """A1/A2: the 8 GB and 16 GB tiers serve Gemma 4 26B-A4B-it — since 2026-10-10 the uncensored heretic
+    edition (mradermacher i1-IQ4_XS, "uncensored": true; the owner's choice, R86 round 4) — with exactly the
+    argv the feature test proved (no -ngl: --fit places the MoE; thinking off both ways; vendor sampling; HF
+    sha256 + byte size) and carry the `llm_fast` add-on (Qwen2.5-Coder-7B, the previous 8 GB brain) that
     the settings key llm_model=fast selects; the 24/32 GB tiers are untouched; the three 8 GB test
     variants carry the same add-on (they must stay identical to tier-8gb.json outside `llm`)."""
     m8 = json.loads((REPO / "manifests" / "tier-8gb.json").read_text())
     m16 = json.loads((REPO / "manifests" / "tier-16gb.json").read_text())
     for t, m in (("8gb", m8), ("16gb", m16)):
         llm = m["llm"]
-        assert llm["file"] == "llm/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf" and llm["size_bytes"] == 13597177568 \
-            and llm["sha256"] == GEMMA_SHA and llm["url"].endswith("/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf") \
-            and llm["url"].startswith("https://huggingface.co/unsloth/"), (t, llm)
+        assert llm["file"] == "llm/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf" and llm["size_bytes"] == 13917722144 \
+            and llm["sha256"] == GEMMA_SHA and llm["url"].endswith("/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf") \
+            and llm["url"].startswith("https://huggingface.co/mradermacher/") and llm["uncensored"] is True, (t, llm)   # [R86 round 4]
         assert llm["serve_args"] == ["-c", "16384", "-fa", "on", "--cache-ram", "4096", "--ctx-checkpoints", "8", "--jinja", "--reasoning", "off"], (t, llm["serve_args"])      # host-RAM caps [R72 GPU validation 2026-10-07]
         assert llm["chat_template_kwargs"] == {"enable_thinking": False} and llm["sampling"] == {"temperature": 1.0, "top_k": 64, "top_p": 0.95}, t
         assert "-ngl" not in llm["serve_args"] and "--n-cpu-moe" not in llm["serve_args"] and "addon" not in llm, t
@@ -5278,8 +5663,10 @@ async def t_gemma_fast_manifests(_):
 
 @run_test("unit_r47_baked_set_and_build_scripts", ["R47", "R3"])
 async def t_r47_baked_set(_):
-    """A3: the baked (non-addon) set of the new 8 GB manifest is 4 files / 23.57 GB (Gemma 4
-    13.60 + Krea 2 7.22 + its encoder 2.50 + VAE 0.25; the old set was 14.65 GB) — with the ZIM
+    """A3: the baked (non-addon) set of the 8 GB manifest is 4 files / 24.99 GB (the heretic Gemma 4 13.92
+    since 2026-10-10 evening [R86 round 4]; stock Gemma 13.60 before + Muse 8.32 + its encoder 2.50 + VAE
+    0.25 since 2026-10-10; v7.5 had 5 files / 25.81 GB with
+    Krea 2 7.22 + the Kroma LoRA 2.24, the 2026-09 set 23.57 GB, the old set 14.65 GB) — with the ZIM
     (11.67 GiB), the 8 GiB swapfile and the ~7.1 GiB rootfs measured on the v5 image it stays
     under the 58 GiB limit only because music (5.25 GiB), video, the extra image models, vision
     and the fast LLM are add-ons. Every build path must bake EXACTLY that set: build-image.sh's
@@ -5293,11 +5680,11 @@ async def t_r47_baked_set(_):
     baked = {e["file"]: e for e in server.manifest_files(m8)}
     # [R76 → Muse, 2026-10-10] the Muse Q4_0 DiT (8 316 720 160 B) replaces Krea 2 Turbo Q4_K_M + the Kroma v0.3 LoRA
     # (7 216 993 376 + 2 241 178 336 B); image_safe shares image's files
-    assert set(baked) == {"llm/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf", "image/museByStableYogi_v35Q4Extended.gguf",
+    assert set(baked) == {"llm/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf", "image/museByStableYogi_v35Q4Extended.gguf",
                           "image/Qwen3VL-4B-Instruct-Q4_K_M.gguf", "image/qwen_image_vae.safetensors"}, set(baked)
     total = sum(e.get("size_bytes") or int(e["size_gb"] * 1e9) for e in baked.values())
-    assert total == 24664985638, total
-    for key in ("music", "video", "vision", "llm_fast", "image_qwen", "image_classic", "image_chroma"):
+    assert total == 24985530214, total      # [R86 round 4] the heretic 13 917 722 144 (stock Gemma 13 597 177 568: 24 664 985 638)
+    for key in ("music", "video", "vision", "llm_fast", "image_qwen", "image_classic", "image_chroma", "image_edit"):   # [R85] + the editor
         assert m8[key].get("addon") is True, f"{key} must be an add-on for the image to stay < 58 GiB"
     lister = REPO / "scripts" / "check_tier_present.py"
     out = subprocess.run([sys.executable, str(lister), str(REPO / "manifests" / "tier-8gb.json"), "/nonexistent", "--list"],
@@ -5307,15 +5694,16 @@ async def t_r47_baked_set(_):
     bake_list = out.stdout.split()
     dict_files = [e["file"] for e in server.section_files(m8["dictionaries"])]
     assert out.returncode == 0 and bake_list == list(baked) + [m8["translation"]["fast"]["file"]] + dict_files \
-        and len(bake_list) == 44 and m8["translation"]["quality"]["file"] not in bake_list, out.stdout
+        and len(bake_list) == 43 and m8["translation"]["quality"]["file"] not in bake_list, out.stdout   # 44 in v7.5 (+ the LoRA)
     bake_total = total + m8["translation"]["fast"]["size_bytes"] + sum(e["size_bytes"] for e in server.section_files(m8["dictionaries"]))
-    assert bake_total == 27237064729, bake_total
+    assert bake_total == 26416157753, bake_total      # [R86 round 4] + 320 544 576 (the heretic); [Muse 2026-10-10] 26 095 613 177; v7.5: 27 237 064 729
     out_all = subprocess.run([sys.executable, str(lister), str(REPO / "manifests" / "tier-8gb.json"), "/nonexistent", "--all", "--list"],
                              capture_output=True, text=True).stdout.split()
     assert "music/acestep-v15-turbo-Q8_0.gguf" in out_all and "llm/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf" in out_all \
         and "translation/Index-Translate-2B.Q4_K_M.gguf" in out_all and "dict/beolingus-de-en.txt.gz" in out_all \
         and not any(f.startswith("wiktionary_") for f in out_all) \
-        and len(out_all) == 63, len(out_all)   # 22 (v7.5: + the LoRA, - Kroma v0.2) + the 2 translation files [R71] + 38 dictionary files [P3] + the llm_uncensored add-on [R86]; the 7 ZIMs live in knowledge/, never models/
+        and "image/qwen_image_2.1_turbo_Q4_K_M.gguf" in out_all \
+        and len(out_all) == 64, len(out_all)   # 21 (Muse 2026-10-10: − the LoRA; v7.5: 22 = + the LoRA, − Kroma v0.2) + the 2 translation files [R71] + 38 dictionary files [P3] + 3 picture-editor files [R85: DiT, encoder, mmproj — its VAE is image_qwen's]; the llm_uncensored add-on left 2026-10-10 (R86 round 4: the default is the heretic); the 7 ZIMs live in knowledge/, never models/
     src = (REPO / "scripts" / "check_tier_present.py").read_text()
     assert 'n.get("addon") and not include_addons' in src
     bi = (REPO / "scripts" / "build-image.sh").read_text()
@@ -5346,7 +5734,7 @@ async def t_r47_baked_set(_):
                 for v in n.values():
                     _files(v)
         _files(m8)
-        assert len(every) == 70, len(every)                     # [R86] + the llm_uncensored add-on; 5 baked (v7.5: + the Kroma LoRA [R76]) + 64 add-on files (2 translation [R71], 38 dictionaries + 7 Wiktionary ZIMs [P3])
+        assert len(every) == 71, len(every)                     # 4 baked (Muse 2026-10-10: the LoRA entry is gone; v7.5: 5) + 67 add-on files (2 translation [R71], 38 dictionaries + 7 Wiktionary ZIMs [P3], 3 picture-editor files [R85]); the llm_uncensored add-on left 2026-10-10 [R86 round 4]
         for f in every:
             (real / f).parent.mkdir(parents=True, exist_ok=True); (real / f).write_bytes(b"x" * (7 * len(f)))
             (src_dir / f).parent.mkdir(parents=True, exist_ok=True); (src_dir / f).symlink_to(real / f)     # symlinked models dir
@@ -5360,7 +5748,7 @@ async def t_r47_baked_set(_):
         assert left == sorted(bake_list), left                   # the 4 non-addon files + the 39 bake-flagged add-on files
         assert not any(p.is_symlink() for p in dst.rglob("*")), "links must be copied as their targets"
         assert all((dst / f).stat().st_size == (real / f).stat().st_size for f in bake_list), "stale copies must be redone"
-        assert r.stdout.count("removing stale") == 28 and "mirrored 44 files" in r.stdout, r.stdout   # [R86] + the llm_uncensored placeholder; 25 unflagged add-on copies (69 − 44, v7.5 + the LoRA [R76]) + 2 leftovers
+        assert r.stdout.count("removing stale") == 30 and "mirrored 43 files" in r.stdout, r.stdout   # 28 unflagged add-on copies (71 − 43; R86 round 4: the llm_uncensored add-on left; R85: + the 3 picture-editor files) + 2 leftovers
         assert not (dst / "music").exists() and not (dst / "video").exists(), "emptied dirs go too"
         for bad_root, bad_dst in ((S, src_dir), (P("/"), P("/opt/vibeos/models")), (root, root / "opt" / "vibeos" / "models-x")):
             rb = run(src_dir, bad_root, bad_dst)
@@ -5387,7 +5775,7 @@ async def t_r47_baked_set(_):
     for doc in ("iso/flash-img.md", "README.md", "iso/README.md", "iso/build-img.sh"):
         t = (REPO / doc).read_text()
         assert "64 GB" in t and not re.search(r"[≥>]=?\s?32\s?GB (USB )?stick", t), f"{doc} still asks for a 32 GB stick"
-    return f"baked set = 5 non-addon files / {total / 1e9:.2f} GB + 39 bake-flagged add-on files (translation fast + dictionaries) = 44 / {bake_total / 1e9:.2f} GB; music/video/vision/llm_fast + 3 image models + the 9B stay add-ons; 3 build paths use the list; quickjs shipped; build-image.sh mirrors the list (69-file reused root → 44, links resolved, dangling fails); write-usb.sh needs the computed size before erasing; docs say 64 GB"
+    return f"baked set = 4 non-addon files (Muse Q4_0, no LoRA) / {total / 1e9:.2f} GB + 39 bake-flagged add-on files (translation fast + dictionaries) = 43 / {bake_total / 1e9:.2f} GB; music/video/vision/llm_fast + 3 image models + the 9B stay add-ons; 3 build paths use the list; quickjs shipped; build-image.sh mirrors the list (69-file reused root → 43, links resolved, dangling fails); write-usb.sh needs the computed size before erasing; docs say 64 GB"
 
 
 @run_test("http_llm_fast_mode", ["R3", "R5", "R47"])
@@ -5417,13 +5805,12 @@ async def t_llm_fast_mode(s):
     async with s.get(f"{BASE}/api/models") as r:
         mi = await r.json()
     by = {m["key"]: m for m in mi["llm"]}
-    # [R86] the uncensored LLM choice is listed next to default/fast, with its download key (the section name)
-    assert set(by) == {"default", "fast", "uncensored"} and by["default"]["addon"] is False and by["default"]["active"] is True \
-        and by["uncensored"]["download_key"] == "llm_uncensored" \
-        and by["default"]["file"].startswith("llm/gemma-4-26B") and by["fast"]["addon"] is True and by["fast"]["present"] is True \
+    # [R86 round 4] the default IS the uncensored heretic: default + fast only (an 'uncensored' entry needs a tier with the add-on section)
+    assert set(by) == {"default", "fast"} and by["default"]["addon"] is False and by["default"]["active"] is True \
+        and by["default"]["file"] == "llm/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf" and by["fast"]["addon"] is True and by["fast"]["present"] is True \
         and abs(by["fast"]["download_gb"] - 4.68) < 0.01 and by["fast"]["active"] is False, by
     assert mi["llm_setting"]["setting"] == "default" and mi["llm_setting"]["effective"] == "default" \
-        and mi["llm_setting"]["modes"] == ["default", "fast", "uncensored"] and mi["overrides"]["llm_model"] == "default", mi["llm_setting"]   # [R86] + uncensored
+        and mi["llm_setting"]["modes"] == ["default", "fast"] and mi["overrides"]["llm_model"] == "default", mi["llm_setting"]   # [R86 round 4] no uncensored alias on this tier
     try:
         await set_llm("fast")
         st = await status()
@@ -5441,7 +5828,7 @@ async def t_llm_fast_mode(s):
                 mi2 = await r.json()
             assert {m["key"]: m["present"] for m in mi2["llm"]}["fast"] is False and mi2["llm_setting"]["effective"] == "default"
             launch = await last_launch()
-            assert "gemma-4-26B-A4B-it-UD-IQ4_XS.gguf" in launch and "--reasoning off" in launch and "-ngl" not in launch, launch
+            assert "gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf" in launch and "--reasoning off" in launch and "-ngl" not in launch, launch   # [R86 round 4]
             async with s.post(f"{BASE}/api/models/download", json={"model": "llm_fast"}) as r:
                 assert r.status in (200, 500), await r.text()       # the mock env has no network: started or failed, never "unknown add-on"
                 assert "not a downloadable" not in (await r.text())
@@ -5855,7 +6242,9 @@ async def t_translation_off(s):
     async with s.post(f"{BASE}/api/ask", json={"prompt": "say hi [off-test]"}) as r:
         assert r.status == 200
     new = [m for m in msgs()[m0:] if m["user"] and "[off-test]" in m["user"]]
-    assert new and new[-1]["system"] == prompts.ASK_SYSTEM and new[-1]["port"] == 8081, "ASK_SYSTEM must be byte-identical with translation off"
+    # [R86 r4b, S5] the uncensored default (the heretic) carries the one limits line at the END of every system prompt
+    assert new and new[-1]["system"] == prompts.ASK_SYSTEM.rstrip() + "\n\n" + prompts.UNCENSORED_LIMITS and new[-1]["port"] == 8081, \
+        "ASK_SYSTEM (+ the uncensored default's limits line) must be byte-identical with translation off"
     # in-process: the payload builder adds nothing while off
     assert server.language_instruction(prompts.APP_SYSTEM) == ""
     p = server.MM.chat_payload("llm", prompts.APP_SYSTEM, [{"role": "user", "content": "x"}], 10, 0.5, False)
@@ -6137,7 +6526,8 @@ async def t_translation_llm(s):
     async with s.post(f"{BASE}/api/ask", json={"prompt": "say hi [lang-test]"}) as r:
         assert r.status == 200
     new = [m for m in reqs()[n:] if m["port"] == 8081 and m["user"] and "[lang-test]" in m["user"]]
-    assert new and new[-1]["system"] == prompts.ASK_SYSTEM + line, (new[-1]["system"] if new else None)
+    assert new and new[-1]["system"] == prompts.ASK_SYSTEM.rstrip() + "\n\n" + prompts.UNCENSORED_LIMITS + line, \
+        (new[-1]["system"] if new else None)   # [R86 r4b, S5] the limits line sits before the language line
     # P2 (a): classic has no expander → the prompt reaches sd-cli as the MT model's English
     sdlog = Path(os.environ.get("MOCK_SD_ARGLOG", VDIR / "sd-args.log"))
     async with s.post(f"{BASE}/api/image", json={"prompt": "ein roter Fuchs", "model": "classic"}) as r:
@@ -6153,7 +6543,8 @@ async def t_translation_llm(s):
         jid = (await r.json())["job"]
     await poll_job(s, jid)
     exp = [m for m in reqs()[n:] if m["system"] and m["system"].startswith("You are an expert prompt engineer")]
-    assert exp and exp[-1]["system"].endswith(prompts.KREA_EXPAND_ENGLISH), "the expander must carry the English rule"
+    assert exp and exp[-1]["system"].endswith(prompts.KREA_EXPAND_ENGLISH.rstrip() + "\n\n" + prompts.UNCENSORED_LIMITS), \
+        "the expander must carry the English rule (+ the uncensored default's limits line [R86 r4b, S5])"
     assert not [m for m in reqs()[n:] if m["port"] == 8085], "no MT call when the expander does the English"
     # P2 (c): a knowledge query is turned into English first (offline here; the hop is what we can see)
     n = len(reqs())
@@ -6799,6 +7190,252 @@ async def t_bake_flagged_addons(_):
     extra = m8["translation"]["fast"]["size_bytes"] + sum(e["size_bytes"] for e in server.section_files(m8["dictionaries"]))
     assert extra == 1312164352 + 118463187, extra
     return f"bake flag on translation.fast + dictionaries in 7 manifests, nowhere else; 8gb list +39 files / +{extra / 1e9:.2f} GB (the 9B + ZIMs stay downloads); tier presence unchanged"
+
+# ---------------------------------------------------------------------------
+# [2026-10-14] a generation cut at the length limit is never cached (R86's GPU check: a 15 783-token page
+# was cut at the 16k context and its 1 KB stump served from the cache from then on), and a missing engine
+# binary is a clean 503 JSON error on every generation route (VERIFY 2026-10-10: POST /api/ask answered
+# aiohttp's bare 500 for a FileNotFoundError). The mock llama-server cuts a reply on "[length-stop]".
+# ---------------------------------------------------------------------------
+
+def _mock_calls(system_start: str, needle: str) -> int:
+    """how many requests the mock llama-server got with this persona and `needle` in the user text"""
+    log = Path(os.environ.get("MOCK_LLAMA_MSGLOG") or VDIR / "llama-msgs.log")
+    n = 0
+    try:
+        lines = log.read_text(errors="ignore").splitlines()
+    except FileNotFoundError:
+        return 0
+    for line in lines:
+        try:
+            m = json.loads(line)
+        except ValueError:
+            continue
+        if str(m.get("system") or "").startswith(system_start) and needle in str(m.get("user") or ""):
+            n += 1
+    return n
+
+
+@run_test("unit_finish_info_length_limit", ["R43"])
+async def t_finish_info(_):
+    sys.path.insert(0, str(REPO / "kernel")); import server
+    fi = server.finish_info
+    assert fi("length", {}, 16384) == {"finish": "length", "tokens": None, "length": True}
+    assert fi("stop", {"usage": {"completion_tokens": 16384}}, 16384)["length"] is False    # the server says it finished
+    assert fi(None, {"usage": {"completion_tokens": 700}}, 700)["length"] is True            # no finish_reason, at max_tokens
+    assert fi(None, {"timings": {"prompt_n": 5000, "predicted_n": 11384}}, 16384, ctx=16384)["length"] is True   # at n_ctx
+    assert fi(None, {"timings": {"prompt_n": 50, "predicted_n": 300}}, 16384, ctx=16384)["length"] is False
+    assert fi(None, {}, 16384, deltas=12)["length"] is False and fi(None, {}, 10, deltas=10)["length"] is True
+    assert server.length_cut({"length": True}) and not server.length_cut(None) and not server.length_cut({})
+    note = server.length_note({"tokens": 15783})
+    assert "cut off" in note and "15783" in note and "not saved" in note, note
+    b = server.length_banner("<html><body class='x'><p>hi</p></body></html>", note)
+    assert b.index("<body") < b.index("kairos-length-cut") < b.index("<p>hi"), b
+    return "finish_reason length / max_tokens / n_ctx -> cut; stop and short replies -> not; the note + the page banner"
+
+
+@run_test("http_length_cut_page_served_not_cached", ["R43", "R67", "R75"])
+async def t_length_cut_page(s):
+    from urllib.parse import quote
+    sys.path.insert(0, str(REPO / "kernel")); import server
+    address = f"lengthcut-{int(time.time())}.test/[length-stop]"
+    page = VDIR / "cache" / "web" / f"{server.web_slug(address)}.html"
+    before = _mock_calls("You are the imaginary web", address)
+    # /api/browse (vibe.browse): the cut page comes back with the note, is not cached, the next call regenerates.
+    # The mock cuts the page; its repair round answers a whole document — a repaired stump is still a cut result.
+    for n in (1, 2):
+        async with s.post(f"{BASE}/api/browse", json={"address": address}) as r:
+            assert r.status == 200, r.status
+            j = await r.json()
+        assert j["truncated"] is True and j["cached"] is False and "cut off" in j["note"], j
+        assert "kairos-length-cut" in j["html"] and "kernel plumbing works" in j["html"], j["html"][:300]
+        assert not page.exists(), f"browse {n}: the cut page was cached"
+    assert _mock_calls("You are the imaginary web", address) == before + 2, "the second browse did not regenerate"
+    assert not server.site_profile_path(server.web_site(address)).exists(), "a cut page wrote the site profile"
+    # /web/ (the browser app): the loading page, then the cut page ONCE (with its banner), then a fresh generation
+    url = f"{BASE}/web/{quote(address, safe='/')}"
+    for t in range(1, 80):
+        async with s.get(url + f"?_t={t}") as r:
+            body = await r.text()
+        if "kairos-length-cut" in body:
+            break
+        await asyncio.sleep(0.5)
+    else:
+        raise AssertionError("the cut page was never served on /web/")
+    assert not page.exists(), "/web/ cached the cut page"
+    async with s.get(url + "?_t=200") as r:
+        again = await r.text()
+    assert "kairos-length-cut" not in again and "imaginary web is" in again, "the next visit did not regenerate"
+    for t in range(201, 280):                          # let that generation finish (it is served once, then gone)
+        async with s.get(url + f"?_t={t}") as r:
+            if "kairos-length-cut" in await r.text():
+                break
+        await asyncio.sleep(0.5)
+    assert _mock_calls("You are the imaginary web", address) == before + 4
+    log = (VDIR / "kernel.log").read_text(errors="ignore")
+    assert f"[kernel] length limit: web page '{address}" in log, "no journal line for the cut page"
+    return "browse + /web/: served once with the banner, never in cache/web, no site profile, every visit regenerates"
+
+
+@run_test("http_length_cut_app_served_not_saved", ["R43", "R77", "R60"])
+async def t_length_cut_app(s):
+    apps = VDIR / "cache" / "apps"
+    stamp = int(time.time())
+    app_id = f"lengthcut-app-{stamp}"
+    for n in (1, 2):                                   # a new app: shown with the note, nothing saved, regenerated
+        events = await sse_collect(s, f"{BASE}/api/app", {"prompt": "a notes app [length-stop]", "app_id": app_id})
+        kinds = [e for e, _ in events]
+        assert "cached" not in kinds and "done" in kinds, f"summon {n}: {kinds}"
+        done = next(d for e, d in events if e == "done")
+        assert done["truncated"] is True and "cut off" in (done.get("warning") or ""), done
+        assert done["html"] and any(e == "delta" and "cut off" in d["text"] for e, d in events), "no cut-off note in the stream"
+        assert not (apps / app_id).exists(), f"summon {n}: the cut app was saved"
+    async with s.get(f"{BASE}/api/apps") as r:
+        assert app_id not in [a["app_id"] for a in (await r.json())["apps"]], "a cut app is listed"
+    # a saved app: ✨ improve (evolve) and modify with a cut reply leave app.html, meta.json and history/ alone
+    base = f"lengthcut-base-{stamp}"
+    events = await sse_collect(s, f"{BASE}/api/app", {"prompt": "a counter app", "app_id": base})
+    done = next(d for e, d in events if e == "done")
+    assert done["truncated"] is False and (apps / base / "app.html").exists(), done
+    for _ in range(60):                                # the icon painter writes meta.json once, in the background
+        if "icon" in json.loads((apps / base / "meta.json").read_text()):
+            break
+        await asyncio.sleep(0.25)
+    saved, meta = (apps / base / "app.html").read_text(), (apps / base / "meta.json").read_text()
+    events = await sse_collect(s, f"{BASE}/api/app", {"prompt": "a counter app", "app_id": base, "evolve": True,
+                                                       "instruction": "add a history panel [length-stop]"})
+    done = next(d for e, d in events if e == "done")
+    assert done["truncated"] is True and done["version"] == 2, done
+    assert (apps / base / "app.html").read_text() == saved, "a cut evolution overwrote app.html"
+    assert (apps / base / "meta.json").read_text() == meta, "a cut evolution rewrote meta.json"
+    assert not (apps / base / "history").exists(), "a cut evolution wrote history"
+    async with s.post(f"{BASE}/api/app/{base}/modify", json={"instruction": "dark theme [length-stop]"}) as r:
+        assert r.status == 200
+        j = await r.json()
+    assert j["truncated"] is True and "cut off" in j["warning"] and j["html"], j
+    assert (apps / base / "app.html").read_text() == saved, "a cut modify overwrote the app"
+    events = await sse_collect(s, f"{BASE}/api/app", {"prompt": "a counter app", "app_id": base})
+    assert events[0][0] == "cached" and events[0][1]["version"] == 1, events[:1]
+    # the self-heal route: a repair reply cut at the limit is returned with the note, never written over the app
+    healed = f"lengthcut-heal-{stamp}"
+    (apps / healed).mkdir(parents=True)
+    (apps / healed / "app.html").write_text(saved)
+    (apps / healed / "meta.json").write_text(json.dumps({"app_id": healed, "prompt": "a timer [length-stop-all]", "version": 1}))
+    async with s.post(f"{BASE}/api/app/{healed}/repair", json={"error": {"type": "TypeError", "message": "x is undefined",
+                                                                          "line": 3}}) as r:
+        assert r.status == 200
+        j = await r.json()
+    assert j["truncated"] is True and "cut off" in j["warning"] and j["html"], j
+    assert (apps / healed / "app.html").read_text() == saved, "a cut repair overwrote the app"
+    log = (VDIR / "kernel.log").read_text(errors="ignore")
+    for what in (f"app '{app_id}", f"app '{base}", f"app modify '{base}", f"app repair '{healed}"):
+        assert f"[kernel] length limit: {what}" in log, what
+    return "new app: done{truncated} twice, never saved/listed; evolve + modify + self-heal repair of a saved app: v1 stays byte-identical"
+
+
+@run_test("http_length_cut_game_runs_not_installed", ["R43", "R77", "R7"])
+async def t_length_cut_game(s):
+    try:
+        import pygame  # noqa: F401
+    except ImportError:
+        raise SkipTest("pygame not installed yet (arrives with engine install)")
+    import signal
+    sys.path.insert(0, str(REPO / "kernel")); import server
+    prompt = f"lengthcut ball {int(time.time())} [length-stop]"
+    gdir = VDIR / "games" / server.slugify(prompt)
+    async with s.post(f"{BASE}/api/game", json={"prompt": prompt}) as r:
+        jid = (await r.json())["job"]
+    res = (await poll_job(s, jid))["result"]
+    assert res.get("truncated") is True and "cut off" in (res.get("warning") or ""), res
+    assert not (gdir / "main.py").exists() and not (gdir / "meta.json").exists(), "a cut game was installed"
+    async with s.get(f"{BASE}/api/apps") as r:
+        assert gdir.name not in [g["slug"] for g in (await r.json())["games"]]
+    if res.get("running") and res.get("pid"):
+        assert list(gdir.glob(".length-cut-v*.py")), "the cut game does not run from its own file"
+        try:
+            os.killpg(res["pid"], signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    for _ in range(40):                                # the reaper removes the run's file with the process
+        if not list(gdir.glob(".length-cut-v*.py")):
+            break
+        await asyncio.sleep(0.25)
+    assert not list(gdir.glob(".length-cut-v*.py")), "the cut run's file outlived the game"
+    assert not (gdir / "meta.json").exists(), "the cut run's exit wrote a crash record"
+    log = (VDIR / "kernel.log").read_text(errors="ignore")
+    assert f"[kernel] length limit: game '{gdir.name}" in log
+    return f"job result truncated + warning, ran from its own file (running={res.get('running')}), no main.py / meta.json"
+
+
+@run_test("http_engine_missing_clean_503", ["R67", "R63", "R86"])
+async def t_engine_missing(s):
+    """A kernel with the engine stamp but no engine binary (a desk / dev box without the engine set):
+    every generation route answers 503 {"error": "... is not installed ...", "engine", "missing": true} —
+    no job, no traceback, no bare 500 — and a cached app still opens."""
+    import subprocess, tempfile, urllib.request
+    port, lport, sdport, trport = 1376, 8141, 8142, 8143
+    tmp = Path(tempfile.mkdtemp(prefix="kairos-noengine-"))
+    (tmp / "bin").mkdir()
+    shutil.copy(VDIR / "bin" / "ENGINES.json", tmp / "bin" / "ENGINES.json")     # the stamp only, no binary
+    (tmp / "models").symlink_to(VDIR / "models")                                  # the placeholder model files
+    env = dict(os.environ, VIBEOS_DIR=str(tmp), VIBEOS_PORT=str(port), VIBEOS_TOKEN_FILE=f"{tmp}/token",
+               VIBEOS_LLAMA_PORT=str(lport), VIBEOS_SD_PORT=str(sdport), VIBEOS_TRANSLATE_PORT=str(trport),
+               KAIROS_LOG_DIR=str(tmp / "log"))
+    env.pop("VIBEOS_HOST", None)
+    logf = open(tmp / "kernel.log", "wb")
+    proc = subprocess.Popen([sys.executable, str(REPO / "kernel" / "server.py")], env=env, stdout=logf,
+                            stderr=subprocess.STDOUT)
+    kb = f"http://127.0.0.1:{port}"
+
+    async def post(path, body):
+        async with s.post(kb + path, json=body, timeout=aiohttp.ClientTimeout(total=60)) as r:
+            return r.status, (await r.json() if "json" in r.headers.get("Content-Type", "") else await r.text())
+    try:
+        for _ in range(80):
+            try:
+                urllib.request.urlopen(f"{kb}/api/status", timeout=1).read()
+                break
+            except Exception:
+                assert proc.poll() is None, (tmp / "kernel.log").read_text(errors="ignore")[-800:]
+                await asyncio.sleep(0.5)
+        else:
+            raise AssertionError("the engine-less kernel never answered")
+        routes = [("/api/ask", {"prompt": "hello"}, "llama-server"),
+                  ("/api/app", {"prompt": "a calculator"}, "llama-server"),
+                  ("/api/browse", {"address": "noengine.test"}, "llama-server"),
+                  ("/api/game", {"prompt": "pong"}, "llama-server"),
+                  ("/api/image", {"prompt": "a fox"}, "sd-cli"),
+                  ("/api/images", {"prompts": ["a fox", "a cat"]}, "sd-cli"),
+                  ("/api/video", {"prompt": "waves"}, "sd-cli"),
+                  ("/api/music", {"prompt": "synthwave"}, "ace-lm")]
+        for path, body, eng in routes:
+            st, j = await post(path, body)
+            assert st == 503, f"{path}: HTTP {st} {str(j)[:300]}"
+            assert isinstance(j, dict) and "not installed" in j["error"] and j["engine"] == eng and j["missing"] is True, (path, j)
+        async with s.get(f"{kb}/web/noengine.test/page") as r:          # the browser's page: its error page, a 503
+            assert r.status == 503 and "not installed" in await r.text(), r.status
+        for k, v in (("translation", "on"), ("language", "de")):        # the translation layer's model on demand
+            st, _ = await post("/api/settings", {"key": k, "value": v})
+            assert st == 200, (k, st)
+        st, j = await post("/api/translate", {"text": "Hello world", "to": "de"})
+        assert st == 503 and "not installed" in j["error"] and j["engine"] == "llama-server", (st, j)
+        async with s.get(f"{kb}/api/status") as r:
+            assert not (await r.json())["jobs"], "a 503 created a job"
+        # a cached app opens instantly with no engine at all (only a generation needs one)
+        adir = tmp / "cache" / "apps" / "cached-noengine"
+        adir.mkdir(parents=True)
+        (adir / "app.html").write_text("<!DOCTYPE html><html><body><p>cached</p></body></html>")
+        (adir / "meta.json").write_text(json.dumps({"app_id": "cached-noengine", "prompt": "cached", "version": 1}))
+        events = await sse_collect(s, f"{kb}/api/app", {"prompt": "cached", "app_id": "cached-noengine"})
+        assert events and events[0][0] == "cached", events[:2]
+        log = (tmp / "kernel.log").read_text(errors="ignore")
+        for bad in ("Traceback", "Server got itself in trouble", "FileNotFoundError"):
+            assert bad not in log, f"{bad!r} in the kernel log:\n{log[-1500:]}"
+        assert "HTTP 503 POST /api/ask" in log, log[-800:]
+    finally:
+        proc.kill(); proc.wait(); logf.close()
+        shutil.rmtree(tmp, ignore_errors=True)
+    return "ask/app/browse/game/image/images/video/music/translate -> 503 JSON naming the engine; /web/ error page 503; no job, no traceback; cached app opens"
 
 
 async def main():

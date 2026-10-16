@@ -343,7 +343,7 @@ async def t_fadvise_real(ctx):
 @run_test("imaging_drop_policy_auto_and_periodic", ["R79"], needs="kernel")
 async def t_drop_policy(ctx):
     """sd_drop_wanted: auto = RAM (MemTotal / cgroup) < LLM + 2 × image files + 6 GiB — on the 8 GB tier
-    (Gemma 13.6 GB, Muse + encoder + VAE 11.1 GB — since 2026-10-10 without a LoRA) a 30 GB machine drops, a
+    (the heretic Gemma 13.9 GB, Muse + encoder + VAE 11.1 GB — since 2026-10-10 without a LoRA) a 30 GB machine drops, a
     64 GB one keeps the cache; on/off force it. _drop_start: every SD_FADVISE_EVERY s on exactly the section's
     files (DiT, text encoder, VAE and a LoRA when the section has one), once more at finish(), then the
     residency log line."""
@@ -399,9 +399,10 @@ async def t_drop_policy(ctx):
     assert 4 <= len(calls) <= 7 and all(c[1] == want for c in calls) and len(calls) == n_after, calls
     gaps = [b[0] - a[0] for a, b in zip(calls, calls[1:-1])]
     assert all(0.1 < g < 0.5 for g in gaps), gaps
-    assert "page cache: image's 4 file(s) (12.2 GB) are dropped while sd reads them" in out, out
-    assert "page cache after the image engine: LLM gemma-4-26B-A4B-it-UD-IQ4_XS.gguf 97% resident, image files 1%" in out, out
-    return f"auto: 30 GB drops / 64 GB keeps; on/off; {len(calls)} drops of the 4 files in 0.75 s + final; residency logged"
+    # [Muse 2026-10-10] DiT 8 316 720 160 + encoder 2 497 281 664 + VAE 253 806 246 B = 11.1 GB, no LoRA (v7.5: 4 files, 12.2 GB)
+    assert "page cache: image's 3 file(s) (11.1 GB) are dropped while sd reads them" in out, out
+    assert "page cache after the image engine: LLM gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf 97% resident, image files 1%" in out, out   # [R86 round 4] the heretic default
+    return f"auto: 30 GB drops / 64 GB keeps; on/off; {len(calls)} drops of the 3 files in 0.75 s + final; residency logged"
 
 
 @run_test("imaging_sd_mmap_opt_in", ["R79"], needs="kernel")
@@ -432,13 +433,13 @@ async def t_mmap(ctx):
 @run_test("imaging_r80_gpu_status_names", ["R80"], needs="kernel")
 async def t_r80_unit(ctx):
     """[R80] ModelManager.gpu_status(): kind none at boot; the menubar names — short_model_name() cuts a
-    manifest name at its first ' (' / ' —' (Gemma 4 26B-A4B-it, Muse, Wan2.2-TI2V-5B …), the image session
+    manifest name at its first ' (' / ' —' (Gemma 4 26B-A4B-it ultra-uncensored heretic — the R86 round-4 default, Muse, Wan2.2-TI2V-5B …), the image session
     adds an applied LoRA (none since Muse: the default = 'Muse', image_safe = 'Muse SFW'); a recorded llama-server that
     is gone reports none, one still loading reports loading; _gpu_clear(kind) only clears that kind."""
     server = ctx["server"]
     m = manifest()
     sn = server.short_model_name
-    assert sn(m["llm"]["name"]) == "Gemma 4 26B-A4B-it" and sn(m["image"]["name"]) == "Muse" and sn(m["image_safe"]["name"]) == "Muse SFW" \
+    assert sn(m["llm"]["name"]) == "Gemma 4 26B-A4B-it ultra-uncensored heretic" and sn(m["image"]["name"]) == "Muse" and sn(m["image_safe"]["name"]) == "Muse SFW" \
         and sn(m["video"]["name"]) == "Wan2.2-TI2V-5B" and sn("plain") == "plain" and sn("") == ""
     assert server.lora_short_name("kroma-v0.3-base-lora-rank-384-fro-0985-bf16") == "Kroma"
     mm = server.ModelManager(m)
@@ -451,7 +452,7 @@ async def t_r80_unit(ctx):
     assert mm.gpu_status()["kind"] == "none", "no llama-server process: nothing resident"
     mm.llama_proc = _Proc()
     g = mm.gpu_status()
-    assert g["kind"] == "llm" and g["name"] == "Gemma 4 26B-A4B-it" and g["loading"] is True and g["full_name"] == m["llm"]["name"]
+    assert g["kind"] == "llm" and g["name"] == "Gemma 4 26B-A4B-it ultra-uncensored heretic" and g["loading"] is True and g["full_name"] == m["llm"]["name"]
     mm.llama_ready = True
     assert mm.gpu_status()["loading"] is False
     mm._gpu_clear("image")
@@ -816,8 +817,9 @@ async def t_c2_kernel_prompts(ctx):
 
 @run_test("imaging_e2e_image_files_leave_page_cache", ["R79"], needs="http")
 async def t_c3_cache(ctx):
-    """VIBEOS_SD_FADVISE=on: an sd-server session logs the drop of the section's 4 files and their
-    residency at the end; the image files (DiT made real and read into the cache before the session)
+    """VIBEOS_SD_FADVISE=on: an sd-server session logs the drop of the section's 3 files (Muse DiT,
+    encoder, VAE — no LoRA since 2026-10-10) and their residency at the end; the image files (DiT made
+    real and read into the cache before the session)
     leave the page cache while the LLM's GGUF (also real and cached) stays resident."""
     k, server = ctx["kernel"], ctx["server"]
     await settle(ctx)
@@ -836,8 +838,8 @@ async def t_c3_cache(ctx):
         assert d["status"] == "done", d
         await settle(ctx)
         log = k.log()[mark:]
-        assert "page cache: image's 4 file(s)" in log and "are dropped while sd reads them" in log, log[-600:]
-        assert "page cache after the image engine: LLM gemma-4-26B-A4B-it-UD-IQ4_XS.gguf" in log, log[-600:]
+        assert "page cache: image's 3 file(s)" in log and "are dropped while sd reads them" in log, log[-600:]
+        assert "page cache after the image engine: LLM gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf" in log, log[-600:]   # [R86 round 4]
         r1 = (server.page_cache_residency(dit), server.page_cache_residency(llm))
     finally:
         for p in (dit, llm):
@@ -916,7 +918,7 @@ async def t_c5_gpu(ctx):
         return st["gpu"], st["state"]
     await ask(ctx, "who is on the GPU?")
     g, _ = await gpu()
-    assert g["kind"] == "llm" and g["name"] == "Gemma 4 26B-A4B-it" and g["loading"] is False, g
+    assert g["kind"] == "llm" and g["name"] == "Gemma 4 26B-A4B-it ultra-uncensored heretic" and g["loading"] is False, g
     seen = []
     st, j = await api(ctx, "POST", "/api/images", {"prompts": ["a menubar orb"], "expand": "off"})
     assert st == 200, j
@@ -932,11 +934,15 @@ async def t_c5_gpu(ctx):
     g, state = await gpu()
     assert (g["kind"], g["name"], state) == ("image", "Muse", "idle"), ("the idle window must keep the image name", g, state)
     await settle(ctx)
-    g, _ = await gpu()
+    for _ in range(30):            # [2026-10-14] settle() sees the server's process gone; the kernel clears the
+        g, _ = await gpu()          # GPU record right after its `await proc.wait()` resumes — a few ms later (a race
+        if g["kind"] == "none":     # that showed under load, suite-2026-10-14-4): wait for the record, up to 3 s
+            break
+        await asyncio.sleep(0.1)
     assert g["kind"] == "none" and g["name"] is None, g
     await ask(ctx, "and now?")
     g, _ = await gpu()
-    assert g["kind"] == "llm" and g["name"] == "Gemma 4 26B-A4B-it", g
+    assert g["kind"] == "llm" and g["name"] == "Gemma 4 26B-A4B-it ultra-uncensored heretic", g
     names = set()
     st, j = await api(ctx, "POST", "/api/images", {"prompts": ["a stock orb"], "expand": "off", "model": "safe"})
     while True:

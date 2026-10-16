@@ -1,5 +1,5 @@
 {
- "at": "2026-10-10 11:43:18",
+ "at": "2026-10-15 13:28:22",
  "tests": {
   "wifi_nmcli_escapes_roundtrip": {
    "reqs": [
@@ -174,7 +174,7 @@
     "R43"
    ],
    "status": "pass",
-   "detail": "fields + flows in network.md / wiki / API.md / dock prompt; dock pack 28263 of 28400 chars (137 spare)"
+   "detail": "fields + flows in network.md / wiki / API.md / dock prompt; dock pack 28211 of 28278 chars (67 spare)"
   },
   "static_xinitrc_signin_window": {
    "reqs": [
