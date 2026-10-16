@@ -86,6 +86,5 @@ and *why*; the tools you used are not part of the record.
 
 ## Licence
 
-No licence has been chosen yet (tracked as a seed issue). By contributing you agree that your
-contribution may be released under the licence the owner picks for the repository. If that is
-not acceptable to you, wait for the decision before contributing code.
+kAIrOS is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). By contributing
+you agree that your contribution is released under the same licence.
