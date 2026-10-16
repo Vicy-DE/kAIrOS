@@ -9,3 +9,11 @@ __pycache__/
 
 # local engine build log
 /engines-build.log
+
+# dev/ scratch state (suite work dir, rig images/overlays/config, the rig's SSH key)
+/dev/work/
+/dev/rig/work/
+/dev/rig/.env
+/dev/rig/testrig/id_kairos
+/dev/rig/testrig/id_kairos.pub
+*.qcow2

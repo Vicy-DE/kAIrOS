@@ -1,0 +1,77 @@
+name: Model suggestion
+description: Propose a model (LLM, image, video, music, translation, knowledge) for a tier or as an add-on
+title: "[model] "
+labels: ["models"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Models are picked by measurement on the target hardware (8 GB VRAM first) and by what their licence allows.
+        Read `docs/MODEL-REFRESH-2026-09.md` (the audit) and a recent benchmark report (`docs/README.md`) to see what a proposal needs.
+  - type: input
+    id: link
+    attributes:
+      label: Model link
+      description: The weights (Hugging Face / civitai / …) in the quantisation you propose (GGUF for llama.cpp / sd.cpp).
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: Role
+      options:
+        - coder LLM (apps / web pages)
+        - fast LLM add-on
+        - image (text-to-image)
+        - image edit
+        - video
+        - music
+        - translation
+        - vision / encoder
+        - knowledge (ZIM)
+    validations:
+      required: true
+  - type: input
+    id: licence
+    attributes:
+      label: Licence
+      description: The exact licence name and link.
+    validations:
+      required: true
+  - type: dropdown
+    id: redistribution
+    attributes:
+      label: May the weights be redistributed inside the appliance image?
+      description: kAIrOS is free and non-commercial, and ships the baked models in a public image. Non-commercial or revenue-capped licences are fine; "no redistribution" is not.
+      options:
+        - "Yes, the licence allows redistribution"
+        - "Yes, with attribution / conditions (name them below)"
+        - "No — add-on download only"
+        - "Unsure"
+    validations:
+      required: true
+  - type: input
+    id: size
+    attributes:
+      label: File size and VRAM
+      description: File size in GB, measured VRAM at the default settings, RAM for offloaded parts.
+      placeholder: 8.3 GB file, 6.7 GB VRAM at 1024², fits the 8 GB tier
+    validations:
+      required: true
+  - type: textarea
+    id: engine
+    attributes:
+      label: Engine support
+      description: Which engine loads it (llama.cpp / stable-diffusion.cpp / acestep.cpp), at which upstream commit, with which arguments.
+  - type: textarea
+    id: benchmark
+    attributes:
+      label: Benchmark evidence
+      description: Numbers against the current default on comparable hardware — time per generation, tokens/s, judged quality, failure rate. A proposal without measurements is a research request, not a model change.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Known weaknesses, prompt format quirks, what it is worse at.

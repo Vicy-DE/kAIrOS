@@ -1,0 +1,7 @@
+# operator state of the testrig — never in version control
+.env
+work/
+testrig/id_kairos
+testrig/id_kairos.pub
+testrig-console.log
+*.qcow2

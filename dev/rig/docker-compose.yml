@@ -1,0 +1,69 @@
+# kAIrOS testrig (dev/rig) — everything runs inside Docker; the host only provides
+# /dev/kvm and, for GPU runs, the vfio-bound NVIDIA GPU (see host-setup.sh).
+#
+#   dev — interactive develop/test container: kernel test suite (mock engines),
+#         engine rebuilds, image surgery. Has KVM (can boot GPU-less VMs) but no GPU.
+#   vm  — boots the kairos-hwtest image in QEMU/KVM WITH the real GPU via VFIO.
+#         Needs the GPU bound to vfio-pci (host-setup.sh + one reboot, or gpu-to-vfio.sh live).
+#
+# Host paths come from dev/rig/.env (copy .env.example); every one has a default under
+# dev/rig/work/ (gitignored) so a fresh clone starts without any configuration:
+#   KAIROS_HOME       -> /images             images (.img), qcow2 overlays, console logs
+#   KAIROS_MODELS     -> /workspace/models   model files (the suite does not need them)
+#   KAIROS_KNOWLEDGE  -> /workspace/knowledge *.zim
+#   KAIROS_BIN        -> /workspace/bin      kiwix-serve (+ engine binaries) = the container's /opt/vibeos/bin
+#   KAIROS_ENGINES    -> /workspace/engines  a built engine set (bin/ + engines/ + lib/) for sync-guest.sh
+#   VFIO_GROUP        the GPU's IOMMU group number (host-setup.sh writes it)
+#
+#   docker compose run --rm dev bash                                   # dev shell, repo at /workspace/repo
+#   docker compose run --rm dev /workspace/repo/dev/rig/testrig/vm.sh test   # boot-test VM, no GPU
+#   docker compose run --rm vm                                         # full GPU boot-test
+#   docker compose run --rm vm /workspace/repo/dev/rig/testrig/vm.sh smoke   # + real image generation
+#   docker compose run --rm --service-ports vm /workspace/repo/dev/rig/testrig/vm.sh run   # interactive (VNC :5900)
+# Always name the mounted vm.sh explicitly: the copy baked into the image (/rig/vm.sh) goes stale.
+services:
+  dev:
+    build: ./testrig
+    image: kairos-testrig
+    container_name: kairos-dev
+    command: sleep infinity
+    init: true
+    devices:
+      - /dev/kvm
+    volumes:
+      - ${KAIROS_HOME:-./work}:/images
+      - ../..:/workspace/repo
+      - ${KAIROS_MODELS:-./work/models}:/workspace/models
+      - ${KAIROS_KNOWLEDGE:-./work/knowledge}:/workspace/knowledge
+      - ${KAIROS_BIN:-./work/bin}:/workspace/bin
+      - ${KAIROS_ENGINES:-./work/engines}:/workspace/engines
+    environment:
+      # [R66] the kernel binds 127.0.0.1 by default; a kernel started by hand in this
+      # container is only reachable through the 1338:1337 mapping if it listens on all
+      # interfaces (the docker-proxy is not a loopback peer). State-changing calls from
+      # the host still need the token (/tmp/kairos-test/cache/token or $VIBEOS_DIR/cache/token).
+      VIBEOS_HOST: "0.0.0.0"
+    ports:
+      - "2223:2222"   # SSH of a VM booted manually inside dev
+      - "1338:1337"
+
+  vm:
+    build: ./testrig
+    image: kairos-testrig
+    container_name: kairos-vm
+    command: /workspace/repo/dev/rig/testrig/vm.sh test
+    init: true
+    devices:
+      - /dev/kvm
+      - /dev/vfio/vfio
+      - /dev/vfio/${VFIO_GROUP:-14}   # GPU iommu group; host-setup.sh writes dev/rig/.env
+    ulimits:
+      memlock: -1                     # VFIO must lock all guest RAM for DMA
+    volumes:
+      - ${KAIROS_HOME:-./work}:/images
+      - ../..:/workspace/repo
+      - ${KAIROS_ENGINES:-./work/engines}:/workspace/engines
+    ports:
+      - "2222:2222"   # guest SSH (root: testrig/id_kairos key, or password on pre-R66 images)
+      - "1337:1337"   # kAIrOS UI of the guest — only once expose-ui.sh ran in the guest [R66]
+      - "5900:5900"   # VNC view of the guest display

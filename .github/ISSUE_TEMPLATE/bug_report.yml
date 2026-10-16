@@ -1,0 +1,75 @@
+name: Bug report
+description: Something does not work — on the appliance, in the VM rig, or in the test suite
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. Please fill in what you can; the boot-log verdict is the single most useful thing for appliance problems.
+        Do not paste secrets (SSH keys, WiFi passwords, tokens) or generated adult material.
+  - type: input
+    id: version
+    attributes:
+      label: Image / version
+      description: The image file name and its sha256 (`*.img.sha256`), or the git commit for a source checkout.
+      placeholder: kairos-hwtest-4070-v7.5.img, sha256 …  /  commit abc1234
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      options:
+        - On the appliance (booted from a stick or installed)
+        - In the VM test rig (dev/rig)
+        - In the test suite (dev/docker/run-suite.sh)
+        - Desktop in a browser window (dev/rig/desk-window.sh)
+        - Building engines / models / the image
+    validations:
+      required: true
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware
+      description: CPU, GPU(s) with VRAM, RAM, how it boots (USB stick / internal disk / VM). `nvidia-smi` and `lspci -nnk | grep -A3 VGA` output help.
+      placeholder: |
+        AMD Ryzen 7 7840HS + Radeon 780M (display), RTX 4070 Laptop 8 GB, 32 GB RAM, USB 3 stick
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. flash the image, boot it
+        2. type "a pomodoro timer" into the search field, press Enter
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, what happened instead
+    validations:
+      required: true
+  - type: textarea
+    id: verdict
+    attributes:
+      label: Boot-log verdict (appliance problems)
+      description: |
+        The image writes `KAIROS-LOGS/latest.txt` + `latest.json` onto the EFI partition after every boot (readable on any OS; `dev/rig/stick-logs.sh` collects them). Paste `latest.json`, or the first lines of `latest.txt` (SUMMARY/VERDICT block). For VM runs: `testrig-latest.json` next to the console log.
+      render: json
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The test-suite log, `docker logs`, `journalctl -u kairos`, or the console log — the relevant part.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched the existing issues.
+        - label: The report contains no secrets, personal paths that identify me, or adult material.

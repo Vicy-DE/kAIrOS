@@ -1,0 +1,51 @@
+# kAIrOS kernel-test image — the container the mock-engine test suite runs in (no GPU).
+#
+# It reproduces the three images the project used until now, as build stages:
+#   base         = kairos-cudarun-next:local   debian:trixie + python3-aiohttp + ffmpeg (+ curl, git, libgomp1)
+#   feattest     = kairos-feattest:local       + python3-pygame + psmisc   (the R11 game forge tests)
+#   kernel-test  = kairos-fix:local            + quickjs + aria2           (the JS syntax gate [D7] needs
+#                                                trixie's quickjs 2025-04-26; Ubuntu noble's 2021 build is
+#                                                refused as too old and two gate tests would skip)
+#   chromium     = kairos-fix-chromium:local   + chromium (the desktop-in-a-window kernel runtime-checks
+#                                                generated apps with a real browser, like the appliance)
+#   x11          = kairos-fix-x11:local        + Xvfb, openbox, python3-xlib, xdotool, x11 utils: a real X
+#                                                server + the kiosk's window manager for tests/test_games_windows.py
+#                                                (R82: games in desktop window frames)
+#
+# Build (from the repo root — the default target is kernel-test):
+#   bash dev/docker/build.sh                      # -> kairos-test:local (also tagged kairos-fix:local)
+#   bash dev/docker/build.sh chromium             # -> kairos-test-chromium:local
+#   bash dev/docker/build.sh x11                  # -> kairos-test-x11:local
+#
+# Debian trixie is the appliance's own release, so the kernel is tested on the Python/aiohttp/ffmpeg
+# versions it ships with. The engines (llama.cpp, sd.cpp, acestep.cpp) are NOT in this image: the suite
+# runs on the mock engines in tests/, and the GPU smokes mount a built engine set at /opt/vibeos.
+FROM debian:trixie AS base
+RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    python3 python3-aiohttp ffmpeg curl procps ca-certificates libgomp1 git \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM base AS feattest
+RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    python3-pygame psmisc \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM feattest AS kernel-test
+RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    quickjs aria2 \
+    && rm -rf /var/lib/apt/lists/* && qjsc -h 2>&1 | head -1
+# the suite's /opt/vibeos is mounted by dev/docker/run-suite.sh (bin + knowledge symlinks); the
+# kernel's own default VIBEOS_DIR is /opt/vibeos, so the directory must exist even when nothing is mounted
+RUN mkdir -p /opt/vibeos /workspace/repo /workspace/models /workspace/knowledge /workspace/bin
+WORKDIR /workspace/repo
+CMD ["/bin/bash"]
+
+FROM kernel-test AS chromium
+RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    chromium fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM chromium AS x11
+RUN apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    xvfb openbox python3-xlib xdotool x11-utils x11-xserver-utils \
+    && rm -rf /var/lib/apt/lists/*
