@@ -1,50 +1,72 @@
-"""[R86] Refusal detection and the hard minors guard.
+"""[R86] Refusal detection and the narrow minors block (round 4, 2026-10-10).
 
-kAIrOS is an 18+ system without content filters; its default LLM (Gemma 4) still refuses adult
-requests, and until R86 the kernel shipped the refusal as the result: a cached "website" that
-read "I cannot fulfill this request. I am programmed to be a helpful and harmless AI assistant.
-My safety guidelines prohibit me from generating sexually explicit content or pornography."
-(the owner's test 2026-10-09, desk-test cache/web/porn-xxx-…-387761c2.html), and a picture whose
-prompt was the expander's refusal text (job 1d491e7b6c58). server.llm_generate / llm_stream call
-is_refusal() on every user-facing generation and climb the fallback ladder when it says yes.
+kAIrOS is an 18+ system without content filters. Its default LLM used to refuse adult requests, and until
+R86 the kernel shipped the refusal as the result: a cached "website" that read "I cannot fulfill this
+request. I am programmed to be a helpful and harmless AI assistant. My safety guidelines prohibit me from
+generating sexually explicit content or pornography." (the owner's test 2026-10-09, desk-test
+cache/web/porn-xxx-…-387761c2.html), and a picture whose prompt was the expander's refusal text (job
+1d491e7b6c58). server.llm_generate / llm_stream call is_refusal() on every user-facing generation and climb
+the fallback ladder when it says yes; when every rung is used up the request is declined (never cached,
+never rendered, never a 502).
 
-is_refusal(text, kind) -> (bool, reason). kind:
-  "html"   — a page or an app: the visible text (tags, scripts, styles stripped) is short or the
-             document is tag-poor, AND a refusal sentence stands near its start.
-  "text"   — a prose answer, a spec, game code, a wallpaper scene: a refusal sentence at the start
-             (after a lead-in such as "I'm sorry, but"), in a short answer; a long answer that merely
-             opens with one is left alone unless it names the model's own guidelines/programming.
-  "prompt" — an image-prompt expansion: short by nature, a refusal sentence anywhere counts.
+is_refusal(text, kind) -> (bool, reason). The three kinds are judged asymmetrically (review round 3, §3):
+  "prompt" — an image-prompt expansion. RECALL first: a description never says "I can't", so any refusal,
+             apology or policy sentence anywhere in the (short) answer is a refusal. The one exception is a
+             refusal-shaped phrase inside quotation marks that a sign/slogan/caption word introduces ("a
+             sign that reads \"I can't help you\""): that is the picture's text, not the model's.
+  "text"   — a prose answer, a spec, game code, a wallpaper scene. PRECISION first: a refusal is either an
+             answer that is essentially only a refusal (a bare "I can't do that." / "Das kann ich leider
+             nicht machen."), or a refusal opening followed by content-policy vocabulary (explicit, sexual,
+             adult content, guidelines, policy, appropriate, harmful, comfortable …). A limitation followed
+             by help is NOT a refusal: "I can't generate a QR code image directly, but …", "I can't do that
+             calculation without the interest rate. What rate …", "I don't support that file format yet.
+             Try PNG." — the sentence names a concrete object and no policy word follows.
+  "html"   — a page or an app. A real page (structure AND substantial visible text) is never a refusal; a
+             short, structure-poor document whose visible text is a refusal IS one, even with a button in it.
 
-Precision over recall (the task rule): a missed refusal falls back to today's behaviour, a false
-positive costs a retry and possibly a model swap — and, on the stick without the uncensored file, a
-502 for a correct answer (review round 2, S1). So the phrases are first-person refusals with their
-object ("I can't help WITH / fulfil / create / generate …", never a bare "I can't"), a match led by a
-quote or by "say:"/"e.g." (a story's dialogue, an answer explaining refusals) does not count, idioms
-("I can't help thinking/but") are excluded, "I can't X, but/so here is …" followed by real content is
-partial help and not a refusal, the model's "guidelines / policies" count only as ITS OWN ("my …"),
-"as an AI" / "I'm designed to" count only when a refusal verb follows, and a page with real structure
-or a long answer is never a refusal because of one sentence. Languages: EN, DE (the OS languages the
-owner uses) plus FR, ES, IT.
+Ground truth: the real refusals of the refusal screen (results/r86-refusal-fallback/screen/, stock Gemma 4,
+the stock Qwen3-VL encoder, Qwen2.5-Coder) and the owner's two. The phrases are first-person refusals WITH
+their object ("I can't help WITH / fulfil / create / generate …", never a bare "I can't"); a match led by a
+quote or by "say:" / "e.g." (a story's dialogue, an answer explaining refusals) does not count for text and
+html; the idioms "I can't help thinking / but" are excluded; "guidelines / policies" count only as the
+model's OWN ("my …"); "as an AI" / "I'm designed to" count only with a refusal verb. Languages: EN, DE (the
+OS languages the owner uses) plus FR, ES, IT, JA, RU.
 
-minor_risk(text) is the hard minors guard (§ at the end): sexual term + minor indicator in one clause.
-cites_minors(refusal) is its safety net: a refusal that itself names minors blocks the ladder.
+minor_block(text) is the ONE minors check of the kernel (the section at the end): a floor, not a filter.
+
+Round 4b (2026-10-11, the independent review of round 4): the text rule's policy vocabulary is CONTENT-POLICY
+forms only (my / our / content policy or guidelines, inappropriate / not appropriate, the explicit / sexual /
+porn / nude words) — an everyday answer that mentions a privacy policy, an appropriate date, a restricted
+folder or safety guidelines is not a refusal (S1); the plain refusals "that's not something I can help with",
+"I'm not going to write that", "I won't be generating that", "Das mache ich nicht", "Ich werde keine …
+erstellen", "Ich lehne … ab", "Leider darf ich keine …" are (S2); the expander's own check
+is_expansion_refusal() adds any first-person "I can't …" outside a quoted sign text (R5); strip_thinking /
+visible_text / the tag count are find()-based and linear on pathological model output (S10).
 """
+import bisect
 import re
 import unicodedata
 from html import unescape
 
-THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL | re.IGNORECASE)
+THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL | re.IGNORECASE)     # the rule strip_thinking implements
+# [round 4b, S10] the linear scanners' pieces: every opening / closing found once (finditer of a literal is linear),
+# paired by bisect — the regexes THINK_RE, <(script|style)\b.*?</\1\s*>, <!--.*?--> and <[^>]+> are quadratic on model
+# output such as 8 000 unclosed <think> tags (2.9 s), 8 000 unclosed <script> tags (1.3 s) or 30 000 "<a" (1.1 s)
+_THINK_OPEN, _THINK_CLOSE = re.compile(r"<think>", re.IGNORECASE), re.compile(r"</think>", re.IGNORECASE)
+_BLOCK_OPEN = re.compile(r"<(script|style)\b", re.IGNORECASE)
+_BLOCK_CLOSE = {"script": re.compile(r"</script\s*>", re.IGNORECASE), "style": re.compile(r"</style\s*>", re.IGNORECASE)}
+_COMMENT_OPEN, _COMMENT_CLOSE = re.compile(r"<!--"), re.compile(r"-->")
 
 # how far into the text a refusal sentence is looked for, and how short a "short" answer is
 SCAN = 700
-SHORT = 700            # chars: an answer this short that opens with a refusal IS one
-LONG = 1600            # chars: beyond this a leading refusal sentence is ignored (unless strong)
-START_TEXT = 48        # chars after the lead-in within which the sentence must start (text/prompt)
+SHORT = 700            # chars: a STRONG pattern a sentence or two in counts only in an answer this short
+START_TEXT = 48        # chars after the lead-in within which the sentence must start (text)
 START_HTML = 90        # the same for a page's visible text (a <title> may come first)
 HTML_SHORT = 600       # visible chars: a refusal page has little to say
-HTML_TAG_POOR = 6      # tags: a refusal "page" has (almost) no structure
+HTML_RICH = 12         # opening tags: more than this AND more than HTML_SHORT visible chars = a real page
 PIVOT_CONTENT = 40     # chars of real content after "…, but / so / however" that make it partial help
+CONTINUATION_MIN = 60  # chars of plain content after the refusal sentence that make it partial help
+PROMPT_MAX = 2000      # an expansion is one paragraph; longer texts are not expansions
 
 # lead-ins a refusal may open with before the phrase itself (markdown marks, apologies, "but", labels)
 _LEAD = re.compile(
@@ -53,7 +75,7 @@ _LEAD = re.compile(
     r"|unfortunately[,]?\s*|i apologi[sz]e[,.]*\s*|my apologies[,.]*\s*|(?:oh|hmm|well|ok|okay)[,.]*\s*"
     r"|(?:error|note|warning|notice|important|request declined|declined|response|answer|reply|ai|assistant)[:.]?\s*"
     r"|sadly[,]?\s*|but\s+|however[,]?\s*"
-    r"|es tut mir (?:sehr |wirklich )?leid[,.]*\s*|leider[,]?\s*|entschuldigung[,.]*\s*|tut mir leid[,.]*\s*|aber\s+"
+    r"|es tut mir (?:sehr |wirklich )?leid[,.]*\s*|leider[,]?\s*|entschuldigung[,.]*\s*|tut mir leid[,.]*\s*|aber\s+|nein[,.!]*\s*"
     r"|(?:hinweis|fehler|antwort)[:.]?\s*"
     r"|je suis (?:vraiment )?désolée?[,.]*\s*|désolée?[,.]*\s*|malheureusement[,]?\s*|mais\s+"
     r"|lo siento(?: mucho)?[,.]*\s*|lamentablemente[,]?\s*|pero\s+"
@@ -66,22 +88,47 @@ _HELP = r"(?:help|assist)(?!\s+(?:but|it|myself|\w+ing)\b)"
 _EN_VERBS = (r"(?:" + _HELP + r"|fulfil?l|comply|complete|create|write|generate|produce|provide|do (?:that|this)"
              r"|continue|proceed|describe|depict|engage|participate|draw|design|build|code|compose|render|expand"
              r"|rewrite|answer|respond|support|accommodate|honou?r)")
+# ([round 4b] NOT make / include / show / add / display: RE_ANY is kind "prompt" too, i.e. the MT check (Y5) — "I can't show
+# the preview", "I can't add the file" are UI translations there; the expander's own check catches them, is_expansion_refusal)
+# [round 4b, S2] "-ing" forms after "won't be / am not": "I won't be generating that", "I'm not writing that"
+_EN_VERBS_ING = (r"(?:help|assist|fulfil|fulfill|comply|complet|creat|writ|generat|produc|provid|do|continu|proceed|describ|depict"
+                 r"|engag|participat|draw|design|build|cod|compos|render|expand|rewrit|answer|respond|support|accommodat|honou?r"
+                 r")ing(?!\s+(?:but|it|myself)\b)")
 _EN_CANT = (r"(?:cannot|can'?t|can not|am unable to|'m unable to|am not able to|'m not able to|won'?t|will not"
             r"|must not|may not|do not|don'?t|refuse to|have to decline to|must decline to"
-            r"|am not (?:allowed|permitted|going) to|'m not (?:allowed|permitted|going) to)")
+            r"|am not (?:allowed|permitted|going|willing) to|'m not (?:allowed|permitted|going|willing) to)")
+# [round 4b, S2] en_inappropriate's pieces: the negated copula, and "something I can help with / I'm comfortable writing"
+_EN_NOT_BE = r"(?:'s not| is not| isn'?t| would not be| wouldn'?t be| won'?t be| will not be| was not| wasn'?t)"
+_EN_SOMETHING = (r"something (?:I|we)(?: can| could|'m able to| am able to|'m willing to| am willing to|'m going to| am going to"
+                 r"|'d be willing to| would| will|'m allowed to| am allowed to) (?:help|do|create|write|assist|generate|produce|make"
+                 r"|provide|support|describe|draw|continue|answer|engage)|something I(?:'m| am) (?:comfortable|willing|able|going to"
+                 r"|allowed to|permitted to)(?:\s+\w+)?")
 _DE_VERBS = (r"(?:helfen|weiterhelfen|erfüllen|erstellen|schreiben|generieren|nachkommen|entsprechen|unterstützen"
              r"|fortfahren|beschreiben|darstellen|tun|machen|anbieten|liefern|verfassen|umsetzen|erzeugen|bearbeiten"
              r"|ausführen|bauen|programmieren|produzieren|anfertigen|zeichnen|malen)")
 
 # every pattern is a named group; the STRONG ones name the model's own rules/programming — they
-# count in a longer answer too, the others only at the start of a short one
+# count a sentence or two in too, the others only at the start
 _PATTERNS = [
     # ---- English
-    ("en_cant", r"\bI " + _EN_CANT + r"\s+(?:be able to\s+)?" + _EN_VERBS + r"\b"),
+    # [round 4b, S2] "I" + a space OR an apostrophe: "I'm not going to / not allowed to / not willing to …" were dead
+    # behind "\bI " (review R4); "I won't be generating that" (an -ing form after "be")
+    ("en_cant", r"\bI(?:\s+|(?='))" + _EN_CANT + r"\s+(?:be able to\s+|be\s+)?(?:" + _EN_VERBS + r"|" + _EN_VERBS_ING + r")\b"),
+    # [round 4b, S2] the whole answer is "Sorry, I can't." — nothing follows
+    ("en_bare_cant", r"\bI (?:cannot|can'?t|won'?t|will not|must not|refuse)(?=[.!…]+\s*$)"),
+    ("en_not_ing", r"\bI(?:'m| am) not " + _EN_VERBS_ING + r"\b"),
     ("en_unable", r"\bI'?m (?:unable|not able) to\s+" + _EN_VERBS + r"\b"),
     # only the NEGATED form: "that is not appropriate / isn't something I can help with" — never "yes, that is allowed" [S1]
-    ("en_inappropriate", r"\b(?:that|this)(?: request| content| kind of content)? (?:(?:is|would be) not|isn'?t|is not) "
-                         r"(?:appropriate|something I can (?:help|do|create|write)|allowed|permitted)\b"),
+    # [round 4b, S2] + "that's not something I can help with / I'm able to help with / I'm going to do" (the review's
+    # "that's" forms); the negation stays mandatory
+    # "it" only with the refusal-specific predicates: "No, it's not allowed." / "it's not appropriate" answer a question
+    ("en_inappropriate", r"\b(?:(?:that|this)(?: request| content| kind of content| sort of thing)?" + _EN_NOT_BE
+                         + r" (?:appropriate|allowed|permitted|possible for me|" + _EN_SOMETHING + r")"
+                         + r"|it" + _EN_NOT_BE + r" (?:possible for me|" + _EN_SOMETHING + r"))\b"),
+    # round 4 (review-r3 I2): "I'd rather not write that", "that's not something I'm comfortable writing"
+    ("en_rather", r"\bI(?:'d| would) (?:rather not|prefer not to)(?:\s+\w+)?\b"),
+    ("en_comfortable", r"\b(?:(?:that|this|it)(?:'s| is) not something I(?:'m| am) (?:comfortable|willing|able|going to)(?:\s+\w+)?"
+                       r"|I(?:'m| am) not comfortable (?:with|doing|writing|creating|generating|producing|describing))\b"),
     # "I'm programmed/designed to …" only with a refusal object — not "designed to be a friendly assistant" [S1]
     ("en_programmed", r"\bI(?:'m| am) (?:programmed|designed|built|trained) to (?:avoid|refuse|decline|not\b"
                       r"|be (?:a )?(?:helpful|safe)(?:,| and) harmless)"),
@@ -90,15 +137,18 @@ _PATTERNS = [
                       r"|guidelines|policies|programming)\b"),
     ("en_against", r"\b(?:against|violates?|goes against|conflicts? with) my (?:content |usage |safety |ethical )?"
                    r"(?:policy|policies|guidelines|programming|principles|rules|values|terms)\b"),
+    # "violates ethical and safety guidelines" (the stock encoder's refusal, screen 2026-10-09) [round 4]
+    ("en_violates", r"\b(?:violates?|goes against|conflicts? with) (?:the |our |these |its )?(?:ethical|safety|content|usage|community)"
+                    r"(?: and (?:ethical|safety|content|usage))? (?:guidelines|policies|policy|principles|rules|standards)\b"),
     # "as an AI, I …" only with a refusal verb — never "as an AI, I don't have feelings" [S1]
-    ("en_as_ai", r"\bas an AI(?: language model| assistant| model| system)?,? I " + _EN_CANT + r"\s+(?:be able to\s+)?"
-                 + _EN_VERBS + r"\b"),
+    ("en_as_ai", r"\bas an AI(?: language model| assistant| model| system)?,? I(?:\s+|(?='))" + _EN_CANT + r"\s+(?:be able to\s+|be\s+)?(?:"
+                 + _EN_VERBS + r"|" + _EN_VERBS_ING + r")\b"),
     ("en_decline", r"\bI (?:must|have to|need to|will|'ll|respectfully|politely) (?:respectfully |politely )?(?:decline|refuse)\b"),
     ("en_prohibited", r"\bI(?:'m| am) (?:prohibited|forbidden|restricted|not permitted|not allowed) (?:from|to)\b"),
     ("en_explicit", r"\b(?:sexually explicit|pornographic|explicit sexual|adult|explicit) (?:content|material)"
                     r"[^.!?\n]{0,40}?\b(?:is|are|goes|go) (?:not (?:allowed|permitted|something I)|against|prohibited|outside)\b"),
     # ---- German  (round 3, Y2: every "ich kann … nicht" needs a refusal VERB — "ich kann dir nicht sagen, wer
-    # gewinnt" is information; the verbless de_kann_nicht is gone)
+    # gewinnt" is information)
     # "ich kann [dir / diese Website / so etwas …] nicht <refusal verb>": up to four words between kann and nicht
     ("de_kann_nicht_v", r"\bich kann(?:\s+[\wäöüß-]+){0,4}\s+nicht\s+" + _DE_VERBS + r"\b"),
     # "ich kann keine … erstellen" — a refusal verb within the clause; "ich kann dir keine genaue Zahl nennen" is information [S1]
@@ -113,8 +163,25 @@ _PATTERNS = [
     ("de_richtlinien", r"\bmeine[nr]? (?:sicherheits|nutzungs|inhalts)?richtlinien\b"),
     ("de_verstoesst", r"\bverst(?:ö|oe)(?:ß|ss)t gegen meine\b"),
     ("de_anfrage", r"\b(?:diese|die|deine|ihre) (?:anfrage|bitte|aufgabe) kann ich (?:leider )?nicht\b"),
+    # round 4 (review-r3 I2): "Das kann ich leider nicht machen.", "Ich werde dabei nicht helfen."
+    ("de_das_kann", r"\b(?:das|dies|so etwas|sowas|solche inhalte) kann ich (?:dir |ihnen |euch )?(?:leider )?nicht\b"),
+    ("de_werde", r"\bich werde (?:(?:dir|ihnen|euch|dabei|damit|hierbei|das|dies|leider)\s+)*nicht\s+" + _DE_VERBS + r"\b"),
     ("de_dabei", r"\b(?:dabei|damit|hierbei) kann ich (?:dir |ihnen |euch )?(?:leider )?nicht (?:helfen|weiterhelfen)\b"),
     ("de_ablehnen", r"\bich (?:muss|werde) (?:diese anfrage |das |dies |diese bitte )?(?:leider )?ablehnen\b"),
+    # [round 4b, S2] the review's plain German forms: "Das mache ich nicht.", "Solche Inhalte erstelle ich nicht.", "Das werde /
+    # darf ich nicht (schreiben).", "Ich werde keine expliziten Inhalte erstellen.", "Ich lehne diese Anfrage ab.", "Leider darf
+    # ich keine pornografischen Texte verfassen." (inverted order), "Ich möchte das nicht schreiben.", "Darauf kann ich nicht
+    # eingehen.", "Das ist nicht angemessen."
+    ("de_das_mache", r"\b(?:das|dies|so etwas|sowas|solche (?:inhalte|texte|geschichten|bilder|anfragen|sachen)|solches|derartiges|diese anfrage) "
+                     r"(?:mache|tue|schreibe|erstelle|beantworte|generiere|produziere|erzeuge|liefere|beschreibe|zeichne|male|übernehme|unterstütze|erfülle) ich "
+                     r"(?:(?:dir|ihnen|euch|leider|hier|jetzt|definitiv|grundsätzlich|auf keinen fall)\s+)*nicht\b"),
+    ("de_das_werde", r"\b(?:das|dies|so etwas|sowas|solche inhalte|diese anfrage) (?:werde|will|möchte|darf) ich (?:(?:dir|ihnen|euch|leider|hier|jetzt)\s+)*nicht\b"),
+    ("de_werde_keine", r"\bich werde (?:(?:dir|ihnen|euch|dabei|damit|hierbei|leider|hier|jetzt)\s+)*keine[nrs]?(?:\s+[\wäöüß,-]+){0,5}?\s+" + _DE_VERBS + r"\b"),
+    ("de_lehne", r"\bich lehne (?:(?:das|dies|es|diese anfrage|diese bitte|den auftrag|diesen auftrag|solche anfragen|hiermit|leider|höflich|entschieden)\s+)*ab\b"),
+    ("de_darf_inv", r"\bdarf ich (?:(?:dir|ihnen|euch|leider|dabei|damit|hier|das|dies|so etwas)\s+)*(?:nicht|keine[nrs]?)(?:\s+[\wäöüß,-]+){0,5}?\s+" + _DE_VERBS + r"\b"),
+    ("de_moechte", r"\bich (?:möchte|moechte|will) (?:(?:das|dies|so etwas|sowas|dir|ihnen|euch|dabei|damit|hier|leider|dazu)\s+)*nicht\s+" + _DE_VERBS + r"\b"),
+    ("de_darauf", r"\bdarauf (?:kann|werde|möchte|will|darf) ich (?:leider )?nicht eingehen\b"),
+    ("de_nicht_angemessen", r"\b(?:das|dies|so etwas|sowas|diese anfrage|dieser inhalt|solche inhalte) (?:ist|wäre|sind|wären) (?:leider |einfach |wirklich )?nicht angemessen\b"),
     # ---- French
     ("fr_peux_pas", r"\bje ne peux pas (?:vous |t'|te |y )?(?:aider|créer|générer|écrire|répondre|fournir|produire|réaliser"
                     r"|satisfaire|donner suite|rédiger|continuer|décrire)\b"),
@@ -161,61 +228,208 @@ _LIMIT_OBJ = re.compile(
     r"|sagen,? (?:ob|wer|wie|was|wann|wo|welche)|echtzeit|live-?daten|aktuelle[nrs]?|genaue[nrs]?|vorhersag\w*|zukunft|garantie\w*"
     r"|versprech\w*|rechtsberatung|medizinische|diagnose|meinung|heute|morgen|gestern|wieder|mehr|wetter|ergebnis|preis"
     r"|en temps réel|prévoir|prédire|en tiempo real|predecir|in tempo reale|prevedere", re.IGNORECASE)
+# [round 4b, S1] the CONTENT-POLICY forms — the only policy vocabulary that counts, in _POLICY, in _REFUSAL_VOCAB's veto
+# and in _REFUSAL_OBJ: the model's OWN policy / guidelines ("my content policy", "our guidelines", "meine Richtlinien"),
+# "content policy", "inappropriate / not appropriate", and the explicit / sexual / porn / nude words (EN, DE, FR, ES, IT,
+# RU, JA). The bare words policy / guidelines / appropriate / safety / restricted / Richtlinien do NOT count any more: an
+# everyday answer that opens with a limitation and mentions a privacy policy, an appropriate date, a restricted folder
+# or the safety guidelines on a package is not a refusal (review R4: 10 of 14 such answers were judged refusals).
+_POLICY_FORMS = (
+    r"(?:my|our|its)\s+(?:(?:own|safety|content|usage|ethical|community)\s+)?(?:polic(?:y|ies)|guidelines|programming)"
+    r"|content\s+(?:polic(?:y|ies)|guidelines)|(?:not|n't)\s+appropriate|inappropriate|unangemessen|nicht\s+angemessen"
+    r"|meine[nrs]?\s+(?:(?:sicherheits|nutzungs|inhalts)-?)?richtlinien|inhaltsrichtlinien"
+    r"|explicit\w*|sexual\w*|sexually|pornograph\w*|porn\b|porno\w*|nudity|nudes?\b|naked|erotic\w*|nsfw"
+    r"|adult\s+(?:content|material|themes?|websites?|images?|stories|videos?|scenes?)"
+    r"|explizit\w*|pornograf\w*|sexuell\w*|nackt\w*|erotisch\w*|erotik\w*|explícit\w*|explicite\w*|esplicit\w*|sessual\w*"
+    r"|sexuel\w*|erótic\w*|érotique\w*|erotic[oaei]|mes\s+(?:directives|principes|règles)|mis\s+(?:directrices|políticas|normas)"
+    r"|le mie\s+(?:linee guida|politiche|regole)|мо(?:и|им|их)\s+(?:правил\w*|принцип\w*|политик\w*)|ポリシー|ガイドライン")
 _REFUSAL_OBJ = re.compile(
-    r"explicit|sexual|sexually|porn\w*|nude|nudity|naked|erotic|adult (?:content|material)|(?:that|this|your|the|such an?) (?:request|kind|type|sort)"
-    r"|(?:this|that|such) content|such material|harmful|illegal|inappropriate|unethical|offensive|hateful|violent|dangerous|against (?:my|the|our)"
-    r"|guidelines?|polic(?:y|ies)|programm(?:ed|ing)|principles|ethic\w*|safety|violat\w*|prohibit\w*|comply|fulfil|generat(?:e|ing) (?:this|that|such)"
-    r"|creat(?:e|ing) (?:this|that|such)|assist with (?:that|this)|help with (?:that|this)|anfrage|inhalte?|pornograf\w*|sexuell\w*|nackt\w*"
-    r"|explizit\w*|richtlinien|unangemessen|schädlich|illegal|contenu|contenido|contenuto", re.IGNORECASE)
+    r"(?:" + _POLICY_FORMS + r")|(?:that|this|your|the|such an?) (?:request|kind|type|sort)"
+    r"|(?:this|that|such) content|such material|harmful|illegal|unethical|offensive|hateful|violent|dangerous|against (?:my|the|our)"
+    r"|comply|fulfil|generat(?:e|ing) (?:this|that|such)|creat(?:e|ing) (?:this|that|such)|assist with (?:that|this)|help with (?:that|this)"
+    r"|(?:diese|deine|ihre) anfrage|schädlich", re.IGNORECASE)
 # after a refusal sentence, a continuation that speaks the refusal's vocabulary is still a refusal; one that
-# does not (and repeats no refusal pattern) is the real answer — partial help [Y2]
+# does not (and repeats no refusal pattern) is the real answer — partial help [Y2]. [round 4b, S1] the vocabulary =
+# the content-policy forms, the refusal verbs, the reference forms and the polite closers — no bare policy words
+# (policy, guidelines, appropriate, safety, restricted, Richtlinien, rules); the model's self-descriptions stay ("I am
+# programmed …", "my purpose is …", "ethical", "respectful", "boundaries": "…, so this is not a refusal" read them wrong)
 _REFUSAL_VOCAB = re.compile(
-    r"guideline|polic(?:y|ies)|programm|harmless|explicit|pornograph|sexual|nudity|inappropriate|declin|comply|ethic|safety|safe\b"
-    r"|violat|prohibit|purpose|principle|respectful|material|request|content|assist(?:ance)? with|anything else|something else"
-    r"|happy to help|other (?:request|topic|question)|let me know|feel free|boundar|restrict|unable|can't|cannot|won't|not able"
-    r"|richtlinien|unangemessen|explizit|pornograf|sexuell|anfrage|inhalte|gerne (?:helfe|bei)|etwas anderes|stattdessen|regeln|grundsätze",
+    r"(?:" + _POLICY_FORMS + r")|harmless|declin|comply|prohibit|violat|refus|unable|can't|cannot|won't|not able"
+    r"|programm|ethic|purpose|respectful|boundar|assist(?:ance)? with"
+    r"|(?:this|that|such|the) (?:kind|type|sort) of (?:content|request|material)|such (?:content|material|requests?)"
+    r"|(?:this|that) (?:content|material|request)|your request|anything else|something else|happy to help"
+    r"|other (?:request|topic|question|queries)|different topics?|let me know|feel free|what I can do"
+    r"|gerne (?:helfe|bei)|etwas anderes|stattdessen|andere[nrs]? (?:anfrage|frage|thema)|ablehn\w*|verweiger\w*|kann ich nicht|darf ich nicht",
     re.IGNORECASE)
-CONTINUATION_MIN = 60
-# the STRONG patterns name the model's own rules / programming / role — they count a sentence or two in;
-# en_explicit is NOT strong since round 2 (it must open the answer) [S1]
-STRONG = {"en_programmed", "en_guidelines", "en_against", "en_as_ai", "en_prohibited", "en_decline",
+# [round 4, C] content-policy vocabulary: a refusal opening followed by any of these (outside the matched phrase —
+# inside it too for a VIOLATION pattern, round 4b S2: "Writing this would violate my content policy, so I won't")
+# is a refusal whatever its object — "I can't create pornographic content", "I cannot write that, it would be
+# inappropriate", "Ich kann keine expliziten Inhalte produzieren"
+_POLICY = re.compile(r"\b(?:" + _POLICY_FORMS + r")", re.IGNORECASE)
+# [round 4, C] the tail of a BARE refusal sentence: the verb's object is only a reference to the request
+# ("… with that request", "… that", "… this kind of content", "… das", nothing at all)
+_BARE_TAIL = re.compile(
+    r"^[\s,]*(?:(?:with|to|on|in|for|bei|mit|dabei|damit|hierbei)\b\s*)?"
+    r"(?:that|this|it|them|those|these|so|das|dies|es|so etwas|sowas|here|your request|the request|this request|that request|me(?: to \w+)?"
+    r"|(?:your|this|that|the) (?:task|ask|question|one|content|material|story|prompt|scene|text|image|picture|website|site|page|webpage"
+    r"|web page|document|app|game|code|requests?)|(?:content|material) of (?:that|this|such a|this particular) (?:kind|type|sort|nature)"
+    r"|(?:that|this|such|the) (?:kind|type|sort) of (?:content|request|material|thing|task|stuff)|(?:an? |the )?\w+ like (?:that|this)"
+    r"|ce contenu|cette demande|ce genre de (?:contenu|demande)|este contenido|esta solicitud|ese tipo de contenido|questo contenuto"
+    r"|questa richiesta|questo tipo di contenuto|такой контент|такой запрос|этот запрос|это|такое"
+    r"|(?:machen|tun|helfen|weiterhelfen|erstellen|schreiben|erfüllen|beantworten|umsetzen|generieren|produzieren|erzeugen|anbieten|liefern))?"
+    r"(?: (?:in|into) (?:that|this|such an?|the same) (?:direction|way|manner|form|style))?"
+    r"(?:,? (?:either|sorry|though|here|right now|at all|unfortunately|leider|hier|jetzt|i'?m afraid|für dich|for you|for anyone|as requested"
+    r"|as written|as asked))*[.!?…\s]*$",
+    re.IGNORECASE)
+# [round 4b, S2] the patterns that state a VIOLATION of the model's own rules: the policy word sits INSIDE the matched
+# phrase ("Writing this would violate my content policy, so I won't", "This goes against my guidelines, so I can't write
+# it") — _judge searches _POLICY in the phrase too for these (and only these: "My guidelines say to greet you warmly"
+# must stay an answer)
+_OWN_RULES = re.compile(r"\b(?:my|our|meine[nrsm]?|mes|mis|le mie)\b", re.IGNORECASE)   # [re-review K3]
+VIOLATION = {"en_against", "en_violates", "de_verstoesst", "fr_contraire", "es_contra", "it_contro"}
+# the STRONG patterns name the model's own rules / programming / role — they count a sentence or two in
+STRONG = {"en_programmed", "en_guidelines", "en_against", "en_violates", "en_as_ai", "en_prohibited", "en_decline",
           "de_programmiert", "de_als_ki", "de_richtlinien", "de_verstoesst", "de_ablehnen",
           "fr_en_tant", "fr_contraire", "fr_directives", "fr_refuser",
           "es_como_ia", "es_contra", "es_directrices", "es_rechazar",
           "it_come_ia", "it_contro", "it_linee", "it_rifiutare"}
 RE_ANY = re.compile("|".join(f"(?P<{n}>{p})" for n, p in _PATTERNS), re.IGNORECASE)
 
-# what precedes a match that is NOT the model speaking: a quote, "say:", "e.g.", "message:" …
+# what precedes a match that is NOT the model speaking (text / html): a quote, "say:", "e.g.", "message:" …
 _QUOTED = re.compile(r"(?:[\"“„'‘«(\[]|:|\b(?:say|says|said|saying|like|e\.?g\.?|example|message|phrase|wrote|writes"
                      r"|replied|replies|answered|answers|responds?|responded|reads?|reading|text|sagt|sagte|schrieb|antwortete"
                      r"|dit|dice|disse|slogan|sign|caption|poster|banner|motto|tattoo|lettering|title|headline|quote|words"
                      r"|shirt|t-shirt|label|sticker|graffiti|neon|billboard|placard))\W*$", re.IGNORECASE)      # [Y2] quoted slogans
+# [round 4] for a PROMPT the only exception: the phrase stands inside quotation marks that a sign word introduces
+_SIGN_LEAD = re.compile(r"\b(?:reads?|reading|says?|saying|signs?|slogan|caption(?:ed)?|poster|banner|text|lettering|letters"
+                        r"|shirt|t-shirt|tattoo|label|sticker|graffiti|neon|billboard|placard|title|headline|motto|words|written"
+                        r"|inscription|quote|message|note|speech bubble|bubble|schild|aufschrift|spruch|slogan|text)\W*$", re.IGNORECASE)
+_OPEN_Q, _CLOSE_Q = "\"“„'‘«", "\"”“'’»"
 # "I can't X, but / so / however / instead …": a pivot after the refusal sentence introduces partial help [S1]
 _PIVOT = re.compile(r"[,;:—–-]\s*(?:but|so|however|instead|yet|although|though|here(?:'s| is| are)|what I can|aber|jedoch"
                     r"|doch|stattdessen|hier ist|dafür|mais|pero|sin embargo|ma|però)\b|\.\s+(?:however|instead|but|here(?:'s| is| are)"
                     r"|what I can|jedoch|stattdessen|dafür|hier ist|allerdings)\b", re.IGNORECASE)
 _SENTENCE_END = re.compile(r"[.!?\n。]")
-_INTERACTIVE = re.compile(r"<(?:button|input|form|textarea|select|canvas)\b", re.IGNORECASE)
+# [round 4, C] for a PROMPT: an apology or a policy sentence is a refusal too (descriptions never apologise)
+_APOLOGY = re.compile(r"\b(?:I(?:'m| am) (?:(?:really|so|very|terribly) )?sorry|I apologi[sz]e|my apologies|es tut mir leid|entschuldigung"
+                      r"|je suis désolée?|lo siento|mi dispiace)\b|申し訳(?:ありません|ございません)|извините|простите", re.IGNORECASE)
+_POLICY_SENTENCE = re.compile(
+    r"\b(?:(?:my|our|these|the|its|ethical|safety|content|community) (?:\w+ )?(?:guidelines|policies)"
+    r"|(?:violates?|against|conflicts? with) (?:ethical|safety|content|my|our|the) (?:and \w+ )?(?:guidelines|policies|policy|principles|rules)"
+    r"|not (?:appropriate|allowed|permitted|possible) (?:for me )?to (?:create|generate|provide|describe|depict|produce|write)"
+    r"|cannot be (?:fulfilled|generated|created|provided|accommodated)|(?:this|that|your) request (?:cannot|can'?t|can not|will not|won'?t) be"
+    r"|(?:I|we) (?:must|have to|will) (?:refrain|decline|refuse)|(?:sexually )?explicit (?:content|material|imagery|images?) (?:is|are) not"
+    r"|(?:unable|not able) to (?:fulfil|fulfill|comply|generate|create|produce|assist)|inappropriate content"
+    r"|meine richtlinien|verst(?:ö|oe)(?:ß|ss)t gegen|kann nicht erfüllt werden)\b", re.IGNORECASE)
 
 KINDS = ("html", "text", "prompt")
 
 
+def _cut_spans(t: str, opens, closes: dict, repl: str = "", eat_space: bool = False) -> str:
+    """[round 4b, S10] the linear form of `re.sub(OPEN.*?CLOSE, repl)`: `opens` = [(start, end, name)] of every
+    opening in order, `closes[name]` = sorted [(start, end)] of every closing of that name; a span runs from an
+    opening to the first closing that starts at or after the opening's end (an opening inside a cut span is gone
+    with it, an opening with no closing after it stays — exactly what the lazy regex does); `eat_space` also
+    swallows the whitespace after the closing (THINK_RE's trailing \\s*)"""
+    out, pos, n = [], 0, len(t)
+    for s, e, name in opens:
+        if s < pos:
+            continue
+        lst = closes[name]
+        k = bisect.bisect_left(lst, (e, -1))
+        if k >= len(lst):
+            continue
+        j = lst[k][1]
+        if eat_space:
+            while j < n and t[j].isspace():
+                j += 1
+        out.append(t[pos:s])
+        out.append(repl)
+        pos = j
+    out.append(t[pos:])
+    return "".join(out)
+
+
 def strip_thinking(text: str) -> str:
     """server.strip_thinking's rule, without importing the kernel: <think> blocks go, an unterminated
-    opening tag at the start too"""
-    t = THINK_RE.sub("", text or "")
+    opening tag at the start too. [round 4b, S10] linear (find + bisect), the same result as THINK_RE.sub"""
+    t = text or ""
+    opens = [(m.start(), m.end(), "think") for m in _THINK_OPEN.finditer(t)]
+    if opens:
+        t = _cut_spans(t, opens, {"think": [(m.start(), m.end()) for m in _THINK_CLOSE.finditer(t)]}, eat_space=True)
     if t.lstrip().lower().startswith("<think>"):
         t = t.lstrip()[len("<think>"):]
     return t
 
 
+def _strip_tags(t: str) -> str:
+    """[round 4b, S10] `re.sub(r"<[^>]+>", " ", t)`, linear: a tag runs from a "<" to the first ">" after it with at
+    least one character between ("<>" is no tag and the scan goes on at the next character)"""
+    gts = [m.start() for m in re.finditer(">", t)]
+    if not gts or "<" not in t:
+        return t
+    out, pos = [], 0
+    for m in re.finditer("<", t):
+        s = m.start()
+        if s < pos:
+            continue
+        k = bisect.bisect_left(gts, s + 1)
+        if k >= len(gts):
+            break
+        if gts[k] == s + 1:
+            continue                              # "<>": no tag here, the scan goes on
+        out.append(t[pos:s])
+        out.append(" ")
+        pos = gts[k] + 1
+    out.append(t[pos:])
+    return "".join(out)
+
+
+def _count_tags(t: str) -> int:
+    """[round 4b, S10] `len(re.findall(r"<[a-zA-Z][^>]*>", t))`, linear"""
+    gts = [m.start() for m in re.finditer(">", t)]
+    n, pos = 0, 0
+    for m in re.finditer(r"<[a-zA-Z]", t):
+        s = m.start()
+        if s < pos:
+            continue
+        k = bisect.bisect_left(gts, s + 2)
+        if k >= len(gts):
+            break
+        n += 1
+        pos = gts[k] + 1
+    return n
+
+
 def visible_text(html: str) -> str:
     """what a page shows: scripts/styles/comments and tags removed, entities decoded, whitespace
-    collapsed"""
-    t = re.sub(r"<(script|style)\b.*?</\1\s*>", " ", html or "", flags=re.I | re.S)
-    t = re.sub(r"<!--.*?-->", " ", t, flags=re.S)
-    t = re.sub(r"<[^>]+>", " ", t)
+    collapsed. [round 4b, S10] linear on any input (the regex form was quadratic on unclosed tags)"""
+    t = html or ""
+    opens = [(m.start(), m.end(), m.group(1).lower()) for m in _BLOCK_OPEN.finditer(t)]
+    if opens:
+        t = _cut_spans(t, opens, {k: [(m.start(), m.end()) for m in rx.finditer(t)] for k, rx in _BLOCK_CLOSE.items()}, " ")
+    opens = [(m.start(), m.end(), "c") for m in _COMMENT_OPEN.finditer(t)]
+    if opens:
+        t = _cut_spans(t, opens, {"c": [(m.start(), m.end()) for m in _COMMENT_CLOSE.finditer(t)]}, " ")
+    t = _strip_tags(t)
     return unescape(" ".join(t.split()))
+
+
+def _as_text(value) -> str:
+    """a non-string request (content parts, a dict, bytes) as text (X3)"""
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return ""
+    if isinstance(value, (bytes, bytearray)):
+        return value.decode("utf-8", "ignore")
+    if isinstance(value, (list, tuple, dict)):
+        try:
+            import json
+            return json.dumps(value, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return str(value)
+    return str(value)
 
 
 def _lead_end(text: str) -> int:
@@ -230,6 +444,23 @@ def _quote_led(text: str, start: int, lead_end: int = 0) -> bool:
         return False
     pre = text[max(0, start - 28):start]
     return bool(pre.strip()) and bool(_QUOTED.search(pre))
+
+
+def _sign_quoted(text: str, start: int, end: int) -> bool:
+    """[round 4] the phrase is the text ON something in the picture: inside quotation marks that a sign /
+    slogan / caption word introduces ('a sign that reads "I can\'t help you"')"""
+    pre = text[max(0, start - 80):start]
+    q = max(pre.rfind(c) for c in _OPEN_Q)
+    if q < 0 or not _SIGN_LEAD.search(pre[:q][-60:]):
+        return False
+    return any(c in text[end:end + 160] for c in _CLOSE_Q)
+
+
+def _sentence(text: str, m) -> tuple:
+    """(the refusal sentence's tail after the matched phrase, the text after that sentence)"""
+    end = _SENTENCE_END.search(text, m.end())
+    stop = end.start() if end else len(text)
+    return text[m.end():stop], (text[stop + 1:].strip() if end else "")
 
 
 def _partial_help(text: str, m, raw: str = None) -> bool:
@@ -280,7 +511,11 @@ def _reason(name: str, m) -> str:
     return f"{name}: '{m.group(0)[:70]}'"
 
 
-def _text(t: str, start_window: int = START_TEXT) -> tuple:
+def _judge(t: str, start_window: int, raw: str = None) -> tuple:
+    """[round 4, C] the text / html rule, precision first: a refusal sentence of the model's own at the start
+    (a STRONG one a sentence or two in, in a short answer) that is not a limit statement and not followed by
+    partial help — and then EITHER bare (its object only refers to the request) OR followed by content-policy
+    vocabulary. "I don't support that file format yet. Try PNG." is neither."""
     t = t.strip()
     if not t:
         return False, ""
@@ -289,30 +524,42 @@ def _text(t: str, start_window: int = START_TEXT) -> tuple:
     if not hit:
         return False, ""
     m, name = hit
-    if _partial_help(t, m):
-        return False, ""
     at_start = m.start() - lead <= start_window
-    strong = name in STRONG
-    if at_start and (len(t) <= LONG or strong):
+    if not at_start and not (name in STRONG and len(t) <= SHORT):
+        return False, ""
+    if _partial_help(t, m, raw=raw):
+        return False, ""
+    tail, rest = _sentence(t, m)
+    if _BARE_TAIL.match(tail):
         return True, _reason(name, m)
-    if strong and len(t) <= SHORT:          # "…As an AI, I cannot…" a sentence or two in
+    inside = m.group(0) if name in VIOLATION and _OWN_RULES.search(m.group(0)) else ""   # [round 4b, S2; re-review K3]
+    around = t[max(0, m.start() - 200):m.start()] + " " + inside + tail + " " + rest[:SCAN]
+    if _POLICY.search(around):
         return True, _reason(name, m)
     return False, ""
 
 
+def _text(t: str) -> tuple:
+    return _judge(t, START_TEXT)
+
+
 def _prompt(t: str) -> tuple:
-    """an expansion is one paragraph; a refusal anywhere in a short answer counts (the raw answer
-    may carry a planning line first, clean_expansion keeps the last paragraph)"""
+    """[round 4, C] an expansion is one paragraph that never says "I can't": a refusal phrase anywhere (not a
+    quoted sign text), an apology or a policy sentence is a refusal — recall first"""
     t = t.strip()
-    if not t or len(t) > 2000:
+    if not t or len(t) > PROMPT_MAX:
         return False, ""
-    hit = _find(t, scan=2000, lead_end=_lead_end(t))
-    if not hit:
-        return False, ""
-    m, name = hit
-    if _partial_help(t, m):
-        return False, ""
-    return True, _reason(name, m)
+    for m in RE_ANY.finditer(t):
+        if _sign_quoted(t, m.start(), m.end()):
+            continue
+        return True, _reason(m.lastgroup, m)
+    m = _APOLOGY.search(t)
+    if m and not _sign_quoted(t, m.start(), m.end()):
+        return True, f"apology: '{m.group(0)[:70]}'"
+    m = _POLICY_SENTENCE.search(t)
+    if m and not _sign_quoted(t, m.start(), m.end()):
+        return True, f"policy: '{m.group(0)[:70]}'"
+    return False, ""
 
 
 def _html(t: str) -> tuple:
@@ -322,23 +569,13 @@ def _html(t: str) -> tuple:
     visible = visible_text(t)
     if not visible:
         return False, ""                      # an empty page is validate_html's business, not a refusal
-    if _INTERACTIVE.search(t):
-        return False, ""                      # a refusal page has no buttons, inputs or forms — an app has [Z3]
-    lead = _lead_end(visible)
-    hit = _find(visible, lead_end=lead)
+    tags = _count_tags(t)                     # [round 4b, S10] linear
+    if tags > HTML_RICH and len(visible) > HTML_SHORT:
+        return False, ""                      # [round 4] a real page — structure AND substantial text — is never a refusal
+    hit, why = _judge(visible, START_HTML, raw=t)
     if not hit:
         return False, ""
-    m, name = hit
-    if _partial_help(visible, m, raw=t):      # "I can't provide live data, so this app simulates it: <!DOCTYPE…" [S1]
-        return False, ""
-    tags = len(re.findall(r"<[a-zA-Z][^>]*>", t))
-    at_start = m.start() - lead <= START_HTML
-    little = len(visible) <= HTML_SHORT or tags <= HTML_TAG_POOR
-    if at_start and little:
-        return True, _reason(name, m) + f" (visible {len(visible)} chars, {tags} tags)"
-    if name in STRONG and len(visible) <= HTML_SHORT and tags <= 12:
-        return True, _reason(name, m) + f" (visible {len(visible)} chars, {tags} tags)"
-    return False, ""
+    return True, why + f" (visible {len(visible)} chars, {tags} tags)"
 
 
 def is_refusal(text, kind: str = "text") -> tuple:
@@ -354,353 +591,211 @@ def is_refusal(text, kind: str = "text") -> tuple:
     return _text(t)
 
 
+_FIRST_PERSON_NO = re.compile(r"\bI(?:'m| am)?\s*(?:cannot|can'?t|can not|won'?t|will not|unable to|not able to|must not|refuse to"
+                              r"|have to decline|must decline)\b(?!\s+(?:believe|wait|stress|imagine|help\s+(?:but|thinking|it|myself)"
+                              r"|get over|stop thinking|tell you how|thank you))", re.IGNORECASE)
+
+
+def is_expansion_refusal(text) -> tuple:
+    """[review r4] the image-prompt EXPANDER's check: is_refusal(kind="prompt") plus ANY first-person refusal ("I can't add
+    nudity to this image, but …") outside a quoted sign text — a description never says "I can't". The MT check (Y5)
+    keeps kind "prompt": UI strings such as "I can't open the file" are translations there."""
+    hit, why = is_refusal(text, "prompt")
+    if hit or not isinstance(text, str):
+        return hit, why
+    t = strip_thinking(text).strip()
+    if not t or len(t) > PROMPT_MAX:
+        return False, ""
+    for m in _FIRST_PERSON_NO.finditer(t):
+        if not _sign_quoted(t, m.start(), m.end()):
+            return True, f"first_person: '{m.group(0)[:70]}'"
+    return False, ""
+
+
 def refusal_snippet(text: str, n: int = 160) -> str:
     """the start of a refusal for the journal — visible text, one line"""
     return " ".join(visible_text(strip_thinking(text or "")).split())[:n]
 
 
-# ---- the hard minors guard (integrator rule 2026-10-09; priority over the fallback itself) ----------
-# The fallback must never help produce sexual content involving minors or childlike characters.
-# minor_risk(text) flags a REQUEST that pairs (i) a sexual / nudity / erotic term with (ii) a minor or childlike
-# indicator. Either alone passes: "a nude woman in her thirties", "camgirls.xxx", "girls' night out", "a family
-# picnic with children", "teen fashion store" are fine — the pair is the trigger.
-# Round 3 (REVIEW-R2.md X1/Y1/Y4): the text is NORMALISED first — NFKC, format/combining characters (zero-width,
-# RLO, tag characters, combining underlines, variation selectors) stripped, Cyrillic/Greek look-alikes folded
-# inside mixed-script tokens (tееn, lоli), letter-spaced words joined (t e e n, t.e.e.n), light leetspeak folded
-# with a LINEAR tokeniser (t33n, l0li, s3xy, k1dz, 7eens), `-_+./\?&=()[]{}` turned into spaces so slugs, query
-# strings and hyphenated ages read as words (porn.xxx/young-girls, ?age=12, (12), 12-year-old), "12 y.o." / "y/o"
-# → "12 yo", "u18" → "under 18", "18+" → "18plus". Then THREE scopes:
-#   1. a STRONG sexual term (nude, naked, sex, porn, hentai, erotic, fuck, rape, tits, xxx …, DE/FR/ES/IT/JA/RU
-#      forms, glued slugs such as nudegirls / sexyteens) and a HARD indicator (child, kid, minor, underage, under
-#      18, loli/shota, schoolgirl, pupil, high/middle school, Nth grade, ages under 18 as digits or words in six
-#      languages, pedo, jailbait, Kind*, Schüler*, enfant, niña, bambina, 子供, 未成年, несовершеннолетн …) pair
-#      within WINDOW characters of each other ANYWHERE in the request — never split at commas, conjunctions or
-#      punctuation ("kids and porn", "nude photo; she is 12 years old", "a 12 year old girl and a man having sex"
-#      all block — round 1 blocked them, round 2 did not);
-#   2. a SOFT indicator (teen, adolescent, young/little/small/petite/lil … girl/boy) or a non-strong sexual word
-#      (sexy, lingerie, seductive …) pairs within one CLAUSE (split at . ; line breaks and then/and-style
-#      conjunctions — the "dropped the kids at school, then a sexy dinner date" note passes); a stated adult age
-#      clears a SOFT indicator only when it stands NEXT TO that noun phrase ("petite girl, 25 years old", "teen
-#      18+", "legal teen"), never when it belongs to someone else in the request ("a naked little girl with a 35
-#      year old man" blocks);
-#   3. WEAK terms (explicit, adult content, x-rated) pair only with UNAMBIGUOUS indicators (underage, minderjährig,
-#      loli, pedo, jailbait, preteen, a stated age under 18) within a clause.
-# Compounds (teenporn, lolihentai, nude_teens, freeteenporn.com, realkidsex.net, pthc, toddlercon) block outright.
-# Exclusions (replaced before matching): sex education, girls' night, boy toy, kids-free, naked mole rat, naked
-# eye, nude make-up, "talk to your kids about sex", parental controls / blocks porn, Sex Pistols, blue tits,
-# Nacktschnecken, "no minors allowed" / age verification, "in A minor", the baby's sex …; crime-reporting nouns
-# ("sexual abuse of minors") are not sexual terms in a news / law / child-safety context. Bare "girl"/"boy"/
-# "young"/"student"/"baby" are not indicators (adult content uses them constantly). Real desk-log prompts this
-# blocks: "cencored hentai picture of small titted girl and tentacle monster", "cencored hentai images of ninja
-# raping schoolgirl on the school table", "cencored image: henai girl getting fucked in school by ninja".
-# A non-string request (a list of content parts, a dict) is judged as its JSON text — never a pass (X3). The scan
-# is linear and reads at most GUARD_MAX characters (no prompt budget lets a model see more). server.py runs it
-# on every user request before the first LLM call (no rung runs — the request fails with BLOCK_MESSAGE, nothing
-# is cached) and at every media entry point before expansion or rendering; cites_minors() backs it up on the
-# model side.
-BLOCK_MESSAGE = "kAIrOS does not create sexual content involving minors or childlike characters"
-GUARD_MAX = 400_000          # characters the guard reads of one request (every prompt budget is far below)
-WINDOW = 120                 # characters between a STRONG sexual term and a HARD indicator (about 20 tokens)
-
+# ---- the narrow minors block (round 4, 2026-10-10: the owner's redirect, integrator Option B) ----------------
+# A floor, not a filter. Three rounds of a lexical minors GUARD (soft terms, clause splitting, obfuscation
+# folding, adult-age adjacency, a model-side net) never converged: each round passed its own suite and a fresh
+# probe set broke it, while it blocked ordinary parenting, education and art requests. The owner: "gemma
+# shouldn't block the prompt; if it drops it → other llm or uncensored gemma". What stays is ONE narrow,
+# high-precision block that fires only on unambiguous indicators:
+#   1. an explicit under-18 AGE — a number 0–17 or its number word with an age unit ("15-year-old", "15 yo",
+#      "15 y.o.", "aged 15", "age: 15", "15 Jahre alt", "15-jährige", "fifteen-year-old"; never an age DIFFERENCE
+#      "10 years older" [R1]) — or an explicit under-18 WORD (underage, under 18 / eighteen, under the age of 18,
+#      younger than / below / not yet 18, under 16 (12–17), under-18s, unter 18 / 16, jünger als 18, nicht
+#      volljährig, minderjährig, preteen, prepubescent [S3]) TOGETHER WITH a sexual term (porn, nude/naked/nackt,
+#      sex and the German sex / nackt / erotik compounds — Sexvideo, Oralsex, Nacktvideo, Erotikfilm [R3] —, sexual,
+#      hentai, nsfw, erotic, lewd, genitals, …) anywhere in the same text;
+#   2. known illegal-content terms: csam, pthc, child porn(ography), kiddie porn, kinderporno(grafie) and jailbait
+#      fire on their own; loli/lolicon/shota/shotacon only together with a sexual term.
+# It never fires on: ages 18 and up; numbers that are measurements (16 GB, 15 cm, 1080p, 17 inch, 8 steps,
+# 12:30, 2 girls — no age unit; "under 18 dollars / degrees / Euro / Grad / %" [R2]); "minor/minors" in any
+# sense; negated disclaimers ("no minors", "nobody under 18", "never anyone who looks underage", "all characters
+# 18+", "keine Minderjährigen") and age-gate disclaimers ("if you are under 18, leave", "visitors under 18 are not
+# allowed", "für Minderjährige verboten" [S4]) — the kernel's own prompts contain such sentences and the expander
+# may echo them; "child / kid / teen / girl / boy / schoolgirl" and every other soft indicator (they are not
+# indicators here). Obfuscation (leet, homoglyphs, letter spacing,
+# split sentences) is deliberately out of scope. Known, accepted cost: a text that pairs an explicit under-18
+# age with a sexual term is blocked even when its intent is protective ("my 14-year-old found porn, how do I
+# talk to him") — no context or intent rules rescue it; the message suggests rephrasing without the age.
+# Normalisation: NFKC + casefold + zero-width / combining marks stripped, and the length is capped AFTER
+# normalising (review round 3, Y1: NFKC expansion of 400 000 chars stalled the event loop for 10.5 s); the scan
+# is linear and takes milliseconds on 50 KB. server.py runs it at exactly four points: every media render's
+# entry (image, video, music — on the user's prompt before anything, the expander included), the final image /
+# video prompt right before sd renders it, once on a refused text request before any rung, and at the entry
+# when the primary LLM is uncensored (the manifest flag, or the llm_model setting). A hit: BLOCK_MESSAGE as a
+# 400, no model call, nothing cached, nothing rendered.
+BLOCK_MESSAGE = ("kAIrOS does not create sexual content involving minors (an under-18 age or term together with a "
+                 "sexual term) — if this is about adults, rephrase it without the age")
+RAW_MAX = 100_000            # chars of the raw request read before normalising (every prompt budget is far below)
+BLOCK_MAX = 100_000          # chars kept AFTER normalising (NFKC can expand a character up to 18-fold)
 _STRIP_CATS = frozenset({"Cf", "Mn", "Me", "Cc", "Co", "Cs"})      # format, combining marks, control, private use
-_ZERO_WIDTH = re.compile("[​‌‍⁠﻿­‎‏⁡⁢⁣⁤]")   # (kept for callers)
-_LEET = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "@": "a", "$": "s", "7": "t"})
-# linear: a token that starts with a letter (never an age such as "13yo"); folded only when it holds a digit/symbol
-_LEET_TOKEN = re.compile(r"\b[a-zäöüß][a-zäöüß0-9@$]*\b")
-_LEET_LEAD = re.compile(r"\b[013457][a-zäöüß]{3,}\b")               # 7eens, 5exy, 3rotic: one leet digit in front
-_LATIN = re.compile(r"[a-z]")
-_CYR_GREEK = re.compile(r"[Ͱ-ϿЀ-ӿԀ-ԯ]")
-_CONFUSABLES = str.maketrans({
-    "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "у": "y", "х": "x", "і": "i", "ј": "j", "ѕ": "s", "һ": "h",
-    "ԁ": "d", "ɡ": "g", "ԝ": "w", "ё": "e", "ї": "i", "к": "k", "т": "t", "м": "m", "в": "b", "н": "h", "г": "r",
-    "ԛ": "q", "ԁ": "d", "ѵ": "v", "ҽ": "e", "ӏ": "l", "α": "a", "ο": "o", "ε": "e", "ρ": "p", "τ": "t", "ν": "v",
-    "ι": "i", "κ": "k", "η": "n", "υ": "u", "χ": "x", "ϲ": "c", "ϳ": "j", "ѡ": "w", "ԍ": "g"})
-_SPACED = re.compile(r"(?<![a-z0-9])(?:[a-z] ){2,}[a-z](?![a-z0-9])")
-_SEP = re.compile(r"[-_+./\\?&=()\[\]{}<>\"`~^*#%|]+")
+
+_AGE_NUM = r"(?<![\d:/])(?<!\d[.,])(?:1[0-7]|[1-9])(?![\d:/%])(?![.,]\d)"
+_AGE_UNIT = (r"(?:\s*-?\s*(?:years?|yrs?|jahre?|jahren)\s*-?\s*(?:old|alt(?:e[nrsm]?)?|of age|young)\b|\s*-?\s*(?:year|yr)\s*-?\s*olds?\b"
+             r"|\s*(?:yo|y\.o\.|y\.o|y/o)\b|\s*-?\s*jährig\w*)")
+_AGE_WORDS = (r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen"
+              r"|eins?|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn|elf|zwölf|zwoelf|dreizehn|vierzehn|fünfzehn|fuenfzehn"
+              r"|sechzehn|siebzehn)")
+_UNDER_AGE = re.compile(
+    r"\b(?:" + _AGE_NUM + _AGE_UNIT
+    + r"|" + _AGE_WORDS + r"(?:\s*-?\s*(?:years?|yrs?|jahre?)\s*-?\s*(?:old|alt(?:e[nrsm]?)?|of age)\b|\s*-?\s*(?:year|yr)\s*-?\s*olds?\b|\s*-?\s*jährig\w*)"
+    + r"|(?:aged?|ages|alter|im alter von|age of|at the age of)\s*[:=]?\s*" + _AGE_NUM + r"\b"
+    + r"|(?:aged?|im alter von)\s+" + _AGE_WORDS + r"\b)")
+_UNITS_EN = (r"cm|mm|m|km|kg|g|min|mins|minutes?|seconds?|sec|secs|hours?|hrs?|days?|weeks?|months?|percent|inch|inches|px|mb|gb|k"
+             r"|dollars?|bucks|euros?|eur|usd|cents?|pounds?|lbs?|degrees?|celsius|fahrenheit|feet|foot|ft|mph|kph|kmh"
+             r"|meters?|metres?|miles?|liters?|litres?|ml|kcal|calories")
+_UNITS_DE = (r"cm|mm|m|km|kg|g|min|minuten|sekunden|sek|stunden|std|tagen?|wochen|monaten?|prozent|zoll|px|mb|gb|euro|eur|cent"
+             r"|franken|chf|grad|celsius|uhr|meter|kilometer|liter|kalorien|kcal")
+# [R2] a measurement after the number is not an age: a unit word, or %, €, $, £, ° (a decimal, a time, a fraction too)
+_NOT_MEASURE_EN = r"(?![\d:/%])(?![.,]\d)(?!\s*(?:%|€|\$|£|°))(?!\s*(?:" + _UNITS_EN + r")\b)"
+_NOT_MEASURE_DE = r"(?![\d:/%])(?![.,]\d)(?!\s*(?:%|€|\$|£|°))(?!\s*(?:" + _UNITS_DE + r")\b)"
+# [round 4b, S3] "under 16" / "unter 16" (12–17; the review simulated 1–17 FP-free) and "below / younger than / not yet 18",
+# "under-18s", "jünger als 18", "nicht volljährig". The 12–17 forms also skip the THING counts a small number is followed
+# by ("under 15 photos", "unter 12 Bilder"); never person nouns ("under 16 players / models" is an age) and never for the
+# 18-forms, whose exclusion stays the review's R2 (units and symbols only: "nude under 18 models" fires as in round 4)
+_COUNTS_EN = (r"items|photos?|pictures?|pics|images?|words|lines|pages|steps|chapters|episodes|levels|points|rounds|songs|tracks|files"
+              r"|outfits|poses|frames|fps|hz|ghz|mhz|x|times|options|categories|slides"
+              r"|people|persons|guests|members|participants|attendees|visitors|couples|pairs|women|men|adults|ladies|gentlemen|characters"
+              r"|dancers|crew|staff|employees|workers|customers|clients|viewers|subscribers|followers|fans|spectators|seats|tickets|spots|places")
+_COUNTS_DE = (r"fotos?|bilder|wörter|zeilen|seiten|schritte|kapitel|folgen|punkte|songs|dateien|outfits|posen|mal|optionen|kategorien"
+              r"|stück|teile|minuten|personen|leute|gäste|mitglieder|teilnehmer\w*|besucher\w*|paare?n?|frauen|männer|erwachsene\w*"
+              r"|zuschauer\w*|kunden|mitarbeiter\w*|tänzer\w*|plätze|tickets|karten|follower")
+_NOT_COUNT_EN = _NOT_MEASURE_EN + r"(?!\s*(?:" + _COUNTS_EN + r")\b)"
+_NOT_COUNT_DE = _NOT_MEASURE_DE + r"(?!\s*(?:" + _COUNTS_DE + r")\b)"
+_UNDER18_WORD = (r"(?:underage[ds]?|under[\s-]+age[ds]?|under[\s-]+(?:18|eighteen)" + _NOT_MEASURE_EN + r"s?"
+                 + r"|under the age of (?:18|eighteen)|(?:younger than|below|not yet|not even) (?:18|eighteen)" + _NOT_MEASURE_EN
+                 + r"|under[\s-]+1[2-7]" + _NOT_COUNT_EN + r"s?"
+                 + r"|unter[\s-]+(?:18|achtzehn)" + _NOT_MEASURE_DE + r"|unter[\s-]+1[2-7]" + _NOT_COUNT_DE
+                 + r"|j(?:ü|ue)nger als (?:18|achtzehn)" + _NOT_MEASURE_DE + r"|noch nicht (?:18|achtzehn)" + _NOT_MEASURE_DE
+                 + r"|nicht volljährig\w*|minderjährig\w*|preteens?|pre[\s-]+teens?|prepubescent|vorpubertär\w*)")
+_UNDER18 = re.compile(r"\b" + _UNDER18_WORD + r"\b")
+# a negated disclaimer: a negation and only function words / audience words before the under-18 word ("nobody
+# under 18", "never anyone who looks underage", "not for minors or anyone under 18", "keine Minderjährigen"; [round 4b,
+# S5] the kernel's own limits line prompts.UNCENSORED_LIMITS and its echoes: "never write or depict sexual content
+# involving minors or anyone who looks underage", "no explicit content involving anyone under 18")
+_NEGATED = re.compile(
+    r"\b(?:no|nobody|no[\s-]one|none|never|not|without|non|niemand|niemals|nie|kein|keine|keinen|keiner|keinem|keines|nicht|ohne"
+    r"|don'?t|do not|doesn'?t|does not|avoid\w*|exclud\w*)"
+    r"(?:\s+(?:anyone|anybody|someone|somebody|one|person|persons|people|a|an|the|for|of|is|are|was|were|who|that|or|and|looks?"
+    r"|appears?|seems?|be|to|minors?|children|kids|teens?|them|him|her|she|he|they|it|with|involving|depict\w*|show\w*|für|jemand"
+    r"|writ\w*|sexual\w*|sexuell\w*|explicit|explizit\w*"
+    r"|jemanden|eine[nrsm]?|ein|der|die|das|den|dem|wer|ist|sind|aussieht|aussehen|oder|und|mit|von|minderjährige[nrsm]?|kinder"
+    r"|jugendliche[nrsm]?|personen|menschen|zutritt|zugang|eintritt|verkauf|abgabe|entry|access|admission|admittance|sale|sales"
+    r"|content|inhalte?|place|room|service|dienst|any|single|anybody|in|image|picture|photo|scene))*\s+" + _UNDER18_WORD + r"\b",
+    re.IGNORECASE)
+# [round 4b, S4] an age-gate disclaimer (the integrator: an adult site's age gate is a normal 18+ request) — a CLOSED
+# list of function / audience / venue words, like the negation bridge above, never an intent rule: the conditional
+# "if you are under 18 …" / "wenn du unter 18 bist", and the prohibitive forms where a PROHIBITION follows the word
+# ("visitors under 18 are not allowed", "underage users will be banned", "für Minderjährige verboten", "Minderjährigen
+# ist der Zutritt zum Pornokino untersagt", "Under 18? Leave now."); "you must be 18 or older", "18+ only", "nur ab 18",
+# "Zutritt erst ab 18" never fired (18 is not an under-18 age)
+_GATE_BRIDGE = (r"(?:\s+(?:[\wäöüß-]*(?:kino|club|shop|seite|site|page|forum|store|laden|bar|party|show|film|video|portal|bereich|area"
+                r"|section|content|inhalte?|galerie|gallery|chat|room|website|webseite|plattform|platform|dienst|service|angebot|material)"
+                r"|ist|sind|der|die|das|den|dem|des|dieser|diese|dieses|diesem|diesen|zutritt|zugang|eintritt|zum|zur|zu|auf|in|im|von|vom"
+                r"|für|an|hier|dort|this|that|the|to|on|of|at|into|from|here|there|access|entry|admission|admittance|entrance|visitors?"
+                r"|users?|persons?|people|viewers?|members?|guests?|readers?|customers?|nutzer|besucher|personen|leser|mitglieder|gäste"
+                r"|kunden|jeder|everyone|anyone|alle|all|strictly|absolutely|streng|strengstens|ausdrücklich|grundsätzlich|is|are|will"
+                r"|would|shall|may|can|must|should|be|get|have|has|werden|wird|sein|haben|hat|dürfen|darf|müssen|muss|sollen|soll|können"
+                r"|kann|bitte|please|now|jetzt|sofort|immediately|dann|then|you|du|sie|ihr|bist|seid|do|does|darfst|musst|sollst|kannst)[,;:]?)*")
+# the prohibition itself: a closed list of PROHIBITION predicates — never a bare negation, which would read plain
+# statements as age gates ("under 18 is not a problem", "minderjährig ist kein Problem" fire)
+_GATE_NEG = (r"(?:(?:not|never|cannot|can'?t|don'?t|nicht|nie|niemals)\s+(?:be\s+|get\s+|sein\s+|werden\s+)?(?:allowed|permitted|admitted|welcome"
+             r"|accepted|let in|enter|access|view|visit|use|watch|join|buy|order|register|sign up|erlaubt|gestattet|zugelassen|willkommen"
+             r"|erwünscht|betreten|besuchen|nutzen|benutzen|ansehen|anschauen|aufrufen|kaufen|bestellen|teilnehmen|eintreten|hinein|rein)"
+             r"|(?:no|kein|keine|keinen)\s+(?:entry|access|admission|admittance|entrance|zutritt|zugang|eintritt|einlass)"
+             r"|verboten|untersagt|unzulässig|gesperrt|ausgeschlossen|banned|prohibited|forbidden|barred|excluded|denied|unwelcome"
+             r"|leave (?:now|immediately|this|the|here)|leave(?=\s*(?:[.!,;]|$))|go away|verlass\w*|raus|close (?:this|the)|go back"
+             r"|turn back|zurück)")
+# [re-review 4b, K1] the conditional "if you are under 18" is a gate only with its PROHIBITION ("…, leave / do not enter /
+# verlasse …"): on its own it exempted plain requests ("if anyone is underage, that's fine"); a prohibition followed by "?"
+# is rhetorical ("… verboten? Schreib trotzdem …"), no gate
+_GATED = re.compile(
+    r"\b(?:(?:if|wenn|falls|sofern|unless)\s+(?:you|u|du|sie|ihr|someone|anyone|anybody|jemand|a visitor|a user|the visitor|the user"
+    r"|der besucher|der nutzer|visitors|users)(?:\s*(?:are|'re|is|bist|sind|seid|ist))?\s+)?" + _UNDER18_WORD
+    + r"(?:\s+(?:bist|sind|seid|ist))?[,;:?!.]?" + _GATE_BRIDGE + r"\s+" + _GATE_NEG + r"\b(?!\s*\?)", re.IGNORECASE)
+_SEX = re.compile(
+    r"\b(?:porn\w*|pr0n|nudes?|nudity|naked|nackt(?:e[nrsm]?|heit|foto\w*|bild\w*|aufnahme\w*|szene\w*)?|sex|sexy|sexual\w*|sexuell\w*"
+    r"|hentai|nsfw|erotic\w*|erotik|erotisch\w*|lewd|genitals?|genitalia|genitalien|penis|vagina|vulva|pussy|tits|titten|boobs"
+    r"|topless|oben ohne|intercourse|geschlechtsverkehr|fuck(?:ed|ing|s)?|fick(?:en|t|st|te|ten|erei|er)?|blowjobs?|handjobs?"
+    r"|masturbat\w*|masturbier\w*|orgasm\w*|cumshots?|bdsm|bondage|fetish\w*|fetisch\w*|xxx|lingerie|dessous|striptease|undress\w*"
+    r"|unclothed|bare[\s-]*breasted|rape|raping|raped|vergewaltig\w*|molest\w*|incest\w*|inzest\w*|deepthroat|gangbang|threesome"
+    r"|creampie|bukkake|(?:oral|anal|gruppen|telefon|cyber|hardcore)sex\w*|sex(?:video|film|bild|foto|szene|geschichte|spielzeug|chat"
+    r"|cam|party|puppe|treffen|seite|portal|shop|kino|club|tape)\w*|nackt(?:video|film|selfie)\w*"
+    r"|erotik(?:film|video|bild|foto|geschichte|seite|portal|shop|kino|club|massage)\w*|sexting|sexted)\b")
+_ILLEGAL_ALONE = re.compile(r"\b(?:csam|pthc|child[\s-]*porn\w*|kiddie[\s-]*porn\w*|kinderporno\w*|kinderpornogra\w*|jail[\s-]?bait)\b")
+_ILLEGAL_WITH_SEX = re.compile(r"\b(?:lolis?|lolicon|shotas?|shotacon)\b")
 
 
-def _as_text(value) -> str:
-    """a non-string request (content parts, a dict, bytes) is judged as its text — never a pass (X3)"""
-    if isinstance(value, str):
-        return value
-    if value is None:
+def _norm(text) -> str:
+    """the block's view of a request: NFKC + casefold, format / combining / control characters gone,
+    whitespace collapsed — read from at most RAW_MAX raw chars, kept to BLOCK_MAX after normalising"""
+    t = _as_text(text)[:RAW_MAX]
+    if not t:
         return ""
-    if isinstance(value, (bytes, bytearray)):
-        return value.decode("utf-8", "ignore")
-    if isinstance(value, (list, tuple, dict)):
-        try:
-            import json
-            return json.dumps(value, ensure_ascii=False)
-        except (TypeError, ValueError):
-            return str(value)
-    return str(value)
+    t = unicodedata.normalize("NFKC", t).casefold()[:BLOCK_MAX + 1024]
+    t = "".join(ch for ch in t if ch in "\n\t" or unicodedata.category(ch) not in _STRIP_CATS)
+    return " ".join(t[:BLOCK_MAX].split())
 
 
-def _leet(m) -> str:
-    """fold light leetspeak inside a token that has two letters or more and a digit / symbol (t33n, l0li, s3xy,
-    k1dz) — never a one-letter code such as u18, r18, x1, k12"""
-    tok = m.group(0)
-    if sum(c.isalpha() for c in tok) >= 2 and any(c in "0134579@$" for c in tok):
-        return tok.translate(_LEET)
-    return tok
-
-
-def _fold_token(m) -> str:
-    tok = m.group(0)
-    return tok.translate(_CONFUSABLES) if _LATIN.search(tok) else tok
-
-
-def normalize(text) -> str:
-    """the guard's view of a request (see the section comment): NFKC, invisible / combining characters gone,
-    lower case, look-alikes folded in mixed-script tokens, letter-spaced words joined, light leetspeak folded
-    (linear), separators as spaces, the age shorthands unified, whitespace collapsed"""
-    t = unicodedata.normalize("NFKC", _as_text(text)[:GUARD_MAX])
-    t = "".join(ch for ch in t if ch in "\n\t" or unicodedata.category(ch) not in _STRIP_CATS).lower()
-    if _CYR_GREEK.search(t):
-        t = re.sub(r"\S+", _fold_token, t)
-    t = re.sub(r"(\d{2})\s*\+", r"\1plus", t)                       # 18+ → 18plus (an adult marker, Z5)
-    t = _SEP.sub(" ", t)
-    t = _SPACED.sub(lambda m: m.group(0).replace(" ", ""), t)       # t e e n → teen
-    t = _LEET_LEAD.sub(lambda m: m.group(0).translate(_LEET), t)    # 7eens → teens
-    t = re.sub(r"\bu ?(1[0-8])\b", r"under \1", t)                    # u18 → under 18 (before the leet fold)
-    t = _LEET_TOKEN.sub(_leet, t)
-    t = re.sub(r"\b(\d{1,2}) ?y ?o\b", r"\1 yo", t)                   # 12 y.o. / y/o / y o → 12 yo
-    t = re.sub(r"\b(girls?|boys?|mädchen|junge|fille|niñ[ao]|ragazz[ao])\s*,\s*(\d{1,2})\b", r"\1 \2", t)
-    return " ".join(t.split())
-
-
-# phrases that pair the words without meaning sex with minors (education, idioms, animals, make-up, parenting,
-# adult-only notices, the musical key) — replaced by " x " before matching
-_EXCLUDE = re.compile(
-    r"\b(?:sex(?:ual|uality)? ?ed(?:ucation)?|sexual health|sexual orientation|sexual(?:ly)? transmitted|sexualit[äa]t"
-    r"|sexualkunde|aufklärung\w*|sexualerziehung|éducation sexuelle|educación sexual|educazione sessuale"
-    r"|girls'? ?nights?(?: out)?|girl ?power|girl ?boss|boy ?toy|big boy|(?<!year )(?<!years )old boy|birthday boy|mama'?s boy|cowboys?"
-    r"|playboy|tomboy|busboy|boyfriends?|girlfriends?|teen(?:age)? fashion|kids'? ?menu"
-    r"|kids? free|child ?free|no kids|no children|adults? only|kinderfrei|ohne kinder|nur für erwachsene"
-    r"|(?:in|key of|op\w* \d+ in) [a-g] (?:flat |sharp )?minor(?!'s)"
-    # round 3 (Y4): animals, idioms, make-up, parenting, filters, bands, adult-only notices, biology
-    r"|naked mole ?rats?|naked eye|naked truth|naked (?:city|lunch|gun|chef|ape)|nacktmull\w*|nacktschneck\w*|nacktbad\w*"
-    r"|nude (?:make ?up|lipsticks?|lips|colou?rs?|shades?|tones?|heels|shoes|sandals|palette|nails?|polish|tights|pantyhose|beige|look|pink)"
-    r"|talk(?:ing|s|ed)? (?:to|with) (?:your |my |our |the |their )?(?:kids?|children|child|teens?|teenagers?|son|daughter) about sex\w*"
-    r"|erkläre?n? (?:ich )?(?:meinem|meiner|dem|den|unserem|unseren|meinen) kind\w*(?: über)? sex\w*|kind\w* (?:über )?sex\w* erklär\w*"
-    r"|blocks? porn\w*|porn (?:filters?|blockers?)|parental controls?|kindersicherung|jugendschutz\w*"
-    r"|sex pistols|sex and the city|sex (?:determination|chromosomes?|cells?|ratio|differences?|of the baby)|baby'?s sex|same sex|opposite sex"
-    r"|blue tits?|great tits?|coal tits?|long tailed tits?|tits? \(?birds?|tit(?:mouse|mice)"
-    r"|no minors(?: allowed)?|minors (?:are )?not allowed|keeps? minors out|not for minors|kein zutritt für minderjährige"
-    r"|für minderjährige verboten|ab 18|age verification|age gate|age check|altersverifikation|altersprüfung|18plus only"
-    r"|no ?one under 18|nobody under 18|niemand unter 18|not for (?:anyone |people )?under 18|under 18s? (?:are )?(?:not allowed|prohibited|banned)"
-    r"|must be (?:over |at least )?18|18 (?:or|and) (?:over|older|up)|over 18s? only|adults? 18plus"
-    r"|child safety|kinderschutz|safeguarding|kinderleicht\w*|kindergeld|kinderarzt\w*|kinderärzt\w*)\b", re.IGNORECASE)
-# a clause ends at . ; a line break or a conjunction — NOT at a comma (image prompts are comma lists); only the
-# SOFT / non-strong / WEAK pairings are clause-scoped (STRONG × HARD is a window over the whole request)
-_CLAUSE_SPLIT = re.compile(r"[;.\n|]+|\s+(?:and|then|but|while|und|dann|aber|während|et|puis|mais|y|pero|e)\s+", re.IGNORECASE)
-_WEAK = re.compile(r"(?<![^\W\d_])(?:explicit|explizit\w*|adult (?:content|material)|x rated|r18|mature content|erwachsenen ?inhalte?)"
-                   r"(?![^\W\d_])", re.IGNORECASE)
-# crime-reporting nouns ("sexual abuse of minors") are not a request for such content when the text reads like
-# news / law / child safety (S3); the nouns stay sexual terms in every other context
-_CRIME = re.compile(
-    r"\b(?:sexual(?:ly)? (?:abuse[sd]?|assault\w*|harass\w*|exploit\w*|violence|misconduct|offen[cs]e\w*|predator\w*"
-    r"|crimes?|abuser\w*)|child abuse|sexuell\w* (?:missbrauch\w*|gewalt|übergriff\w*|belästigung|ausbeutung)"
-    r"|kindesmissbrauch\w*|abus sexuels?|abuso sexual|abuso sessuale)\b", re.IGNORECASE)
-_NEWS_CTX = re.compile(
-    r"\b(?:court|convict\w*|arrest\w*|charged|sentenc\w*|police|news|headlines?|report\w*|summari[sz]e|articles?|trial"
-    r"|guilty|victims?|survivors?|prevention|awareness|hotline|helpline|law|lawsuit|case|allegation\w*|accused|investigat\w*"
-    r"|verdict|jury|judge|prosecut\w*|scandal|child safety|safeguarding|protect\w*|counsel\w*|therap\w*|gericht|verurteil\w*"
-    r"|polizei|nachrichten|schlagzeile\w*|bericht\w*|zusammenfass\w*|prozess|opfer|prävention|anzeige|angeklagt\w*|ermittl\w*"
-    r"|kinderschutz|schutz)\b", re.IGNORECASE)
-
-# STRONG sexual terms: pair with a HARD indicator over the window; with SOFT ones within a clause
-_STRONG = re.compile(
-    r"(?<![^\W\d_])(?:nudes?|nudity|nudist\w*|naked|sex|sexual\w*|sexting|porn\w*|pr0n|pron|hen[t]?ai|hentia|erotic\w*"
-    r"|erotik|erotisch\w*|xxx|topless|tits|titties|titted|boobs?|nipples?|genitals?|genitalia|pussy|penis|vagina|vulva"
-    r"|cum|cumming|cumshot|orgasm\w*|masturbat\w*|fuck\w*|blowjobs?|handjobs?|lewd|nsfw|fetish\w*|bondage|bdsm|undress\w*"
-    r"|unclothed|stripping|striptease|sluts?|slutty|whores?|bare ?breasted|upskirt|cameltoe|intercourse|threesome|gangbang"
-    r"|rule ?34|ecchi|ahegao|rape|raping|raped|rapist|molest\w*|incest\w*|deepthroat|anal|bukkake|creampie|dick pics?"
-    # German
-    r"|nackt\w*|sexuell\w*|pornos?|pornograf\w*|pornograph\w*|oben ohne|titten|busen|nippel|genitalien|muschi|fotze"
-    r"|orgasmus|masturbier\w*|ge?fick\w*|unbekleidet\w*|fetisch\w*|geschlechtsverkehr|vergewaltig\w*|blasen|nacktfoto\w*"
-    # French / Spanish / Italian
-    r"|nue?s?|porno|sexe|sexuel\w*|érotique\w*|desnud[oa]s?|sexo|erótic[oa]s?|nud[oaei]|sesso|sessual\w*|erotic[oaei]"
-    r"|violer|violada|stuprata"
-    # Russian (Japanese has no word boundaries: _STRONG_JA below)
-    r"|голы[йеха]\w*|голая|обнаж\w*|секс\w*|порно\w*|эрот\w*|трах\w*|изнасил\w*)(?![^\W\d_])",
-    re.IGNORECASE)
-_STRONG_JA = re.compile(r"裸|全裸|ヌード|エロ|ポルノ|セックス|性的|性交")
-# a sexual word glued to a plural noun inside a slug: nudegirls, sexyteens (the second part may itself be SOFT/HARD)
-_GLUED = re.compile(
-    r"(?<![^\W\d_])(?:nude|naked|porn|sex|sexy|hentai|xxx|fuck|erotic)"
-    r"(?:girls?|boys?|babes?|women|pics?|pix|photos?|videos?|vids?|tube|hub|cams?|chat|models?|world|land|zone|club|site|tv|live|stars?)"
-    r"(?![^\W\d_])", re.IGNORECASE)
-# non-strong sexual words: everyday / adult-only use, so clause scope only
-_SEXUAL_SOFT = re.compile(
-    r"(?<![^\W\d_])(?:sexy|sexiest|lingerie|seductive\w*|sensual\w*|lustful|horny|panties|thong|milfs?|dessous"
-    r"|verführerisch\w*|lasziv\w*|anzüglich\w*|セクシー|сексуальн\w*)(?![^\W\d_])", re.IGNORECASE)
-
-_AGE_WORDS_EN = r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)"
-_AGE_WORDS_DE = r"(?:eins?|zwei|drei|vier|fünf|sechs|sieben|acht|neun|zehn|elf|zwölf|dreizehn|vierzehn|fünfzehn|sechzehn|siebzehn)"
-_AGE_WORDS_FR = r"(?:un|deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze|treize|quatorze|quinze|seize|dix sept)"
-_AGE_WORDS_ES = r"(?:uno|una|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieciséis|dieciseis|diecisiete)"
-_AGE_WORDS_IT = r"(?:uno|una|due|tre|quattro|cinque|sei|sette|otto|nove|dieci|undici|dodici|tredici|quattordici|quindici|sedici|diciassette)"
-_AGE_WORDS = r"(?:" + "|".join((_AGE_WORDS_EN, _AGE_WORDS_DE, _AGE_WORDS_FR, _AGE_WORDS_ES, _AGE_WORDS_IT)) + r")"
-_AGE_NUM = r"(?<!\d)(?:1[0-7]|[1-9])(?!\d)"           # 1–17; 18+ passes, "1080p"/"7 inch" need a unit anyway
-_AGE_UNIT = r"[\s-]*(?:yo|y ?o|yrs?|years?[\s-]*old|year[\s-]*old|years? of age|years? young|yr old|jährig\w*|jahre alt\w*|jahre|ans|años|anni|歳|лет|года?)"
-_NOT_MEASURE = (r"(?!\s*(?:k|mm|cm|px|%|pm|am|th|st|nd|rd|x|inch|inches|kg|lbs?|feet|ft|euros?|dollars?|minutes?|mins?|hours?|days?|weeks?"
-                r"|months?|seconds?|km|miles?|megapixels?|mp|gb|mb|bit|pages?|items?|steps?|points?|people|players?|slides?))")
-_ORDINAL = r"(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|\d{1,2}(?:st|nd|rd|th))"
-_GIRLBOY = r"(?:girls?|boys?|gals?|lads?|mädchen|mädels?|junge|jungs|fille|filles|niñ[ao]s?|ragazz[ao]|garçons?|chic[ao]s?)"
-_SOFT_MOD = (r"(?:young|little|small|tiny|petite|lil|lil'|wee|childlike|child like|baby ?faced|innocent|small ?titted|small ?breasted"
-             r"|flat ?chested|underdeveloped|jung\w*|klein\w*|zierlich\w*|petite?s?|jeunes?|pequeñ[ao]s?|piccol[aeio])")
-_UNDER_18 = (r"(?:under|unter|below|younger than|less than|not yet|not even|moins de|menores? de|minori di|sotto i)\s+(?:the age of\s+)?1[0-8]"
-             r"(?!\s*(?:minutes?|mins?|seconds?|hours?|days?|weeks?|months?|km|miles?|kg|lbs?|euros?|dollars?|%|percent|degrees?|steps?|items?|words?|lines?|pages?|k\b|mm|cm|px|inch))"
-             r"(?:\s*(?:ans|años|anni|jahre|years?(?: old)?|s))?\b|unter 1[0-8]jährig\w*")
-
-_HARD = re.compile(
-    r"(?<![^\W\d_])(?:child(?:ren|'?s)?|childlike|child like|kids?|kidz|kiddies?|kiddos?|underaged?|under aged?"
-    r"|minors?(?!\s*(?:key|scale|chord|detail|issue|change|bug|fix|role|league|repair|injur\w*|update|tweak|adjust\w*"
-    r"|version|release|edit|point|note|thing|problem|glitch|setback|surgery|operation|arcana|premise|third|seventh|second"
-    r"|triad|pentatonic|mode|variant|correction|planet|gods?|deity|prophets?|works?|poets?|offen[cs]es?|crimes?|infraction|part(?:y|ies)))"
-    r"|pre ?teens?|tweens?|school ?girls?|school ?boys?|schoolkids?|school ?children|schoolchild|pupils?|lolis?|lolitas?|lolicon"
-    r"|shotas?|shotacon|toddlers?|toddlercon|infants?|newborns?|preschool\w*|kindergart\w*|p(?:a|ae)?edo\w*|jailbait|prepubescent"
-    r"|pubescent|budding breasts?|pthc"
-    r"|(?:high|middle|elementary|primary|grade|junior high|secondary) ?school(?:ers?|s)?"
-    r"(?!\s+(?:reunion|sweethearts?|diploma|graduates?|graduation|dropouts?|teachers?|principals?|coach|janitor|parking))"
-    r"|[a-z]{1,12}schoolers?|" + _ORDINAL + r" ?grade(?:rs?)?\b"
-    # "girl … in/at school", "school uniform": the schoolgirl trope written out (a real desk-log prompt) [round 2]
-    r"|" + _GIRLBOY + r"(?:\s+[\wäöüß-]+){0,5}\s+(?:in|at|after|during|from)\s+(?:the\s+|her\s+|his\s+)?school(?!\s+of\b)"
-    r"|school\s+uniforms?"
-    # under 18 in six languages [round 3]
-    r"|" + _UNDER_18 +
-    # ages under 18, as digits or words
-    r"|" + _AGE_NUM + _AGE_UNIT + r"(?![a-z])|" + _AGE_WORDS + r"[\s-]*(?:years?[\s-]*old|years? young|jährig\w*|jahre alt\w*|ans|años|anni)\b"
-    r"|aged? (?:" + _AGE_NUM + r"|" + _AGE_WORDS + r")(?![\d.,-])"
-    r"|" + _GIRLBOY + r",? (?:who is |who's |is |was |of |at |just turned |turned |aged |age )?" + _AGE_NUM + _NOT_MEASURE +
-    r"|(?:she|he|who|sie|er|elle|il) (?:is|was|turned|ist|war|wird|a|est)(?: just)? " + _AGE_NUM + _NOT_MEASURE +
-    # German
-    # German "Kind": the plural / case forms and compounds, the bare singular only before German words — never the
-    # English "what kind of …" (a round-1/2 over-match)
-    r"|kinder\w*|kindes|kindern|kind(?=\s*[,;:!]|\s+(?:nackt\w*|sex\w*|porn\w*|beim|im|mit|von|das|ein|eine|und|ist|wird|zu|zum|zur|sexuell\w*|auf|in|am|hat|wurde))"
-    r"|kindlich\w*|minderjährig\w*|schulmädchen|schuljunge\w*|[a-zäöüß]{0,14}schüler(?:in|innen)?[a-zäöüß]{0,6}|[a-zäöüß]{0,14}schulkind[a-zäöüß]{0,6}|säugling\w*"
-    r"|kleinkind\w*|vorschul\w*|kinderporn\w*|jugendlich\w*|mädchen(?=\s+(?:von|im alter|mit)\s+" + _AGE_NUM + r")"
-    # French / Spanish / Italian
-    r"|enfants?|mineure?s?|[ée]coli[èe]re?s?|fillettes?|gamin(?:es?|s)?|garçonnets?|niñ[oa]s?|menor(?:es)?|colegial[ao]s?"
-    r"|chiquit[ao]s?|bambin[oaie]|minorenn[ei]|scolar(?:etta|ette|o|i)|ragazzin[oaie]"
-    # Russian (Japanese: _HARD_JA below)
-    r"|ребенок|ребёнок|дети|детей|детск\w*|несовершеннолетн\w*|школьниц\w*|школьник\w*|подростк\w*|малолет\w*|лоли)(?![^\W\d_])",
-    re.IGNORECASE)
-_HARD_JA = re.compile(r"子供|子ども|こども|児童|少女|少年|幼女|幼児|未成年|ロリ|ショタ|小学生|中学生|高校生|女子高生|園児|1[0-8]歳未満|(?<!\d)(?:1[0-7]|[1-9])歳")
-_SOFT = re.compile(
-    r"(?<![^\W\d_])(?:teens?|teenie\w*|teenage\w*|teenager\w*|adolescent\w*|adolescente?s?|подросток|тинейджер\w*"
-    r"|" + _SOFT_MOD + r"(?:\s+[\wäöüß-]+)?\s+(?:" + _GIRLBOY + r"|buben?))(?![^\W\d_])", re.IGNORECASE)
-# one token that is both: teenporn, lolihentai, nudeteens, kidsex, freeteenporn, realkidsex, bestlolihentai …
-_SEX_FORMS = (r"(?:porn(?:o|os|s|ography|ographic|ographie|ografie|ografisch\w*|hub|star|stars|tube)?|sex(?:o|e|ual|uality|y)?|hentai|nudes?|nudity|xxx"
-              r"|fuck(?:ed|ing|s)?|erotic[as]?|nackt|fick(?:en|t)?|pussy|cams?)")
-_MINOR_FORMS = r"(?:teen|teenie|loli|shota|child|kid|kidz|preteen|underage|schoolgirl|jailbait|p(?:a|ae)?edo|kinder|toddler)"
-_COMPOUND = re.compile(
-    r"(?:" + _MINOR_FORMS + r"s?" + _SEX_FORMS + r"(?![^\W\d_])"
-    r"|(?<![^\W\d_])(?:porn|sex|sexy|hentai|nudes?|naked|xxx|fuck|erotic|nackt)" + _MINOR_FORMS + r"\w*"
-    r"|(?<![^\W\d_])(?:pthc|toddlercon|babycon|cub ?porn\w*|lolicon|shotacon))", re.IGNORECASE)
-_UNAMBIGUOUS = re.compile(
-    r"(?<![^\W\d_])(?:underaged?|under aged?|minderjährig\w*|lolis?|lolitas?|lolicon|shotas?|shotacon|p(?:a|ae)?edo\w*|jailbait"
-    r"|pre ?teens?|prepubescent|kinderporn\w*|child porn\w*|несовершеннолетн\w*|" + _UNDER_18 + r"|" + _AGE_NUM + _AGE_UNIT + r"(?![a-z])"
-    r"|" + _AGE_WORDS + r"[\s-]*(?:years?[\s-]*old|jährig\w*|jahre alt\w*|ans|años|anni))(?![^\W\d_])", re.IGNORECASE)
-_ADULT = (r"(?:(?<!\d)(?:1[89]|[2-9]\d)" + _AGE_UNIT + r"(?![a-z])|aged? (?:1[89]|[2-9]\d)(?![\d.,-])"
-          r"|(?:eighteen|nineteen|twenty|thirty|forty|fifty|sixty|achtzehn|neunzehn|zwanzig|dreißig|vierzig|fünfzig)(?:[\s-]+(?:one|two|three"
-          r"|four|five|six|seven|eight|nine))?[\s-]*(?:years?[\s-]*old|jährig\w*|jahre alt\w*|ans|años|anni)"
-          r"|in (?:her|his|their) (?:twenties|thirties|forties|fifties|sixties)|volljährig\w*|college[\s-]age|18plus|over 18|18 or older"
-          r"|18 and (?:over|older|up)|barely legal|of legal age|legal)")
-_ADULT_AGE = re.compile(r"\b" + _ADULT + r"\b", re.IGNORECASE)
-# the adult age clears a SOFT indicator only when it stands next to that noun phrase (Y: "petite girl, 25 years
-# old", "25 year old petite girl", "teen 18+", "legal teen") — never "little girl with a 35 year old man"
-_ADULT_BEFORE = re.compile(r"\b" + _ADULT + r"[\s,]*(?:\w+\s+)?$", re.IGNORECASE)
-_ADULT_AFTER = re.compile(r"^[\s,]*(?:who is |who's |aged |age |of |at |is |she is |he is )?" + _ADULT + r"\b", re.IGNORECASE)
-
-
-def _clauses(t: str) -> list:
-    return [c.strip() for c in _CLAUSE_SPLIT.split(t) if c and c.strip()]
-
-
-def _adult_adjacent(clause: str, m) -> bool:
-    return bool(_ADULT_BEFORE.search(clause[max(0, m.start() - 48):m.start()])
-                or _ADULT_AFTER.search(clause[m.end():m.end() + 48]))
-
-
-def _prepare(text) -> str:
-    t = _EXCLUDE.sub(" x ", normalize(text))
-    if _NEWS_CTX.search(t):
-        t = _CRIME.sub(" x ", t)                 # reporting about such crimes is not a request for them (S3)
-    return t
-
-
-def _near(t: str, window: int = WINDOW):
-    """the first STRONG sexual term and HARD indicator within `window` characters of each other, any order,
-    over the whole text (no clause scope) — a merge over the sorted match positions, linear in the text"""
-    hards = sorted([(m.start(), m.end(), m.group(0)) for m in _HARD.finditer(t)]
-                   + [(m.start(), m.end(), m.group(0)) for m in _HARD_JA.finditer(t)])
-    if not hards:
-        return None
-    starts = [h[0] for h in hards]
-    import bisect
-    for finder in (_STRONG.finditer(t), _GLUED.finditer(t), _STRONG_JA.finditer(t)):
-        for s in finder:
-            i = bisect.bisect_left(starts, s.start())
-            for h in hards[max(0, i - 1):i + 1]:
-                gap = max(h[0] - s.end(), s.start() - h[1], 0)
-                if gap <= window:
-                    return s.group(0), h[2]
-    return None
-
-
-def minor_risk(text) -> tuple:
-    """(True, reason) when `text` — a user's request, an image prompt, a page address, a list of content parts —
-    pairs a sexual term with a minor/childlike indicator (see the section comment for the three scopes);
-    (False, "") otherwise. Used BEFORE any model runs: a flagged request gets BLOCK_MESSAGE, never a fallback,
-    never a rendering."""
-    t = _prepare(text)
-    if not t.strip():
+def minor_block(text) -> tuple:
+    """(True, reason) when `text` — a user's request, an image / video prompt, a page address, a list of
+    content parts — pairs an explicit under-18 age or word with a sexual term, or names illegal content (see
+    the section comment); (False, "") otherwise. Pure, linear, milliseconds; no model call."""
+    t = _norm(text)
+    if not t:
         return False, ""
-    c = _COMPOUND.search(t)
-    if c:
-        return True, f"'{c.group(0)}' (compound)"
-    pair = _near(t)
-    if pair:
-        return True, f"'{pair[0]}' + '{pair[1]}'"
-    for clause in _clauses(t):
-        sex = _STRONG.search(clause) or _GLUED.search(clause) or _STRONG_JA.search(clause) or _SEXUAL_SOFT.search(clause)
-        if sex:
-            hard = _HARD.search(clause) or _HARD_JA.search(clause)
-            if hard:
-                return True, f"'{sex.group(0)}' + '{hard.group(0)}'"
-            for soft in _SOFT.finditer(clause):
-                if not _adult_adjacent(clause, soft):
-                    return True, f"'{sex.group(0)}' + '{soft.group(0)}'"
-            continue
-        weak, strong = _WEAK.search(clause), _UNAMBIGUOUS.search(clause)
-        if weak and strong:
-            return True, f"'{weak.group(0)}' + '{strong.group(0)}'"
+    m = _ILLEGAL_ALONE.search(t)
+    if m:
+        return True, f"'{m.group(0)}'"
+    sex = _SEX.search(t)
+    if not sex:
+        return False, ""
+    m = _ILLEGAL_WITH_SEX.search(t)
+    if m:
+        return True, f"'{m.group(0)}' + '{sex.group(0)}'"
+    tn = _GATED.sub(" ", _NEGATED.sub(" ", t))    # negated disclaimers and age gates are not indicators [S4]
+    m = _UNDER_AGE.search(tn) or _UNDER18.search(tn)
+    if m:
+        return True, f"age '{m.group(0).strip()}' + '{sex.group(0)}'"
     return False, ""
 
 
-# the safety net on the model side (round 2): a refusal that itself names minors is the strongest evidence the
-# request was about minors — the ladder stops, no uncensored rung, no raw-prompt render. Round 3 (Z2): a generic
-# "could be accessed by children" / "safe for teens" in a refusal of an ADULT request is not a citation.
-_CITES = re.compile(
-    r"\b(?:minors?|children|child|underage|under-age|kids?|teenagers?|teens?|pre-?teens?|young (?:people|persons?|girls?|boys?"
-    r"|individuals?|children)|(?:appears?|looks?|seems?) (?:to be )?(?:young|underage|a minor|under 18|like a (?:child|minor))"
-    r"|under (?:the age of )?18|age of consent|child(?:ren)?'s safety|csam|sexualiz(?:ation|ing) of (?:minors|children)"
-    r"|(?<!\d)(?:1[0-7]|[1-9])[\s-]*(?:years?|yrs?)[\s-]*olds?"
-    r"|minderjährig\w*|kinder|jugendlich\w*|mineurs?|enfants?|menores|niñ[oa]s|minorenn[ei]|bambin[oi]"
-    r"|несовершеннолетн\w*|дет(?:и|ей|ск\w*)|ребенк\w*|ребёнк\w*|подростк\w*)\b|未成年|子供|子ども|児童|18歳未満", re.IGNORECASE)
-_CITES_GENERIC = re.compile(
-    r"\b(?:accessed by|accessible to|available to|safe for|exposed to|seen by|viewed by|protect(?:ing|s)?|harm(?:ful)? to"
-    r"|appropriate for|suitable for|unsuitable for|zugänglich (?:für|sein)|geeignet für|für)\s+(?:\w+\s+){0,2}$", re.IGNORECASE)
-
-
-def cites_minors(text) -> tuple:
-    """(True, reason) when a REFUSAL text names minors / children / underage / "appears young" as the subject of
-    the request — the caller treats it as a minor-risk block"""
-    v = visible_text(strip_thinking(_as_text(text)))
-    for m in _CITES.finditer(v):
-        if _CITES_GENERIC.search(v[max(0, m.start() - 40):m.start()]):
-            continue                                         # "could be accessed by children": about the audience
-        return True, f"the refusal cites '{m.group(0)}'"
-    return False, ""
+def minor_age(text) -> tuple:
+    """[review v7.5-2] minor_block for a PICTURE EDIT (✨ improve a picture): the edit's words are only half of the
+    request — the picture is the other half, which no text check can read. An explicit under-18 age or word fires on
+    its own here (negated disclaimers and age gates stay exempt, exactly as in minor_block); everything minor_block
+    fires on fires too."""
+    hit, why = minor_block(text)
+    if hit:
+        return hit, why
+    t = _norm(text)
+    if not t:
+        return False, ""
+    tn = _GATED.sub(" ", _NEGATED.sub(" ", t))
+    m = _UNDER_AGE.search(tn) or _UNDER18.search(tn)
+    return (True, f"age '{m.group(0).strip()}' (a picture edit)") if m else (False, "")

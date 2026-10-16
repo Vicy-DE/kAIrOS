@@ -77,11 +77,13 @@ for stricter style adherence. Load test before the A/B: 512² on the shipped eng
   path degrades to the stock argv by itself: no `--lora-model-dir`/`--lora-apply-mode`, no `<lora:>` tag, no
   `GET /sdapi/v1/loras`, no `"lora"` request field; `image_display_name()` = the plain short name ("Muse" /
   "Muse SFW", distinct because `short_model_name()` cuts at the first " ("). The mechanism stays live for add-ons
-  that carry a `lora` entry. `kernel/server.py` was deliberately not edited (the R86 coder owns it); its R76
-  comments still describe "Krea 2 + the Kroma v0.3 LoRA" at lines ~365–369, ~690–695 (`IMAGE_MODEL_KEYS`),
-  the `short_model_name`/`image_display_name` docstrings and `resolve_image_kind` (~4725) — they are to be
-  reworded "Muse (default) / Muse SFW (safe), no LoRA since 2026-10-10" when that file is next touched;
-  `kernel/prompts.py:290` (the neutral-rule comment) likewise.
+  that carry a `lora` entry. The R76 comments/docstrings in `kernel/server.py` (the module header, the LoRA
+  constants, `IMAGE_MODEL_KEYS`, `EXPANDERS`, `short_model_name`/`lora_short_name`/`image_display_name`,
+  `_sd_model_args`, `sd_lora`, `resolve_image_kind`, `/api/models`) and `kernel/prompts.py:290` (the neutral-rule
+  comment) were reworded to Muse on 2026-10-10 evening — comment-only, no behaviour change, backups
+  `*.bak-2026-10-10n`; the comments in `tests/run-tests.sh`, `scripts/update-progress.py` and
+  `tests/test_llm_parallel.py` likewise. `tests/real-image-smoke.sh` (the manual sd-cli smoke on the stick) now
+  reads the `image` section's files + `gen_args` from the manifest instead of naming Krea 2 / the Wan VAE.
 - **Tests:** `tests/test_image_lora.py` — part A re-pinned to Muse (`unit_muse_manifest_pins`,
   `unit_muse_in_bake_list`: file/sha/size/url/licence, no `lora` in any tier, safe = the same files, 8/1.0, no
   Krea-2-Turbo/Kroma file anywhere); parts B/C keep testing the kernel's LoRA mechanism on a **test-only** `lora`
@@ -114,3 +116,51 @@ manifests/tier-8gb.json <models> --list` names the Muse file once and neither of
 - Measured on the 8 GB tier only (as every Krea decision before); the 16/24/32 GB tiers run the same file with
   the Q8_0 encoder. The CPU set's sd-cli loads Q4_0 GGUFs like the Krea one (same format) — unmeasured.
 - Early-access distribution terms of the Extended cut: the owner's call (§2).
+
+## 7. Kernel GPU smoke 2026-10-10 (manifest → sd-server session → picture, on the RTX 4070)
+
+The A/B (§3) drove the engine directly; this proves the kernel path with the real Muse file. Driver
+`results/muse-2026-10-09/gpu_kernel_muse.py` (unit `kairos-muse-smoke` under `flock ~/kairos/.gpu.lock`; evidence
+`results/muse-2026-10-09/smoke-kernel/`: `results.json`, `run.log`, `kernel.log`, one `sd-server-<step>.log` per
+session, the three PNGs; unit log `logs/gpu-smoke-unit.log`). The live repo kernel, read-only, in `kairos-fix:local`
+`--gpus all --memory 22g`, `/opt/vibeos` = vibeos-cuda-next (sd.cpp 3f8527a, llama.cpp b11223), the models laid out as on
+the stick as **symlinks** into a read-only mount (Muse from `image-candidates/`, the Qwen3VL-4B Q4_K_M encoder + the
+Qwen-Image VAE from `models/image/`, Gemma 4 from `llm-candidates/`; nothing copied), `manifests/tier-8gb.json` as
+shipped (asserted LoRA-free), `bin/sd-server` = a logging wrapper around the real binary (argv + exit code).
+Kernel up in 1.5 s, engines `ok`; `/api/status`: `image_model` lora `None`, `image_sessions` `sd-server`;
+`/api/models`: default = "Muse (…)" present, lora `None`; safe = "Muse SFW (…)" present, lora `None`. SFW prompts, no people.
+
+| step | request | prompt path | wall (job) | engine `generate_image` | peak VRAM | picture |
+|---|---|---|---|---|---|---|
+| A | `POST /api/image` (default = `image`) | resident Gemma 4 expands with `krea-neutral` (llama-server ready 8 s) | 67.1 s (66.7) | 51.5 s | 7058 MiB | `A-image-default-neon-sign.png` 1024², the sign reads "kAirOs" (case-only, as in the A/B) |
+| B | `POST /api/image` `model: safe` (`image_safe`) | Gemma expands with `krea` (SFW; reload 10 s after the session) | 78.1 s (78.0) | 58.3 s | 7060 MiB | `B-image_safe-bicycle.png` 1024² |
+| C | `POST /api/wallpaper` | expand off: Gemma wrote the scene from the session fragments (reload 10 s), `clamp_dims` → 1280×704 | 62.6 s (46.1) | 44.6 s | 7128 MiB | `C-wallpaper-1280x704.png` |
+
+Every session (3 launches, one per step — each later request needed Gemma, so the kernel closed the window: "session
+closed, idle window 3.0 s (a GPU waiter; 0 batch(es) joined)") started with exactly
+`--diffusion-model …/image/museByStableYogi_v35Q4Extended.gguf --vae …/image/qwen_image_vae.safetensors --steps 8
+--cfg-scale 1.0 --sampling-method euler --scheduler simple -W 1024 -H 1024 --diffusion-fa --vae-tiling --llm
+…/image/Qwen3VL-4B-Instruct-Q4_K_M.gguf --listen-ip 127.0.0.1 --listen-port 8082 -v` — the Muse file, **no
+`--lora-model-dir` / `--lora-apply-mode`**, the manifest's gen_args verbatim, no Krea/Kroma file; no `<lora:` tag in any
+rendered prompt, every job's `lora` field `None`; each sd-server exited with rc −15 = the kernel's SIGTERM at the session's
+end (`_sd_stop`), never on its own. Kernel lines per session: "sd-server image: session of 1 picture(s)", "page cache:
+image's **3 file(s) (11.1 GB)** are dropped while sd reads them (RAM 23.6 GB …) [R79]" (the 22 GiB cgroup plays the
+30 GB laptop), "sd-server ready in 1.0 s", "job … done after 66.7s", "page cache after the image engine: LLM
+gemma-4-26B-A4B-it-UD-IQ4_XS.gguf 68 % resident, image files 0 %". The engine times at 1024² (51.5 / 58.3 s) match the
+A/B's 51.6 s median; the wall times add the Gemma (re)load and the expansion. Afterwards: container removed,
+`nvidia-smi` 2 MiB (as before), the GPU lock free. Pictures viewed: all three SFW, as prompted.
+
+## 8. Full suite 2026-10-10 evening (after the integration)
+
+The first full run (`results/muse-2026-10-09/logs/suite.log`) found four stale pins, none a kernel/manifest/build bug:
+`unit_manifest_image_sections_2026_09` (every image URL had to be Hugging Face — Muse's DiT is the civitai download; the
+kernel's aria2c downloader has no host assumption and the file is baked everywhere, so the URL is informational),
+`unit_r47_baked_set_and_build_scripts` (bake list 44 → 43 files, `--all` 63 → 62, manifest files 70 → 69, bake total
+27 237 064 729 → 26 095 613 177 B = − Krea 7 216 993 376 − LoRA 2 241 178 336 + Muse 8 316 720 160; the three build paths
+copy the lister's list, which names Muse once and neither old file), `imaging_drop_policy_auto_and_periodic` and
+`imaging_e2e_image_files_leave_page_cache` ("4 file(s) (12.2 GB)" → "3 file(s) (11.1 GB)"). Second run
+(`logs/suite-2.log`, the owner's exact `kairos-fix:local` command): results.json 130/0, splash 20/0 (1 env skip),
+desktop-web 9/0 (1 env skip), image-lora 12/0, forge-quality 11/0 (2 env skips: no Chromium), imaging-workflow 17/0,
+wifi-bt 27/0, refusal-fallback 36/0; llm-parallel 29/1 on the R62 timing test (`e2e_vanished_app_client_keeps_its_slot_r62`,
+"the ask took 2.3 s", wants 3.0 < t < 12.0 on a mock stream — no image code) → standalone re-run
+(`logs/test_llm_parallel-rerun.log`) 30/0, `docs/PROGRESS.md` regenerated: 0 failing.

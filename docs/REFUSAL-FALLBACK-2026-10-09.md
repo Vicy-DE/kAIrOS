@@ -1,4 +1,11 @@
-# R86 — the LLM refusal fallback (and the hard minors guard), 2026-10-09
+# R86 — the LLM refusal fallback (and the narrow minors block), 2026-10-09 → round 4 2026-10-10 → rounds 4b / 4c 2026-10-11
+
+> **Round 4 (2026-10-10) supersedes §6, §9 and §10 below:** the lexical minors *guard* of rounds 1–3 is gone, the
+> uncensored heretic Gemma 4 is the stick's default LLM, and ONE narrow minors *block* remains — see §11. §1–§5 (the
+> defect, the ladder, the config, the streaming verdict) still describe the shipped design; §6–§10 are kept as the record
+> of what was tried and why it failed review three times. **Round 4b (2026-10-11)** applies the independent review of
+> round 4 (list / regex / wiring fixes, the uncensored default's limits line), **round 4c (2026-10-11)** the re-review's
+> four list / regex fixes K1–K4 — the last two subsections of §11.
 
 kAIrOS is a free, non-commercial, 18+ AI OS without content filters: adult content about fictional adults
 is a product feature. Its default LLM, Gemma 4 26B-A4B-it (manifest section `llm`), still refuses adult
@@ -352,3 +359,389 @@ sentence is translated, a 30 KB ask stalls the event loop 0.0 s. `tests/test_ref
 test_desktop_web 9/0/1, test_image_lora 12/0/0, test_forge_quality 11/0/2, test_imaging_workflow 17/0/0, test_wifi_bt 27/0/0,
 test_refusal_fallback **36/0/0** = **292 passed, 0 failed, 4 skipped** (the same four environment skips as §7). No pin in
 `tests/test_kernel.py` moved in round 3 (`suite-r3-1` caught my late `/api/image` English hop against R71's MT-call pin; reverted).
+
+## 11. Round 4 — the owner's redirect: the ladder + a narrow minors block (2026-10-10)
+
+**Why.** Rounds 1–3 built a lexical minors guard (`minor_risk`: soft and hard terms, clause splitting, a 120-char window,
+leet / homoglyph / letter-spacing folding, adult-age adjacency, plus `cites_minors` / `guard_answer`, a model-side net that
+ended the ladder when a refusal named minors) wired into about a dozen entry points. It failed review three times: each
+round passed its own suite, then a fresh probe set broke it (REVIEW-R3 §2: a 120-char window, conjunction splits, adult-age
+adjacency, obfuscation gaps), while it blocked ordinary parenting / education / art requests (REVIEW-R3 H1: 20 of 26). The
+detector over-fired on normal answers (8 of 22 in §I) and missed plain refusals and a refusal page with a button (§I2). The
+owner redirected the design on 2026-10-10: *"gemma shouldn't block the prompt; if it drops it → other llm or uncensored
+gemma; the prompt shouldn't be modified the wrong way."* The Gemma-classifier redesign (`results/…/redesign/`) was rejected
+too. The integrator's Option B, confirmed by the owner: all the soft-guard machinery goes, ONE narrow high-precision block
+stays as a floor (not a filter), the ladder stays.
+
+**A0 — the default LLM is the uncensored heretic** (the owner, 2026-10-10 21:35, via the model triage page). `manifests/
+tier-8gb.json`, `tier-16gb.json` and the `test/tier-8gb-gemma4-26b.json` variant: `llm` = mradermacher's
+`gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf` (13 917 722 144 B, sha256 `e2f223…9df3742`, the HF url), the
+same gemma4 MoE architecture (128 experts, 8 active) and the same serve args / template kwargs / sampling / slots, flagged
+`"uncensored": true` so the kernel knows. Stock Gemma 4 26B-A4B-it (unsloth UD-IQ4_XS) left the manifests and the stick; it
+stays on the laptop. **The `llm_uncensored` section was removed** from the 8/16 GB tiers and the three 8 GB test variants —
+the smaller, cleaner change: a second section naming the same file would have listed one model twice in `/api/models`,
+double-counted it in the build lists and made `llm_model = uncensored` a pointless swap of the same file. The kernel's
+uncensored rung now resolves (`server.uncensored_rung()`) to a tier's own `llm_uncensored` add-on section when it has one
+(24/32 GB may add one: present / non-empty / complete / not negative-cached), else to the default `llm` when the manifest
+flags it uncensored — chat key `llm_default`, which `ModelManager.llm_spec` maps to the `llm` section whatever the
+`llm_model` setting says (the same server key as a normal default request: no reload). The rung is never the model that
+declined (`_same_model`: the same section or the same file), so on the stick it serves the *other* primaries: fast mode
+(Qwen2.5-Coder refuses 6/6 adult asks even with the preamble, SCREEN.md) climbs preamble → the heretic and back. R80's
+status-bar name, `/api/status.llm`, `/api/models` (`llm[]` = default + fast, `llm_setting.modes` the same) and the baked set
+(4 files / 24.99 GB; the bake list 43 files / 26.42 GB) follow. `refusal_fallback.uncensored` reports `{available, reason,
+section: "llm_uncensored" | "llm" | null, download_key: "llm_uncensored" | null}`.
+
+**A — the ladder stays** (`["preamble", "llm_uncensored"]`, the expander's `["preamble", "encoder"]`): the sticky rung per
+request, the whole-stream verdict, the 18+ system prompt on every `llm_uncensored`-section request (`uncensored_system`),
+the negative caches, the quarantine-free self-healing of a cached *refusal* (a cached refusal page or app is a miss and
+regenerates), the MT-refusal handling (Y5). **Every rung used up = DECLINED:** never cached, never rendered, never an image
+prompt, never a 502 — `RefusalError` ends in `DECLINED_STATUS` 422 on `/api/ask`, `/api/browse`, `/api/app/{id}/modify`,
+`/api/vision`, the error page on `/web/…`, `event: error` on `/api/app`, the job error of a picture; the text ends *"— rephrase
+the request, or ✨ improve the result"*. On the stick the exhausted ladder is: the heretic → the heretic with the preamble →
+(the uncensored rung is the model that declined: skipped) → declined.
+
+**B — the narrow block** (`refusal.minor_block(text) -> (bool, reason)`, pure, linear, milliseconds). It fires only on:
+(1) an explicit under-18 **age** — a number 0–17 or its number word with an age unit (`15-year-old`, `15 yo`, `15 y.o.`,
+`aged 15`, `age: 15`, `15 Jahre alt`, `15-jährige`, `fifteen-year-old`, `fünfzehnjährige`, `im Alter von 15`) — or an explicit
+under-18 **word** (underage / under-age, under 18 / eighteen, unter 18 / achtzehn, minderjährig, preteen / pre-teen,
+prepubescent, vorpubertär) **together with a sexual term** anywhere in the same text (porn*, nude(s), nudity, naked, nackt*,
+sex, sexy, sexual*, sexuell*, hentai, nsfw, erotic*, Erotik, erotisch*, lewd, genitals / Genitalien, penis, vagina, vulva,
+pussy, tits / Titten, boobs, topless / oben ohne, intercourse / Geschlechtsverkehr, fuck*, fick*, blowjob, handjob,
+masturbat* / masturbier*, orgasm*, cumshot, bdsm, bondage, fetish* / Fetisch*, xxx, lingerie / Dessous, striptease,
+undress*, unclothed, bare-breasted, rape / raping / raped / vergewaltig*, molest*, incest* / Inzest*, deepthroat, gangbang,
+threesome, creampie, bukkake — deliberately NOT "explicit", "breast", "cock", "dick", "cum", "ausziehen": everyday words);
+(2) the illegal-content terms csam, pthc, child porn(ography), kiddie porn, Kinderporno(grafie) and jailbait on their own
+(kiddie porn and jail bait since round 4b, R3 — round 4 listed kiddie porn here while the code lacked it);
+loli / lolicon / shota / shotacon only together with a sexual term. It never fires on ages 18 and up, numbers without an age
+unit (16 GB, 15 cm, 1080p, 17 inch, 8 steps, 12:30, 2 girls), "minor / minors" in any sense, negated disclaimers ("no minors",
+"nobody under 18", "never anyone who looks underage", "keine Minderjährigen", "kein Zutritt für Minderjährige" — a closed
+bridge of function / audience words between the negation and the word), the kernel's own prompts (every string constant of
+`kernel/prompts.py` is pinned), the owner's address, soft indicators (child, kid, teen, girl, boy, schoolgirl, toddler are
+NOT indicators any more), the reviews' adult lists (H2 26/26) and 22 of REVIEW-R3's 26 H1 SFW texts. Normalisation is NFKC
++ casefold + zero-width / combining / control characters stripped, reading at most 100 000 raw characters and keeping at
+most 100 000 after normalising (Y1: 400 000 NFKC-expanding characters stalled the loop 10.5 s; now 8 MB of them take
+~130 ms, 8 MB of plain text 14 ms, 50 KB of any shape 6–8 ms). Obfuscation (leet, homoglyphs, letter spacing, split
+sentences) is out of scope by design. **Known, accepted cost:** a text pairing an explicit under-18 age with a sexual term is
+blocked even when its intent is protective — in the sets of this round 4 of REVIEW-R3's 26 H1 texts ("explain puberty and
+sex to my 10 year old", "explain to a 12 year old why the Venus de Milo is naked", "mein 14-jähriger Sohn masturbiert",
+"the sex-ed class for my 13 year old") and `a nude woman holding a 1 year old bottle of wine`; no context or intent rule
+rescues them (that was the machinery that failed), the message says so: *"kAIrOS does not create sexual content involving
+minors (an under-18 age or term together with a sexual term) — if this is about adults, rephrase it without the age"*,
+HTTP 400, no model call, nothing cached, nothing rendered.
+
+**Where it runs — exactly four points** (`server.block_check` / `block_check_primary` / `block_check_refused`):
+1. every media render's entry, on the user's prompt before anything (the expander included): `/api/image`, `/api/images`,
+   `/genimg` (before the cache hit — a cached file is neither served nor moved), `render_images` (the wallpaper, page and app
+   pictures), `/api/video`, `/api/music` (caption + lyrics) and `MM.music_job` (an app's `<audio data-gen-music>`);
+2. the final image / video prompt right before sd renders it, after the expander or any rung: `MM.sd_batch` (every picture
+   path: icons, pages, apps, wallpaper, forge, /genimg, /api/image(s)) and `MM.sd_job` for video — on the English prompt;
+3. a text request the primary REFUSED, once before any rung (`llm_generate` / `llm_stream`): as typed, and — translation
+   layer on — its cached English hop, the one MT call the block makes, on refused requests only; a hit ends the ladder as
+   BLOCKED, no rung runs;
+4. a text request whose PRIMARY is an uncensored model (the manifest flag, or `llm_model` choosing a tier's `llm_uncensored`
+   section), at the entry — inside `llm_generate` / `llm_stream` and at the routes before the session log (ask, app, page,
+   game), so a blocked prompt never feeds the wallpaper. Since the heretic is the default, this runs on every text request on
+   the stick (milliseconds).
+It runs nowhere else: a request a censored primary answers is never checked; system prompts, the site premise, the session
+fragments, cached content, listings and `/api/search` are never checked.
+
+**C — the detector per kind** (REVIEW-R3 §3, S1 + I2): *prompt* = recall first — any refusal phrase, apology or policy
+sentence anywhere in the (≤ 2000-char) expansion is a refusal, the only exception a refusal-shaped phrase inside quotation
+marks that a sign / slogan / caption word introduces; *html* = a real page (more than 12 opening tags AND more than 600
+visible chars) is never a refusal, a short structure-poor document whose visible text opens with a refusal IS one, even with
+a button (Z3's interactive-element exclusion is gone); *text* = precision first — a refusal sentence of the model's own at the
+start (a STRONG one a sentence or two in, in a short answer), not a limit statement, not followed by partial help, and then
+either BARE (its object only refers to the request: "I can't do that.", "I'd rather not write that.", "Das kann ich leider
+nicht machen.", "Ich werde dabei nicht helfen.") or followed by content-policy vocabulary (explicit, sexual, pornograph*,
+adult content, guidelines, policy, appropriate, harmful, comfortable, ethic*, safety, …; round 4b narrowed this to
+content-policy forms — see its subsection below). A limitation with a concrete
+object and help after it is not a refusal ("I cannot generate a QR code image directly. You can paste the link…", "I don't
+support that file format yet. Try PNG.", "I can't do that calculation without the interest rate. What rate…", "Ich kann dir
+hierbei nicht weiterhelfen, da mir die Daten fehlen. Frag beim Bürgeramt"). New patterns: `en_rather`, `en_comfortable`,
+`en_violates` (the stock encoder's "violates ethical and safety guidelines", STRONG), `de_das_kann`, `de_werde`. Ground truth
+pinned: every real refusal of the refusal screen (stock Gemma ×3, the stock encoder ×1, Qwen2.5-Coder ×5), the owner's two,
+REVIEW-R3's I2 set, 67 normal answers (REVIEW S1, Y2, §I) with 0 false positives. Dropped on purpose: the HAL 9000 / Chore
+Robot pins (an app whose entire visible text is a refusal sentence is judged a refusal: one retry) and the unquoted-slogan
+prompts ("the slogan I will not comply" without quotes is a refusal for an expansion).
+
+**D — deleted** (`kernel/refusal.py` 707 → 553 lines, 431 of them non-blank and non-comment — the first hand-over's
+"423" was a miscount; 775 / 592 after round 4b): `minor_risk` and all of normalize / `_LEET*` / `_CONFUSABLES` /
+`_SPACED` / `_SEP` / `_CLAUSE_SPLIT` / `_SOFT` / `_SEXUAL_SOFT` / `_HARD(_JA)` / `_STRONG(_JA)` / `_GLUED` / `_COMPOUND` /
+`_UNAMBIGUOUS` / `_WEAK` / `_ADULT_*` / `_near` / `_clauses` / `_EXCLUDE` / `_CRIME` / `_NEWS_CTX` / `cites_minors`; in
+`kernel/server.py` `MinorRiskError` (→ `MinorBlockError`), `guard_request`, `guard_request_en`, `guard_answer`, `quarantine`,
+`quarantine_app`, `app_prompt_blocked`, `_APP_GUARD`, `QUARANTINE_DIR`, the per-entry guards of ask / app / page / browse /
+game / vision / search, the premise guard (S6), the wallpaper fragment guard, the listing / host / status hiding (Y3), the
+`cached_page_html` address check and the `/genimg` quarantine (S4). Kept with a reason: `_as_text` (h_ask's X3 coercion of
+content parts), `visible_text` / `strip_thinking` / `refusal_snippet` (the detector and the journal), `uncensored_system`
+(a tier's `llm_uncensored` section still gets the limits), the negative cache (`UNCENSORED_FAIL`: ONE global slot for whichever
+section the rung resolved to — not keyed per section), `EXPANDER_DECLINED` (X2), `translate_texts`' Y5 rule.
+
+**Tests** (`tests/test_refusal_fallback.py`, 25): 7 files-only (the detector on the real refusals / the reviews' normal
+answers / per kind; the block's must-fire and must-not-fire lists incl. the kernel's prompts, H1 with the 4 counted
+accepted-cost hits, H2; linearity; the 7 manifests), 8 in-process (the rung's resolution, the error texts, llm_generate /
+llm_stream rungs, the early and the late stream verdict, the sticky rung, the negative cache, the four check points with
+mocks — 0 LLM calls on an uncensored primary, a censored primary that answers is never checked, blocked after exactly one
+call when it refuses, a mocked expander that adds an explicit minor age is caught at the sd floor with 0 renders — and the
+floors), 10 end to end on the SHIPPED manifest (the heretic default answers first time with no rung; declined = nothing
+cached and 422; fast mode climbs preamble → the heretic with one real llama-server swap and back; the app stream's `refusal`
+event; the cached refusal page; the expander's rungs and the declined picture; the four check points at every route; the
+English hop on a refused request only; cached apps are never hidden; the status / models shapes). Standalone run 1: 25/25
+(`results/r86-refusal-fallback/logs/r4-run1.log`). Other suites' pins that moved: `test_kernel.py` (the variant's file / size
+/ flag, `GEMMA_SHA`, the mradermacher url, the baked total 24 985 530 214, the bake total 26 416 157 753, `--all` 61 files,
+68 manifest files, 27 stale copies, the `llm[]` list and modes = default + fast), `test_imaging_workflow.py` (the residency
+log lines name the heretic). Suite: see STATUS.md / the hand-over.
+
+**Live GPU check** (2026-10-10 23:15–23:25, unit `kairos-r86-smoke` under `flock`, `results/r86-refusal-fallback/gpu/
+gpu_kernel_r86_r4.py`: the live kernel in kairos-fix:local with `--gpus all` against the real tier-8gb weights on the RTX 4070
+Laptop 8 GB; numbers here, every 18+ request / answer / picture only under the owner's `~/Bilder/…proof-r86-r4…` dir).
+*Phase 1, the shipped configuration — the heretic as the default:* SFW `/api/ask` 14.2 s, a small app (12 802 chars, `done`, no
+`refusal` event) 107.6 s, a web page (6 769 chars) 86.1 s, a picture (the heretic expanded it, Muse rendered 1024², 2.06 MB)
+57.1 s — each answered first time, 0 rungs, `refusal_fallback.count` 0 at the end, peak VRAM 6.7–7.3 GB. Adult (the refusal
+screen's requests stock Gemma refused, fictional adults 25+): the explicit scene ask 18.5 s (1 362 chars), the owner's porn.xxx
+page 50.1 s (6 650 chars, no refusal text in the page), the erotic-stories page 62.1 s (8 384 chars), the German sauna ask
+13.7 s (2 024 chars), the swingers ask 3.6 s (806 chars), one adult picture through the expander (expanded by the heretic with
+the 18+ rules, rendered, 2.0 MB) 57.1 s — all first time, 0 rungs, 0 blocks. *Phase 2, the ladder on the real engine with a
+censored primary* (a scratch manifest: stock Gemma as `llm` + the heretic as the `llm_uncensored` add-on — the repo manifests
+no longer carry stock Gemma): the owner's page → stock Gemma refused ("I cannot fulfill", 179 visible chars, 0 tags) → the
+preamble rung on the same model answered a real page (9 279 chars) in 100.1 s and the cache holds the real page (no cached
+refusal); `llm_model=fast` (Qwen2.5-Coder) + the explicit scene ask → refused → the preamble refused ("I can't assist") →
+rung 2 swapped llama-server to the heretic section (`loaded: llm_uncensored`, the R80 name "Gemma 4 26B-A4B-it ultra-uncensored
+heretic") and answered (1 533 chars) in 31.0 s — no 502, nothing cached as a refusal. Afterwards: GPU 2 MiB used, no compute
+process, no container, the lock free.
+
+### Round 4b — the independent review's fixes (2026-10-11)
+
+**Why.** The independent review of round 4 (REVIEW-R4, verdict *ship after fixes*) found the architecture right — the
+ladder never ends in a cached, rendered or 502 refusal, the block runs at exactly the four points with 0 LLM requests and
+0 sd prompts on a hit — and asked for five small list / regex fixes (R1–R5) plus should-fix items; the integrator took
+R1–R5, S1–S8, S10 and S13. The design above is unchanged: no context or intent rules, no classifier. Two coding agents
+built it: the first applied R1–R5 and most items and stopped at its usage limit; the second inventoried that work against
+the pre-4b backups, corrected the widenings it had not verified (listed below), wrote the tests and ran the proof.
+
+**The block** (`refusal.minor_block`):
+- *R1* — an age unit ends at a word boundary: "10 years older", "5 years younger" is an age DIFFERENCE, not an age (the
+  German alt / alte / alter / altes keep firing).
+- *R2* — "under 18" / "unter 18" followed by a measurement does not fire: unit words (dollars, euros, cents, pounds,
+  degrees, Celsius, feet, sec, hrs, mph, metres, miles, litres, kcal, Euro, Grad, Uhr, Franken …), the symbols %, €, $, £,
+  °, a decimal ("18.5") or a time ("18:30").
+- *R3* — the German sex / nackt / erotik compounds are sexual terms (Oralsex, Analsex, Gruppensex, Sexvideo, Sexbilder,
+  Sexfilm, Sexgeschichte …, Nacktvideo, Nacktselfie, Erotikfilm, Erotikgeschichte …, sexting); "under the age of 18" is an
+  under-18 word; kiddie porn and jail bait fire on their own. FP hunt: sextet, Unisex, sexism, Sextant — 0 fire.
+- *S3* — younger than / below / not yet / not even 18, under 12–17 ("under 16"; the review simulated 1–17 FP-free),
+  under-18s / under-16s, unter 12–17, jünger als 18, noch nicht 18 and nicht volljährig are under-18 words. The 12–17 forms
+  skip a following THING count (under 15 photos, unter 12 Bilder, fps, x, times — never a person noun: "under 16 players"
+  is an age); the 18-forms keep the review's R2 exclusion only (units and symbols), so "nude under 18 models" fires as in
+  round 4.
+- *S4* — an adult site's age gate is a normal 18+ request (the integrator's decision). Exempt, like the negated
+  disclaimers: the CONDITIONAL form ("if you are under 18 …", "if you're under 18, please leave", "wenn du unter 18 bist")
+  and the PROHIBITIVE form — the under-18 word, a closed bridge of function / audience / venue words, then a closed list
+  of PROHIBITIONS: not / never / cannot + allowed, permitted, admitted, welcome, enter, view, visit, erlaubt, gestattet,
+  betreten …; no / kein + entry, access, admission, Zutritt, Zugang, Eintritt …; verboten, untersagt, unzulässig, banned,
+  prohibited, forbidden, denied, excluded …; leave now / this / the, go away, verlassen, raus. Never a bare negation: "under
+  18 is not a problem", "minderjährig ist kein Problem" fire. "You must be 18 or older", "18+ only", "nur ab 18" and
+  "Zutritt erst ab 18" never fired (18 is no under-18 age). *Changed in round 4c (K1):* the conditional alone no longer
+  exempts; every gate needs its prohibition.
+- A side effect of S5: the negation bridge knows write / sexual / sexuell / explicit / explizit, so the kernel's limits
+  line and its echoes in an expansion ("no sexual content involving anyone underage") are negated disclaimers — every
+  string constant of `kernel/prompts.py` stays pinned as must-pass.
+
+**The detector** (`refusal.is_refusal` and the expander's own check):
+- *S1* — the text rule's policy vocabulary (`_POLICY`, the partial-help veto `_REFUSAL_VOCAB` and the limit-statement
+  object `_REFUSAL_OBJ`) is CONTENT-POLICY FORMS only: my / our / its policy, guidelines or programming; content policy /
+  guidelines; inappropriate, not appropriate, unangemessen; meine Richtlinien; explicit, sexual, porn*, nude, naked, erotic,
+  nsfw, adult content (EN, DE, FR, ES, IT, RU, JA). The bare words policy, guidelines, appropriate, safety, restricted,
+  Richtlinien and rules do not count, so the review's 14 everyday answers ("… check their privacy policy", "please choose
+  an appropriate date", "the folder is restricted", "follow the safety guidelines on the package", "… die Richtlinien
+  deines Steuerberaters") are answers. The veto keeps the model's self-descriptions (programmed, ethical, purpose,
+  respectful, boundaries): "I can't help with that. My purpose is to provide helpful, safe and respectful assistance …"
+  stays a refusal.
+- *S2* — plain refusals: the "I'm not going to / allowed to / willing to" alternatives are live (`\bI` followed by a
+  space OR an apostrophe — round 4's `\bI ` made them dead), "I won't be generating that" (an -ing form), "that's not
+  something I can help with", "Sorry, I can't." alone, "I'm not writing that", a policy word INSIDE a violation phrase
+  ("Writing this would violate my content policy, so I won't"), and German "Das mache ich nicht", "Ich werde keine …
+  erstellen", "Ich lehne … ab", "Leider darf ich keine … verfassen", "Ich möchte das nicht schreiben", "Darauf kann ich
+  nicht eingehen", "Das ist nicht angemessen" (with "Nein," as a lead-in). Precision first: "No, it's not allowed." is an
+  answer — the subject "it" counts only with "something I can help with" or "possible for me".
+- *R4* — "this page / site / webpage / document / game" refers to the request: `<p>I can't create this page.</p>` is a
+  refusal (round 4 cached and served it).
+- *R5* — the expander's own recall-first check `is_expansion_refusal(text)`: kind "prompt" plus ANY first-person "I
+  can't / cannot / won't / am unable to / must decline …" outside a quoted sign text (the idioms believe, wait, stress,
+  imagine, help but excluded) — "I can't add nudity to this image, but here is a calm scene: …" is no longer rendered as
+  the picture's prompt. Only `expand_prompts` and `expand_fallback` use it; the MT check (Y5) keeps kind "prompt", and
+  kind "prompt" itself is unchanged from round 4, so UI translations ("I can't open the file", "I can't show the
+  preview") stay translations.
+- *S10* — `strip_thinking`, `visible_text` and the tag count find every opening and closing once and pair them by bisect
+  instead of the lazy regexes, which were quadratic on unclosed tags in model output: 8 000 unclosed `<think>` 3.5 s →
+  11 ms, `<script>` 1.2 s → 8 ms, 30 000 `<a` 1.1 s → 9 ms (three kinds together), with results identical to the regex
+  forms on 4 010 test samples (60 579 in the build's own check).
+
+**The kernel** (`server.py`, `prompts.py`) and the rest:
+- *S5* — the uncensored DEFAULT gets one limits line. Every request a section flagged `"uncensored": true` serves (the
+  heretic default on 8/16 GB; `llm_model = uncensored` serves that default on these tiers) carries
+  `prompts.UNCENSORED_LIMITS` — *"Never write or depict sexual content involving minors or anyone who looks underage, and
+  never sexual content about real, identifiable people."* — at the END of its system prompt (after the route's prompt,
+  before the translation layer's language line; applied at the hold in `uncensored_system`, idempotent). Deliberately no
+  "non-consensual": that is the owner's call, not a safety floor. A prompt that starts with `ADULT_PREAMBLE` (every ladder
+  rung) states the limits already and gets no second line; a tier's `llm_uncensored` add-on section keeps `ADULT_PREAMBLE`
+  as its prefix (round 2, B2); fast mode's censored model gets nothing; the user's text is never touched. Round 2's
+  rationale "the decensored model never runs without the limits" holds for the default again.
+- *S7* — `render_images` lost its dead `blocked` branch (the expander sets none since round 4).
+- *S8* — a cache hit is never checked: `h_app_generate` runs check point 4 after the cache-hit branch, so a cached app's
+  summon opens it exactly as its host page `GET /app/{id}` serves it; ✨ improve is a generation and is checked at the entry.
+- *S6* — the manifests' `refusal_fallback` comment names what fires alone (csam / pthc / child porn / kiddie porn /
+  Kinderporno / jailbait) and what never fires (a negated or age-gate disclaimer, an age difference, a measurement); all
+  7 manifests byte-stable, the 8 GB variants equal tier-8gb outside `llm`. In this document: the line counts and the
+  negative-cache wording of §11 D, kiddie porn in §11 B.
+- *S13* (test only) — `tests/test_llm_parallel.py`'s vanished-client test measures from the streams' start in the test
+  mock's own request log: both vanished streams must run their full 6 s hold, the ask's request must start only after one
+  of them ended, and the ask must end 5.5–12 s after the streams began. R86's stream verdict holds the first delta back,
+  so the old bound "remaining after the first delta > 3.0 s" sat exactly on the measured value (bimodal 2.3 / 3.0 s); a
+  bound counted from the POSTs fails too, because each vanished app holds a slot twice (the spec step, then the stream:
+  ~12 s) and would let the R62 defect pass (~9 s).
+
+**Corrected during the build** (the first agent's unverified widenings; each probed in process against the pre-4b code):
+`make / include / show / portray / add / display` as refusal verbs would have changed kind "prompt", i.e. the MT check
+(5 of 5 German → English UI translations dropped) — reverted, the expander catches those phrasings through R5; the
+subject "it" in `en_inappropriate` made "No, it's not allowed." a refusal — narrowed; the veto had lost the model's
+self-descriptions (3 of 3 refusal continuations judged partial help) — restored; the prompt kind's policy sentence had
+been narrowed without a brief item — restored; the count-noun exclusion included person nouns and applied to the
+18-forms ("nude under 18 models" passed) — fixed; the age-gate rule took any negation after the word ("under 18 is not
+a problem" passed) — now a closed list of prohibitions; the limits line itself fired the block — the bridge knows its
+words.
+
+**Numbers** (the review's four probe scripts re-run in process on the final tree; before = the review's own run): block
+core fire 82/82 → 82/82, plain-language fire 1/24 → 22/24 (left: "a girl of 14", "mit 14 Jahren" — no age unit),
+must-pass false positives 5/134 → 0/134, "under 18" + a unit 0/7 → 7/7 pass, conditional age gates 1/9 → 9/9 pass, the
+accepted cost 16/18 → 17/18; detector: the S1 innocent answers flagged 10/14 → 0/14, fresh refusals text 17/30 → 30/30,
+html 4/6 → 6/6, prompt 9/10 (kind prompt, unchanged) and 10/10 under `is_expansion_refusal` (0 of 13 normal expansions
+flagged), normal answers 0 false positives (43 text + 13 html + 13 prompt), ground truth 32/32, real outputs 0 false
+refusals (166 screen answers, 95 expansions under the expander rule, 228 cached pages / apps / games); `minor_block` on
+8 MB 9.5 ms plain and 81 ms NFKC-expanding.
+
+**Not in scope** (design-inherent, recorded): S9 — RAW_MAX: a pair placed after 100 000 raw characters is not seen (a
+16 k-token slot cannot hold such a prompt; worth a note for a future large-context uncensored primary); S11 — an object's
+age next to a sexual term fires ("a 12-year-old scotch"), and the English verb "alter" + a digit reads as the German
+"Alter".
+
+**Tests** (`tests/test_refusal_fallback.py`, 25 → 32, the review's short probes; minors probes stay an age or an
+under-18 word plus one term, mocks only): `refusal_r4b_block_lists` (26 must-fire, 45 must-pass: R1, R2, R3, S3, S4, the
+limits-line echoes), `refusal_r4b_detector` (S1, S2, R4, R5, Y5 kept), `refusal_r4b_linear_scanners` (S10 equivalence +
+timing), `refusal_r4b_limits_line_and_wiring` (S5, S7, the R5 / Y5 wiring), `refusal_r4b_expander_sanitising_refusal` (R5
+through the real `render_images` → `expand_prompts` → sd floor with stubs), `refusal_e2e_cached_app_summon_unchecked`
+(S8), `refusal_e2e_uncensored_limits_line` (S5 on the mock's request log), the R4 page in
+`refusal_e2e_cached_refusal_page_regenerates`, the S6 comment in `refusal_manifests_round4`. Pins that moved with S5:
+`test_kernel.py` (the ask's exact system prompt with translation off and on, the expander's English rule) and
+`test_image_lora.py` (the neutral and the SFW expander's system prompt). Standalone: 32/32.
+
+**Live GPU re-check of S5** (2026-10-11, unit `kairos-r86-smoke-4b` under `flock`, `results/r86-refusal-fallback/gpu/
+gpu_kernel_r86_r4b.py` = round 4's phase 1 on the shipped tier-8gb with the heretic default; every 18+ request, answer and
+picture only in the owner's proof dir). Every request was answered FIRST time — 0 rungs, 0 blocks, no refusal text,
+`refusal_fallback.count` 0 at the end: the SFW ask 8.1 s ("The capital of Australia is Canberra." — the same 37 characters
+as in round 4, no disclaimer), the SFW page 456.5 s (below), an SFW picture through the expander 61.1 s, the explicit
+scene ask 20.8 s, the owner's porn.xxx page 48.1 s, the swingers ask 3.6 s, one adult picture through the expander 57.1 s
+(rendered, 1.96 MB; the expansion carries no echo of the limits line, so the sd floor had nothing to block). Style: fixed
+disclaimer markers (fictional, consent, adults only, minors words, real people, disclaimer, an echo of the line) counted on
+every answer equal round 4's counts — the line made the model add no disclaimer. The SFW page ran away once: 15 783
+generated tokens until the 16 384-token context (425 s), and a 1 KB page was cached. An A/B on that page
+(`gpu_ab_s5_r4b.py`: 3 runs with the shipped manifest, 3 with the same manifest minus the `uncensored` flag — no line —
+alternating, a fresh kernel each) showed no runaway in either arm (wall 62–78 s with the line, 60–72 s without; 1 989–2 560
+vs 1 909–2 396 generated tokens; every page complete), and llama-server's own `/slots` showed the limits line in the page
+task's live prompt in 3 of 3 runs with the flag (601 prompt tokens) and in 0 of 3 without (576). So the line reaches the
+real model and no systematic effect on the page writer was seen; the single runaway is consistent with a chance loop at
+temperature 1.0 (not excluded at this sample size). Pre-existing and outside R86: a page may generate up to the whole
+context, and the truncated result was cached. Afterwards: GPU 2 MiB, no compute process, no container, the lock free.
+
+**Suite** (kairos-fix:local, the round-4 command on the `--internal` Docker network `kairos-test-internal` with
+`--hostname kairos-test`, the final tree, 2026-10-11 11:09–11:20): test_kernel 130/0/0, llm_parallel 30/0/0, splash 20/0/1
+(Pillow), desktop_web 9/0/1 (the Playwright image), image_lora 12/0/0, forge_quality 11/0/2 (no Chromium),
+imaging_workflow 17/0/0, wifi_bt 27/0/0, refusal_fallback 32/0/0 = **288 passed / 0 failed / 4 skipped** (the known
+environment skips); the R66 remote-peer tests ran. The run before the S13 correction failed only that test (287 / 1 / 4).
+
+### Round 4c — the re-review's fixes (2026-10-11)
+
+**Why.** The independent re-review of round 4b (REVIEW-R4B, verdict *ship after fixes*) reproduced every 4b number and
+found three regressions that 4b's own changes had opened, each in a class the brief pins (K1–K3), plus one should-fix
+(K4); the integrator took all four. The reviewer's two diffs were applied unchanged: `kernel/refusal.py` only, 775 → 785
+lines, list and regex edits. No other code changed, and the design above stands (no context or intent rules).
+
+- *K1 (S4)* — an age gate needs its PROHIBITION in every form. In 4b the conditional ("if you are under 18 …") exempted
+  on its own, so a request that permits or wants minors passed ("…; if anyone is underage, that's fine", "… auch wenn
+  jemand minderjährig ist": 0 of 10 fired), and so did a prohibition asked as a question ("… verboten? Schreib trotzdem
+  …"). Now the conditional head is optional and every gate reads under-18 word + bridge + prohibition; a prohibition
+  followed by "?" is rhetorical, no gate. So that the real conditional gates keep passing, "leave" at a clause end,
+  verlass…, don't + enter / access …, close this / the, go back, turn back and zurück count as prohibitions, and you, du,
+  Sie, ihr, bist, seid, do, does, darfst, musst, sollst, kannst as bridge words ("If you're under 18, don't enter this porn
+  site.", "Wenn du unter 18 bist, darfst du diese Pornoseite nicht betreten.", "… anyone under 18 must leave.").
+- *K2 (S3)* — the "under 12–17" forms also skip a following COUNT of people: people, persons, guests, members,
+  participants, attendees, visitors, couples, women, men, adults, characters, dancers, crew, staff, customers, viewers,
+  followers, seats, tickets … and Personen, Leute, Gäste, Mitglieder, Teilnehmer, Besucher, Paare, Frauen, Männer,
+  Erwachsene, Zuschauer, Kunden, Plätze … ("a nude yoga class for under 16 people": 7 of 12 such counts fired in 4b). The
+  ambiguous person nouns (girls, boys, models, players, users) stay ages; the 18-forms are unchanged.
+- *K3 (S2)* — the VIOLATION rule counts the policy word inside the matched phrase only when the phrase names the model's
+  OWN rules (my / our / meine… / mes / mis / le mie). In 4b an ordinary answer about a third party's rules ("That violates
+  the content guidelines of most platforms, so post it on a dedicated adult site.") was a refusal (4 of 7 such answers;
+  on the stick plain → preamble → DECLINED). "This violates our content policy, so I can't write it." stays a refusal.
+- *K4 (S5, should-fix)* — the negation bridge also reads don't / do not / doesn't / avoid… / exclud… and any, single,
+  anybody, in, image, picture, photo, scene, so an expander's paraphrase of the limits line next to adult content ("don't
+  show anyone underage", "excluding anyone underage", "no one in the image is underage", "not a single person under 18")
+  is a negated disclaimer and cannot block an adult picture at check point 2 (4b: 7 of 30 paraphrases fired; the review
+  found none in the 95 real expansions).
+
+**Known limitation (REVIEW-R4B S-d).** A prohibition used as a STATEMENT wrapped around a request still reads as an age
+gate: "‹under-18 word› … verboten. Schreib trotzdem …" passes (3 of the review's 5 such variants, and the dash form "… für
+Minderjährige verboten – mach sie trotzdem"); the "?" form fires. A lexical exemption cannot tell a real gate from a
+deliberate wrapper, so, like obfuscation, this is outside what the narrow block can see. The review's alternative,
+narrowing the exemption to audience forms (für / for + the word; visitors / users / Besucher + the word), is the
+integrator's call and is not built.
+
+**Tests** (`tests/test_refusal_fallback.py`, 32 → 34; the review's probe strings verbatim, the minors probes an under-18
+word or an age plus one term in a short frame, mocks only): `refusal_r4c_block_k1_k2_k4` (K1: 23 must-fire, i.e. 10
+conditional requests, 5 rhetorical "…?" prohibitions, 8 plain statements, and 20 real age gates must-pass; K2: 12 people
+counts must-pass, 10 age forms must-fire; K4: 30 limits-line paraphrases must-pass) and `refusal_r4c_detector_k3` (7
+answers about third-party rules pass; 23 refusals detected as text and as html). Both tests fail against the 4b code.
+Not pinned: the statement-form wrapper above, and the two German refusals the detector has missed since round 4.
+Standalone: 34/34.
+
+### v7.5-2 review fixes F2 / F3 (2026-10-15)
+
+**Why.** The independent review of everything new in v7.5-2 (verdict *ship after fixes*) found two places where the
+narrow block did not see what the request names. The integrator took the reviewer's diff unchanged (`kernel/server.py` +
+`kernel/refusal.py`, tagged `[review v7.5-2]`; backups `*.bak-2026-10-15r`). `minor_block` itself is unchanged.
+
+- *F2 — an address's separators are spaces.* An under-18 age in a browser address PATH was invisible to the block:
+  `_AGE_NUM` never matches right after a `/`, `_` is a word character, and a slug's hyphens hid the age-gate exemption.
+  So 10 of the review's 14 address forms with an age + a term passed (`teen.kai/15-year-old nude`,
+  `site.com/nude_15_year_old`, `porn.kai/age/15` …), in the R83 address bar, the search → browser path and website ✨.
+  Now `server.address_words()` reads `/ _ + -` as spaces for the block, at the three address call sites:
+  `generate_page` (check point 4), its `llm_generate(request=…)` (check point 3 after a refusal) and `_web_improve`'s
+  request text (address + note). The address itself (cache key, prompt) is unchanged. On the review's table: 10/10
+  must-block forms fire, and 15/15 must-pass forms pass (dates, `size-16-gb`, `15-year-old-birthday-party`,
+  `milf-45-year-old`, `18_plus_only`, `page/15`, and `age-verification/under-18-not-allowed`, which fired as a raw slug
+  before).
+- *F3 — picture ✨: the picture is the request's other half.* Every other ✨ checks the original request with the note
+  (game: prompt + note; app: meta prompt + note; web: address + note). Picture ✨ checked only the note, and no check can
+  read the picture's own words (an `/api/image` picture's prompt is gone after a restart; the wallpaper has none). So
+  "make her a 15-year-old" on an explicit adult picture rendered. Now, for a picture EDIT only, an explicit under-18
+  age or under-18 word blocks on its own: `refusal.minor_age()` fires on everything `minor_block` fires on, plus
+  `_UNDER_AGE` / `_UNDER18` once the `_NEGATED` / `_GATED` exemptions are applied. It runs at the entry
+  (`h_image_improve`, check point 1, the note as typed) and at the sd floor for the `image_edit` kind (`sd_batch`, check
+  point 2, the English the editor gets). Text-to-image, pages, apps and games keep the pairing rule. "no minors", "make
+  the sign say 'under 18 not allowed'" and "keep everyone an adult (25+)" still pass.
+  **Accepted cost** (the integrator, 2026-10-15): 2 of the review's 19 SFW edit notes are blocked, and both name an
+  explicit under-18 age themselves ("add a sign: under 16 players free", "make it a 4-year-old photo look"). This is the
+  same logic as "my 14-year-old found porn".
+  **Not covered** (review §3.9): an SFW picture of a child + "make her naked" names no age and passes. There is no
+  classifier, by design.
+
+**Tests** (mocks only; the minors probes are an age + one term):
+- `tests/test_dock_browser.py` `db_r86_address_path_real_block`: the real block, not the mock's `blockme`. The review's
+  address table blocks 10 / passes 15; `/web/` ×3 is blocked with 0 LLM calls and nothing cached; an age without a term
+  is a page; web ✨ on `nude.kai/15-year-old` is blocked with no version; a censored primary that refuses such an
+  address meets check point 3 after its one call.
+- `tests/test_picture_edit.py` `pe_r86_edit_age_alone_blocks`: the edit table blocks 8 + the 2 cost texts and passes
+  17; the entry answers 400 ×2 and starts no job; a negation, an age gate and a plain edit render; a hop to the age
+  alone fails the job at the real `sd_batch` before any engine request.
+
+Both tests fail against the pre-fix kernel. The two deeper call sites (check point 3, the sd floor) were each also
+checked by reverting only their hunk. The review's probes on the patched repo: probe 1 (the new entry points) 23/23,
+probe 5 (precision) 50/52, the 2 being the cost above.

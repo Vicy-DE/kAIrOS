@@ -464,6 +464,16 @@ naming the superseding ID. `update-progress.py` copies these notes into PROGRESS
   wiki/facts blocks that do not fit; spec, modify and repair inputs are capped the same
   way; every tier runs ≥16k context. The HTML repair prompt is a surgeon — fix only the
   listed problems, preserve the content, never a generic placeholder page.
+  **2026-10-14 — a cut generation is never cached:** a page, an app (generate, evolve, modify,
+  self-heal repair) or a game whose text came from a generation that stopped at the length limit
+  (llama-server `finish_reason: "length"` = max_tokens or the slot's context; R86's GPU check saw
+  a page run 15 783 tokens / 456 s into the 16k context and its 1 KB stump cached) — or from a
+  repair of such a text — is served for that request with a note ("cut off: …", `truncated: true`)
+  and never written to `cache/web` (+ the site profile), `cache/apps/<id>/` or
+  `games/<slug>/main.py` (a cut game runs once from its own file); the next request regenerates.
+  Journal: `[kernel] length limit: …`. Tests: `unit_finish_info_length_limit`,
+  `http_length_cut_page_served_not_cached`, `http_length_cut_app_served_not_saved`,
+  `http_length_cut_game_runs_not_installed` (the mock llama-server cuts on `[length-stop]`).
 - **R44 — the session paints the wallpaper** (request 12, 2026-07-06): every user input
   is logged into the session event log (apps, asks, searches, browses, image/video/music
   prompts, improve instructions, wifi connects); the ◐ wallpaper button calls
@@ -585,6 +595,9 @@ naming the superseding ID. `update-progress.py` copies these notes into PROGRESS
   access mounts it (systemd: device + fsck) and the breadcrumb still lands before basic.target (VM 4.7–5.4 s,
   v7.3 4.9 s); a direct/label mount only when the automount fails — also at shutdown after an idle unmount (VM:
   capture PASS). x.log carries the pointer evidence. docs/V75-DESKTOP-WEB-2026-10-07.md.
+  **Status note (SD run 2026-10-13):** optional DEBUG firmware is not a load problem — a `*-debug-*` firmware file
+  (iwlwifi asks for `iwl-debug-yoyo.bin` on every boot; Debian ships none) is benign and named in the firmware
+  check's PASS detail; any other firmware failure still WARNs. docs/SD-RUN-2026-10-13.md.
 
 ## Multiscreen, the virtual web & categorized docs (requests 16-17, 2026-07-09/10)
 
@@ -617,6 +630,12 @@ naming the superseding ID. `update-progress.py` copies these notes into PROGRESS
 - **R58 — the picture tool**: `<img src="/genimg/short vivid description">` — pages/apps
   show instantly, the endpoint renders on demand (hash-cached, concurrency-capped,
   placeholder beyond the cap). The simplest possible image tool for a small LLM.
+  **Late pictures (SD run 2026-10-13, `docs/SD-RUN-2026-10-13.md`):** a picture that is not ready when the first
+  request's wait (`GENIMG_WAIT`, 360 s, env `VIBEOS_GENIMG_WAIT`) ends, or that the cap turned away, comes as a
+  *pending* placeholder one pixel wider than the picture (an odd width; pictures are multiples of 64); the
+  late-picture script — the `<script data-kairos-genimg>` block of `BRIDGE_SRC`, in every app and injected into
+  every served page — asks again (`?_r=n`, answered at once) with backoff (2 s ×1.5 … 15 s, ≤ 1 h) until the
+  picture comes: `<img>` and CSS backgrounds, no reload; a failed / blocked picture gets a *final* (even) one.
 - **R59 — categorized API docs**: docs/api/*.md — 8 short keyword-headed, cross-linked
   sheets (core, media, display, network, power-battery, system-settings, files-storage,
   games-apps); the kernel injects the matching sheets into every generation (API
@@ -697,6 +716,15 @@ naming the superseding ID. `update-progress.py` copies these notes into PROGRESS
   `pod/host-setup.sh`); (d) no WiFi PSK in the tree — the profile is rendered at build
   time from untracked `iso/secrets/wifi.env`. Generated apps are untouched: they reach
   the kernel only through the shell's `vibe.*` bridge, which is loopback.
+  - **Status note (2026-10-15, v7.5-2 review F1): a sandboxed frame is never "loopback = trusted"**: `authorized()`
+    trusts loopback only for a caller that is not a sandboxed frame (`sandboxed_caller`: `Origin: null`, or
+    `Sec-Fetch-Site` cross-site / same-site), which gets 403; the shell (same-origin) and curl / `.xinitrc` /
+    `kairos-bootlog` (neither header) are unchanged. Before, the kiosk Chromium being a loopback peer, a generated
+    `/web/` page's or app's OWN `fetch()`, `sendBeacon()` or form post (a "simple" request: text/plain body, no
+    preflight) reached the guarded routes and wrote `/api/store` (the review's real-Chromium probe; the `vibe.*` bridge
+    itself was closed). The token still authorizes (a frame cannot add it without a CORS preflight, which the kernel
+    never answers). Tests: `tests/test_dock_browser.py` `db_r66_sandboxed_caller_not_trusted` (headers) and
+    `browser_e2e_sandboxed_page_cannot_write` (real Chromium: the page's POSTs 403, the shell's 200).
 
 ## Robustness sweep (request 23, 2026-09-10)
 - **R67 — bounded caches, clean disk-full**: generated media (`cache/files/images|videos|
@@ -715,6 +743,13 @@ naming the superseding ID. `update-progress.py` copies these notes into PROGRESS
   animation cache dir) is guarded, so a bad disk degrades one feature instead of
   crash-looping `kairos.service` (restarted by systemd, since 2026-09-10 Restart=on-failure
   with a start limit — a dead kernel ends in `failed`) into a black screen [R63].
+  **2026-10-14 — a missing engine is a clean 503:** every generation route (ask, app, page —
+  `/api/browse` and the `/web/` error page —, game, image(s), video, music, translate, vision)
+  answers `503 {"error": "the LLM engine is not installed (llama-server missing in …)", "engine",
+  "missing": true}` when its engine binary is absent (was an unhandled `FileNotFoundError`, i.e.
+  aiohttp's bare 500, on a desk without the engine set); no job is created, a cached app still
+  opens, a declined request stays R86's 422. Tests: `http_engine_missing_clean_503`,
+  `http_music_engine_missing` (400 → 503).
 
 ## Desktop technology decision (request 24, 2026-09-10)
 - **R68 — desktop management: web shell kept, Python window-management layer added**: the
@@ -1315,17 +1350,126 @@ naming the superseding ID. `update-progress.py` copies these notes into PROGRESS
   "no model" when nothing is loaded; tooltip = the full name + kind); `#mb-state` is unchanged. Tests:
   `tests/test_imaging_workflow.py` (`imaging_r80_gpu_status_names`, `imaging_e2e_menubar_gpu_model`).
 
-## Reserved ids (owner queue 2026-10-08, `~/kairos/QUEUE.md`; not specified here yet)
+## The owner's queue of 2026-10-08 (`~/kairos/QUEUE.md`) — built ones specified, the rest reserved
 The traceability check (`unit_requirements_traceability`) wants contiguous ids, so the queue's reserved
-numbers are listed by title only — each gets its real entry when it is built.
-- **R81 — reserved: the dock** ("bottom bar more functional"; vibecoded apps, minimized/shown states).
-- **R82 — reserved: games in windows, with ✨ improve**.
-- **R83 — reserved: the browser as a system app; the search bar opens addresses in it**.
-- **R84 — reserved: ✨ improve a website**.
-- **R85 — reserved: ✨ improve a picture (Krea creates, a Qwen edit model edits)**.
+numbers are listed by title only — each gets its real entry when it is built (R81–R85: 2026-10-15).
+- **R81 — the dock: the user's apps, running/minimized/shown per icon**: owner (2026-10-08): *"remove fileexplorer and
+  notes add the vibecoded apps make the icon 1/3 bigger if running and minimized make a glow if running and
+  maximized"*; after the microSD run (2026-10-15): *"Still files and news app"* — Files, Notes AND News leave the dock
+  and stay reachable through ⊞ Apps and the search. Built on the web shell (D0's verdict, its REPORT §7): the dock is
+  data-driven — `shell/index.html` holds the PINNED icons as data (⊞, launcher, summon, 🌐 the browser, the studios,
+  Settings; Files/Notes/News in `<template id="system-apps">`), `shell.js renderDock()` draws pinned + the user's
+  vibecoded apps (`/api/apps`, the most recently opened first, as many as fit the screen, at most 14; the rest are in
+  ⊞ with a "+N" badge) + whatever runs without an icon (a game, an app opened from ⊞, a summon being written) from
+  ONE window-record list (`windowRecords()`: the page's DOM windows + the kernel's X windows from
+  `/api/windows/stream`, `{id, key, kind: app|builtin|page|viewer|game|x, app, minimized, active}`). Per icon: running
+  and every window minimized = scaled 1.33 (it grows up out of the dock; a maximized window leaves that room free);
+  running and shown = a glow (brighter for the focused one); the same for built-ins, the browser and games. Click =
+  open / restore + raise / minimize the active one; right-click = Close, New window (built-ins), Remove from / Keep in
+  the dock (store key `shell::dock.hidden`). Taskbar chips (R61) stay only for windows without an icon: /web/ page
+  windows, quick viewers, X windows that are not games. Every screen (R52) draws its own dock; games are on screen
+  0's. Tests: `tests/test_dock_browser.py` (`dock_e2e_records_states` in a real Chromium, `db_shell_static`,
+  `db_search_addresses_system_apps`), `tests/test_kernel.py` `http_desktop_search_web_address`; doc:
+  `docs/DOCK-BROWSER-2026-10-15.md`.
+  - **Status note (2026-10-15): implemented, proven in a headless Chromium on the real shell + kernel routes (mock
+    LLM, no GPU)** at 1920×1080, 1024×768 and a second screen; the stick run is the proof on the target.
+- **R82 — games in windows, with ✨ improve**: owner (2026-10-08): *"make games in windows too (with improve button)."*
+  Built on the web shell (D0's verdict, its REPORT §7). **Launch = run**: `POST /api/game {slug|prompt, frame}` plays
+  the CURRENT version of an existing game (no LLM; already running = that instance; `restart` ends it first); only a
+  new game is forged. **✨ = evolve**: `{slug, evolve, instruction}` sends the USER IMPROVEMENT REQUEST (top priority,
+  `prompts.GAME_EVOLVE_REQUEST`) + the previous source + the last crash as a bug report to the forge — R77's static
+  gate + headless play-test + no-regression rule (a failed evolution leaves the running version in place), R86's ladder
+  and the minors block on prompt + instruction, GAME_SYSTEM's 18+ rule. Every version stays in `history/`
+  (`GET /api/game/versions`; the way back: `POST /api/game/version` + restart). **The frame**: `shell/games.js` — a
+  DOM window like an app's (v▾ ✨ _ ▢ ✕); the kernel glues the pygame X window over its body: the pairing lives in
+  `kernel/wm.py` (`WindowService.frames`, keyed by the frame id; `POST /api/frames/{id}/{op}`): the window opens there
+  (SDL_VIDEO_WINDOW_POS), is made WM_TRANSIENT_FOR the page's kiosk window (openbox lifts a FOCUSED fullscreen kiosk
+  over `_NET_WM_STATE_ABOVE` windows — a desktop click hid the game; a transient stays above it) and is centred in the
+  body (CSS → root px through the page's own window: screenX/Y × devicePixelRatio). **Following**: every drag/resize
+  step posts `follow` (no read-back, one in flight), the drop a verified `place`. **Stacking**: whatever of the desktop
+  lies over the body (a window above it, a menu, the R74 system menu, ⊞, a toast, a dialog, the dock, the ✨ note, v▾)
+  → the frame shows the game's R70 screenshot (`snapshot`: the game's own pixels as a BMP) and the game is lowered
+  under the desktop + frozen (SIGSTOP; not iconified: openbox drops the kiosk's focus when a transient of it is
+  iconified, which closed the R74 menu that covered it); uncovered → lifted back, thawed; the keyboard follows the
+  user (to the game only after a click on its frame). _ → iconified + frozen, the R81 dock icon (1.33) restores it;
+  ✕ ends it. **Screens (R52)**: the frame lives on its screen's page, the game goes with it; every page watches the X
+  feed now (chips stay screen 0's). Tests: `tests/test_games_windows.py` (a real X server: Xvfb + openbox with the
+  kiosk's rc.xml + a kiosk Chromium + real pygame windows, real XTEST input), `tests/test_kernel.py`
+  (`unit_wm_frame_pairing`, `http_game_launch_runs_improve_evolves_versions`); doc: `docs/GAMES-IN-WINDOWS-2026-10-15.md`.
+  - **Status note (2026-10-15): implemented, proven on a real X server (Xvfb + openbox + a kiosk Chromium) and
+    GPU-checked on the heretic** (RTX 4070, `docs/GAMES-IN-WINDOWS-2026-10-15.md`): a game forged in 98.7 s ran in its
+    frame (window = the body, transient for the kiosk), the R74 menu covered it (screenshot, frozen) in 33.5 ms and
+    left it open, ✨ with a request gave v2 in 107.6 s in the same frame; VRAM peak 6738 MiB. Follow lag about one
+    display frame (mock e2e, below). The stick run is the proof on the target.
+- **R83 — the browser is a system app; the search bar opens addresses in it**: owner (2026-10-08): *"make the browser
+  to a systemapp (precoded not dynamic) map websites from the search bar to the browser."* `shell/browser.js`, a
+  hand-written built-in (`data-builtin="browser"`): address bar, ← → ↻ (Shift+↻ writes the page anew), a history
+  panel + start page (store key `shell::browser.history`), a loading state, a note bar for the R86 declined / blocked
+  pages, engine errors and the 2026-10-14 cut-off note, and the R84 version strip; pages are the kernel's `/web/`
+  imaginary web (R57/R75) in one sandboxed iframe (`allow-scripts allow-forms`), the late-picture script included.
+  What a page is comes from the kernel: every `/web/` document carries `<script data-kairos-page>`
+  (`web_page_report`: `{kairosPage: {address, state: page|loading|error|declined|blocked|cut|leaving, title, …}}`);
+  the shell's `vibe.*` bridge never answers a `/web/` page. The desktop search (`#ds-input`) recognises addresses
+  (`web_address` / `webAddress`: a host with http(s)://, www. or a known TLD incl. `.kai`; `xhamster.com nude …` =
+  `xhamster.com/search?q=nude …`) — the first result and Enter open them in the browser; website hits open there
+  too; Notes/News/Files/Settings/Browser are found by name. The generated "browser" app is retired (not in
+  `/api/apps` nor the search; its cache stays on disk). Tests: `tests/test_dock_browser.py` (`db_web_address_table`,
+  `db_web_page_reports`, `browser_e2e_search_opens_addresses`, `browser_e2e_navigation_history`),
+  `tests/test_kernel.py` `http_desktop_search_web_address`; doc: `docs/DOCK-BROWSER-2026-10-15.md`.
+  - **Status note (2026-10-15): implemented, proven in a headless Chromium on the real shell + kernel routes (mock
+    LLM)**; the GPU check of the browser's pages is the R84 one below.
+- **R84 — ✨ improve a website**: owner (2026-10-08): *"make the improve to the website."* The browser's ✨ (the title
+  bar's, the apps' sticky note) turns the page it shows into its next version: `POST /api/web/improve {address,
+  instruction?, from_version?}` (SSE like an app's improvement) sends the previous HTML + the site's R75 profile + the
+  instruction to `prompts.WEB_EVOLVE_SYSTEM` (= `BROWSER_SYSTEM` with its 18+ page rule, plus the evolution rules: the
+  same page of the same site — name, nav, palette — unless asked otherwise); R86's ladder and `refusal` event, the
+  minors block at the entry; the page checks (structure + the JS gate) with one repair round, and R77's
+  no-regression rule (a worse result is not used, kept as `failed-v<N>.html`); a length-cut result is shown once
+  (`?_cut=`) and never saved. A good one replaces the cached page; every version stays in
+  `cache/web/versions/<slug>/` (v1 = the page before its first improvement; `WEB_VERSIONS_KEEP` = 8, the oldest go,
+  never the current); `/web/<a>?_v=<n>` shows one (the browser's ←), `POST /api/web/version` makes one the page
+  again (the revert); `GET /api/web/versions`. A new version of the page that founded the site profile re-anchors it,
+  so the site's next pages follow. Tests: `tests/test_dock_browser.py` (`db_web_improve_versions_revert`,
+  `browser_e2e_improve_revert`), `tests/test_kernel.py` `http_web_improve_versions_revert`; GPU check:
+  `docs/DOCK-BROWSER-2026-10-15.md`.
+  - **Status note (2026-10-15): implemented, mock-proven (kernel + real Chromium) and GPU-checked on the heretic**
+    (RTX 4070, `docs/DOCK-BROWSER-2026-10-15.md`): one SFW page (62 s) improved twice with instructions — 82.5 s and
+    86.9 s, no refusal, brand + all 4 nav labels kept, the purple scheme / prices / FAQ done; the revert served v1
+    byte-for-byte with all 3 versions kept.
+- **R85 — ✨ improve a picture (Muse creates, a Qwen edit model edits, versions are kept)**: owner (2026-10-08): *"same
+  for the pictures, make them improveable use a qwen workflow for the improve (krea to create first qwen to edit)."*
+  Since 2026-10-10 Muse (a Krea 2 fine-tune) creates. The tier's **`image_edit`** section — Qwen-Image-2.1-Turbo
+  Q4_K_M + the Qwen3-VL-8B-Instruct Q4_K_M encoder + its mmproj Q8_0 + the 2.1 VAE, 10.64 GB, Qwen Research licence
+  (non-commercial; the LICENSE + NOTICE ship in `/usr/share/doc/kairos/model-licences/qwen-image-2.1/`) — is an add-on
+  (the v7.5-2 media image pre-installs it; `vibe.models.download('image_edit')` elsewhere), with a `vision` entry (the
+  mmproj → `--llm_vision`), its own schedule (the user's image tuning never reaches it) and a 120-s idle window
+  (`session_idle_s`: a second ✨ joins the open sd-server session). Chosen by a GPU A/B on Muse pictures
+  (`docs/PICTURE-EDIT-2026-10-15.md`). **Kernel**: `POST /api/image/improve {picture, instruction?}` → a job — only
+  pictures the OS painted (`/files/images/…`, `/genimg/…`; no upload, so no photo of a real person); R86's narrow
+  minors block on the words as typed (400, no job) and on the final English prompt (the sd floor); R71's fast model
+  translates a non-English instruction; an empty one = "improve the quality, keep the content"; the edit runs through
+  `sd_batch` (R72 GPU hold, R79 swap/drop rules, R80 menubar name) with the picture as the request's reference image
+  (`extra_images`; sd-cli `-r`) at its own size. **Versions**: one chain per picture, `/files/images/versions/<root>/`
+  — v0 = the original (copied), v1… + `versions.json` (instruction, English prompt, parent, model, seed, ms); ≤ 16
+  kept (never v0 or the current); `GET /api/image/versions`, `POST /api/image/version` (the revert moves `current`
+  only); the media cache evicts a chain as a whole, never one version, never a chain being edited. **UI**
+  (`shell/pictures.js`): the picture viewer (the quick viewer, a click in the Imagine gallery, the menubar ✨ next to ◐
+  wallpaper) — the title bar's ✨ + the apps' sticky note, a "✨ improving…" veil over the picture, the R84 version
+  strip (a click = the revert), the wallpaper follows its versions; a `/genimg/` picture still being painted is asked
+  again (the late-picture protocol). **18+**: the instruction reaches the editor verbatim, so an edit keeps the
+  explicitness asked for. Tests: `tests/test_picture_edit.py` (manifest, argv + reference + idle window through the
+  mock sd-server, sd-cli `-r`, chain/revert/prune/eviction, entry checks + translation + the floor, and a
+  real-Chromium e2e of the viewer, the strip, the quick viewer, Imagine and the wallpaper); doc:
+  `docs/PICTURE-EDIT-2026-10-15.md`.
+  - **Status note (2026-10-15): implemented, mock-proven (kernel + a real Chromium) and GPU-checked on the RTX 4070**
+    (`docs/PICTURE-EDIT-2026-10-15.md`): the A/B chose set A over Qwen-Image-Edit-2511 + Lightning (same warm speed
+    66.5 vs 67.9 s per 1024² edit, 0.004 vs 0.114 change outside the edited region, exact text, 8.1 vs 20.4 GB RAM;
+    18+ never re-censored in either); the integrated path: a Muse picture → ✨ v1 in 80.2 s (incl. the load) → ✨ v2 in
+    66.0 s (joined the open session) → the revert to v1 in 0.09 s, VRAM peak 7274 MiB. The microSD run is the proof on
+    the target.
 
 ## LLM refusal fallback (owner's test 2026-10-09)
-- **R86 — LLM refusal fallback (+ the hard minors guard)**: owner (2026-10-09), after the default LLM (Gemma 4
+- **R86 — LLM refusal fallback (+ a narrow minors block)**: owner (2026-10-09), after the default LLM (Gemma 4
   26B-A4B-it) refused an adult website and a picture prompt and the kernel shipped the refusals as the results —
   the cached page `cache/web/porn-xxx-…-387761c2.html` was literally *"I cannot fulfill this request. I am
   programmed to be a helpful and harmless AI assistant. My safety guidelines prohibit me from generating sexually
@@ -1395,3 +1539,43 @@ numbers are listed by title only — each gets its real entry when it is built.
   (wallpaper, app spec); listings hide blocked cached apps and only a summon moves them; stated limits ("I can't provide
   real-time prices. As of …") are not refusals; a refusal-shaped sentence is still translated; a failed load of the
   uncensored primary is negative-cached. Tests: 36 in `tests/test_refusal_fallback.py`.
+  **Round 4 (2026-10-10, the owner's redirect — doc §11):** the lexical minors guard of (f) and rounds 2–3 is GONE
+  (it never converged: three reviews, over-blocking of parenting / education / art requests, misses on fresh probes);
+  the owner: *"gemma shouldn't block the prompt; if it drops it → other llm or uncensored gemma"*. What ships: the
+  ladder of (b)–(d) unchanged (every rung used up = DECLINED — never cached, never rendered, never a 502: HTTP 422
+  with "— rephrase the request, or ✨ improve the result"), the detector fixed per kind (prompt: recall first; html: a
+  real page is never a refusal, a short refusal document with a button is; text: precision first — a bare refusal or
+  a refusal opening + policy vocabulary; a limitation followed by help is not), and ONE narrow block
+  `refusal.minor_block` — an explicit under-18 age (digits or number words with an age unit) or word (underage, under
+  18, unter 18, minderjährig, preteen, prepubescent) together with a sexual term, or csam / pthc / child porn /
+  Kinderporno / jailbait alone, loli / shota with a sexual term; EN + DE; never on ages 18+, measurements, "minor(s)",
+  negated disclaimers or the kernel's own prompts — at exactly four points: every media render's entry, the final
+  image / video prompt at the sd floor, a refused text request once before any rung (+ its cached English hop), and
+  the entry when the primary LLM is uncensored. **The default LLM is now the uncensored heretic Gemma 4 26B-A4B**
+  (owner 2026-10-10 21:35: mradermacher i1-IQ4_XS, 13.92 GB, `"uncensored": true` on `llm`; stock Gemma left the
+  manifests and the stick; the `llm_uncensored` section left the 8/16 GB tiers — the rung resolves to the flagged
+  default and serves fast mode, never the model that declined). Accepted cost: a protective text that pairs an
+  explicit under-18 age with a sexual term is blocked (4 of REVIEW-R3's 26 H1 texts). Tests: 25 in
+  `tests/test_refusal_fallback.py`; the pins of the baked set / model lists moved with the default.
+  **Round 4b (2026-10-11, the independent review REVIEW-R4 — doc §11 "Round 4b"):** the block reads an age
+  DIFFERENCE ("10 years older") and a measurement after "under 18" (dollars, Euro, Grad, degrees, %, €, …) as no age;
+  the German sex / nackt / erotik compounds (Sexvideo, Oralsex, Nacktvideo, Erotikfilm …), "under the age of 18",
+  kiddie porn / jail bait and the plain forms younger than / below / not yet 18, under 16 (12–17), under-18s, unter 16,
+  jünger als 18, nicht volljährig fire; an adult site's age gate ("if you are under 18, leave", "visitors under 18 are
+  not allowed", "für Minderjährige verboten") is a normal 18+ request — a closed list of prohibitions, never a bare
+  negation ("under 18 is not a problem" fires). The text detector's policy vocabulary is content-policy forms only (a
+  privacy policy, an appropriate date, a restricted folder, the safety guidelines on a package are no refusal); plain
+  refusals ("that's not something I can help with", "I'm not going to write that", "Das mache ich nicht", "Ich
+  lehne … ab") are, and so is a short document refusing "this page / site / document / game"; the image-prompt
+  expander has its own recall-first check (any first-person "I can't …" outside a quoted sign text) while the MT check
+  keeps the prompt kind. Every request the uncensored default serves carries one limits line at the end of its system
+  prompt (`prompts.UNCENSORED_LIMITS`: never sexual content involving minors or anyone who looks underage, never sexual
+  content about real, identifiable people); a cached app's summon is never checked (like its host page). Tests: 32 in
+  `tests/test_refusal_fallback.py`.
+  **SD run 2026-10-13 (the owner's microSD run, docs/SD-RUN-2026-10-13.md):** the heretic default did not refuse the
+  owner's explicit xhamster.com page — it wrote a renamed, sanitised fantasy site, because `BROWSER_SYSTEM` had no adult
+  rule. The text generators now carry the 18+ rule that mirrors the expander's rule 8 (`prompts.ADULT_RULE_WEB / _APP /
+  _GAME / _TEXT` in the page, app + evolve/regen, spec, game and ask prompts; the self-repair keeps an adult page as it
+  is): ONLY when the request asks for adult content — keep the requested name/brand and theme, as explicit as asked,
+  never toned down or renamed; fictional adults aged 25+ (said so), never minors, never real identifiable people; a
+  request that does not ask for adult content stays non-sexual. The wallpaper writer and the vision prompt get none.

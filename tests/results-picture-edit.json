@@ -1,0 +1,77 @@
+{
+ "at": "2026-10-15 13:30:45",
+ "tests": {
+  "pe_manifest_image_edit": {
+   "reqs": [
+    "R85",
+    "R47",
+    "R3"
+   ],
+   "status": "pass",
+   "detail": "4 tiers + 3 variants: Qwen-Image-2.1 Turbo edit (Q4_K_M, 8 steps \u2014 10.64 GB, addon, vision tower, sha256 pins, idle 120 s, LICENSE + NOTICE"
+  },
+  "pe_shell_wiring": {
+   "reqs": [
+    "R85",
+    "R81",
+    "R46"
+   ],
+   "status": "pass",
+   "detail": "pictures.js loaded after games.js; menubar \u2728; quick viewer \u2192 viewer; Imagine gallery click; strip + note reused; node --check skipped (no node)"
+  },
+  "pe_kernel_argv_session_window": {
+   "reqs": [
+    "R85",
+    "R79",
+    "R72",
+    "R80"
+   ],
+   "status": "pass",
+   "detail": "argv = DiT + --llm + --llm_vision + VAE + own schedule (no user tuning); extra_images = v0 at 832\u00d7576; v1 parent 0; 2nd/3rd \u2728 joined the open session (1 launch, 2 requests); empty note = the default instruction; window closed"
+  },
+  "pe_kernel_sdcli_fallback_ref": {
+   "reqs": [
+    "R85",
+    "R4"
+   ],
+   "status": "pass",
+   "detail": "sd-cli: -r <chain>/v0.png, --llm_vision, the prompt, 512\u00d7512"
+  },
+  "pe_versions_revert_prune_evict": {
+   "reqs": [
+    "R85",
+    "R67"
+   ],
+   "status": "pass",
+   "detail": "v0 copy; parents 0/1/1; original \u2192 same chain; revert = pointer (files kept), 404, 409 while editing; works after the original is evicted; prune keeps v0 + current; eviction takes whole chains, never a locked one"
+  },
+  "pe_entry_checks_translation_floor": {
+   "reqs": [
+    "R85",
+    "R86",
+    "R71",
+    "R66"
+   ],
+   "status": "pass",
+   "detail": "400 \u00d77 paths, 404, 400 blocked (no job), 415, 409 + download key; German \u2192 English prompt; floor blocks the English; status/models list it"
+  },
+  "pe_r86_edit_age_alone_blocks": {
+   "reqs": [
+    "R86",
+    "R85"
+   ],
+   "status": "pass",
+   "detail": "minor_age: 8 + 2 (cost) block, 17 pass; entry 400 blocked \u00d72 (no job); negation / age gate / plain edit rendered; sd floor (image_edit) blocks the age alone, no engine request"
+  },
+  "pe_e2e_viewer_improve_revert_wallpaper": {
+   "reqs": [
+    "R85",
+    "R81",
+    "R84",
+    "R44"
+   ],
+   "status": "pass",
+   "detail": "viewer \u2728 \u2192 note \u2192 veil \u2192 v1 (strip v0 v1) \u2192 v2 \u2192 v0 revert; quick viewer + Imagine open the viewer; wallpaper \u2728 \u2192 v1 = wallpaper"
+  }
+ }
+}

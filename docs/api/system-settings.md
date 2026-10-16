@@ -17,14 +17,14 @@ memEl.textContent = `${Math.round(hw.memory_mb.total / 1024)} GB RAM`;  battEl.t
 ```
 
 **The coder LLM** (an "AI" section, fast mode): `const m = await vibe.models();` → `m.llm` =
-`[{key:"default"|"fast"|"uncensored", name, present, addon, download_gb, download_key, active, selected}]`,
-`m.llm_setting` = `{setting, effective, fallback}`. Render the picker FROM `m.llm` (not a static list — fetch
+`[{key:"default"|"fast"(|"uncensored"), name, present, addon, download_gb, download_key, active, selected}]`,
+`m.llm_setting` = `{setting, effective, fallback, modes}`. Render the picker FROM `m.llm` (not a static list — fetch
 `vibe.models()` BEFORE filling it); `vibe.settings.set("llm_model", entry.key)` switches — default = the tier's
-brain (Gemma 4 on 8/16 GB: the best apps, minutes per app), fast = Qwen2.5-Coder-7B (≈ 40 s per app, simpler),
-uncensored = the decensored LLM the OS falls back to when the default declines an adult request [R86]; fast and
-uncensored are add-ons: `present:false` → a "⬇ Download (N GB)" button calling `vibe.models.download("fast")` /
-`vibe.models.download("llm_uncensored")` (= `entry.download_key`; never the bare "uncensored" — that is the image
-model), else the default keeps serving (`m.llm_setting.fallback` says so — show it). `m.refusal_fallback.last`
+brain (on 8/16 GB the uncensored heretic Gemma 4: the best apps, minutes per app, answers adult requests itself), fast =
+Qwen2.5-Coder-7B (≈ 40 s per app, simpler); an `uncensored` entry exists only on a tier with that add-on [R86]. An add-on
+with `present:false` → a "⬇ Download (N GB)" button calling `vibe.models.download(entry.download_key)` ("fast"; never
+the bare "uncensored" — that is the image model), else the default keeps serving (`m.llm_setting.fallback` says so —
+show it). `m.refusal_fallback.last`
 (`{at, from, to, kind, prompt}`) = the last refusal fallback — show it as one line in this section.
 
 **Language & translation** (a "Language" section) [R71]: `m.translation` = `{enabled, language,

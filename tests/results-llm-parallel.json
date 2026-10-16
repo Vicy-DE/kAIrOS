@@ -1,5 +1,5 @@
 {
- "at": "2026-10-10 11:39:36",
+ "at": "2026-10-15 13:23:42",
  "tests": {
   "sched_concurrency_limit": {
    "reqs": [
@@ -13,7 +13,7 @@
     "R72"
    ],
    "status": "pass",
-   "detail": "20 llm + IMG + VIS: IMG ran at #5 after 123 ms, VIS at #7, FIFO held"
+   "detail": "20 llm + IMG + VIS: IMG ran at #5 after 126 ms, VIS at #7, FIFO held"
   },
   "sched_consecutive_same_key_start_together": {
    "reqs": [
@@ -105,7 +105,7 @@
     "R72"
    ],
    "status": "pass",
-   "detail": "starter cancelled mid-load; the next pair waited 1.63 s for /health, one launch, first request 0.29 s after the server bound"
+   "detail": "starter cancelled mid-load; the next pair waited 1.01 s for /health, one launch, first request 0.35 s after the server bound"
   },
   "unit_parallel_choice_change_while_queued": {
    "reqs": [
@@ -120,7 +120,7 @@
     "R71"
    ],
    "status": "pass",
-   "detail": "translation key: 1 slot, argv unchanged; idle unload 0.03 s; busy unload waited for the holder, then 0.05 s"
+   "detail": "translation key: 1 slot, argv unchanged; idle unload 0.02 s; busy unload waited for the holder, then 0.02 s"
   },
   "unit_parallel_chat_stream_release_paths": {
    "reqs": [
@@ -177,14 +177,14 @@
     "R72"
    ],
    "status": "pass",
-   "detail": "4 asks in 5.0 s on 2 slots (in-flight max 2, no overflow); argv -c 32768 -np 2 --no-kv-unified; first request 0.04 s after the server bound"
+   "detail": "4 asks in 5.8 s on 2 slots (in-flight max 2, no overflow); argv -c 32768 -np 2 --no-kv-unified; first request 0.10 s after the server bound"
   },
   "e2e_exclusive_job_waits_then_runs_fifo": {
    "reqs": [
     "R72"
    ],
    "status": "pass",
-   "detail": "image waited +3.2 s past the pair, ran, third ask after it (+0.9 s); states seen ['image', 'llm']"
+   "detail": "image waited +3.7 s past the pair, ran, third ask after it (+1.0 s); states seen ['image', 'llm']"
   },
   "e2e_swap_to_expander_after_drain_and_back": {
    "reqs": [
@@ -207,7 +207,7 @@
     "R71"
    ],
    "status": "pass",
-   "detail": "quality MT swap after the pair drained (translate waited 2.3 s), 1 slot, argv unchanged; off \u2192 unloaded in 0.16 s; llm (2 slots) back"
+   "detail": "quality MT swap after the pair drained (translate waited 2.2 s), 1 slot, argv unchanged; off \u2192 unloaded in 0.06 s; llm (2 slots) back"
   },
   "e2e_vanished_app_client_keeps_its_slot_r62": {
    "reqs": [
@@ -215,7 +215,7 @@
     "R62"
    ],
    "status": "pass",
-   "detail": "both vanished generations completed (ask waited 3.0 s), apps saved, state idle"
+   "detail": "both vanished streams ran their full hold; the ask ended 6.0 s after the streams began (3.0 s after the first delta), apps saved, state idle"
   }
  }
 }

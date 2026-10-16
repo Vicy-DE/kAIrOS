@@ -1,5 +1,5 @@
 {
- "at": "2026-10-10 11:39:56",
+ "at": "2026-10-15 13:24:27",
  "tests": {
   "desktop_pointer_swcursor_nocursor": {
    "reqs": [
@@ -54,7 +54,7 @@
     "R11"
    ],
    "status": "pass",
-   "detail": "block 3209 \u2264 3600, prompt 3264 \u2264 32009; tiny budget: prompt 2052 \u2264 4000"
+   "detail": "block 3209 \u2264 3600, prompt 3264 \u2264 30651; tiny budget: prompt 2052 \u2264 4000"
   },
   "web_browse_same_site": {
    "reqs": [
@@ -63,6 +63,32 @@
    ],
    "status": "pass",
    "detail": "vibe.browse: profile written; last shown page links here; explicit from -> referer path"
+  },
+  "web_adult_rule_page_prompt": {
+   "reqs": [
+    "R57",
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "BROWSER_SYSTEM carries the 18+ rule for both pages; address verbatim; S5 limits line still last"
+  },
+  "web_genimg_late_picture": {
+   "reqs": [
+    "R58",
+    "R57"
+   ],
+   "status": "pass",
+   "detail": "pending placeholder (513 px, no-store) after the 0.6 s wait; re-ask at once, no second render; queue-full turned away then queued by the re-ask; both late pictures delivered (2 journal lines); failure final (512 px), no loop; in-wait picture unchanged; served pages carry the BRIDGE_SRC block"
+  },
+  "web_genimg_late_browser": {
+   "reqs": [
+    "R58",
+    "R57",
+    "R60",
+    "R68"
+   ],
+   "status": "pass",
+   "detail": "6 pictures (page <img> + CSS bg, app <img>, vibe.browse innerHTML <img> + <style> bg, wallpaper): pending placeholder first, then the picture, no reload, cached file untouched; a removed <img> asked once; 18 s; 25 /genimg requests, max 5 per picture; chromium"
   },
   "game_exit_with_the_session": {
    "reqs": [

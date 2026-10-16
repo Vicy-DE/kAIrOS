@@ -1,5 +1,5 @@
 {
- "at": "2026-10-10 11:41:47",
+ "at": "2026-10-15 13:26:46",
  "tests": {
   "unit_forge_pyflakes_static_gate": {
    "reqs": [
@@ -25,7 +25,7 @@
     "R45"
    ],
    "status": "pass",
-   "detail": "stderr (new+old console form, 3 Uncaught), DOM report, line map, dedupe, console.error/JSON filters, BRIDGE_SRC (26003 chars)"
+   "detail": "stderr (new+old console form, 3 Uncaught), DOM report, line map, dedupe, console.error/JSON filters, BRIDGE_SRC (30715 chars)"
   },
   "unit_forge_playtest_catches_keypress_crash": {
    "reqs": [
@@ -42,8 +42,8 @@
     "R12",
     "R45"
    ],
-   "status": "skip",
-   "detail": "no chromium here (the parser is covered by unit_appcheck_chromium_output_parser)"
+   "status": "pass",
+   "detail": "healthy clean (1.5 s), click error with button + app line, load error + unhandled rejection (0.4 s)"
   },
   "http_forge_game_static_gate_blocks_undefined_name": {
    "reqs": [
@@ -88,7 +88,7 @@
     "R45"
    ],
    "status": "pass",
-   "detail": "fixed in round 3 of 4: delivered clean (gate clean, runtime not run (no chromium on this system))"
+   "detail": "fixed in round 3 of 4: delivered clean (gate clean, runtime clean (1.0 s, 8 actions, 1 vibe calls))"
   },
   "http_forge_app_identical_repair_guard": {
    "reqs": [
@@ -114,8 +114,8 @@
     "R12",
     "R45"
    ],
-   "status": "skip",
-   "detail": "no chromium here (the runtime check skips; parser covered by the unit test)"
+   "status": "pass",
+   "detail": "click TypeError found headless, repaired in 1 round, delivered: gate clean, runtime clean (1.8 s, 8 actions, 1 vibe calls)"
   }
  }
 }

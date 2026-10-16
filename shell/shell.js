@@ -132,12 +132,15 @@ function uiConfirm(question, okLabel = "OK") {
 }
 
 /* the room the dock takes at the bottom of the screen (+ a small gap) — what a maximized
-   window must leave free [D2]; 0 where there is no dock (the bench host page) */
+   window must leave free [D2]; 0 where there is no dock (the bench host page). [R81] plus the
+   overhang of an icon grown to 1.33 (its app runs minimized): it grows upwards out of the dock,
+   so a maximized window never ends under it and never jumps when an icon grows */
+const DOCK_GROW = 18;                     // 52 px icon x 0.33, rounded up
 function dockRoom() {
   const dock = $("#dock");
   if (!dock) return 0;
   const d = dock.getBoundingClientRect();
-  return d.height ? Math.max(0, Math.round(innerHeight - d.top + 8)) : 0;
+  return d.height ? Math.max(0, Math.round(innerHeight - d.top + 8 + DOCK_GROW)) : 0;
 }
 
 /* [D1] the automatic self-heal stops after this many rounds per app version; the window
@@ -678,6 +681,96 @@ const BRIDGE_SRC = `
               stack: ((e.reason && e.reason.stack) || "").slice(0, 800) });
   });
 })();
+<\/script>
+<script data-kairos-genimg>
+(() => {
+  /* [SD run 2026-10-13] late pictures (docs/SD-RUN-2026-10-13.md). A /genimg/ picture that was not ready when its
+     request's wait ran out, or that the kernel turned away while its picture queue was full, arrives as a placeholder
+     ONE PIXEL WIDER than the picture: an odd width (every picture is a multiple of 64 wide). Such a picture is asked
+     for again as /genimg/...?_r=n (answered at once, never a held connection) after 2 s, then x1.5 up to every 15 s,
+     for at most an hour, until the picture itself comes: an <img> gets the new src, a CSS background the new URL
+     inline. No reload, the page's cached file untouched; a removed element or a closed page stops it. Its own script
+     element, every handler guarded: it can never break the app or file a bug report. The kernel injects this same
+     block into every page it serves (kernel/server.py genimg_late_script). */
+  if (window.__kairosGenimg) return;
+  window.__kairosGenimg = 1;
+  const HOUR = 3600000;
+  const gen = (s) => {
+    try { const u = new URL(s, document.baseURI); return u.pathname.indexOf("/genimg/") === 0 ? u : null; } catch (e) { return null; }
+  };
+  const ask = (u, n) => { const v = new URL(u.href); v.searchParams.set("_r", String(n)); return v.pathname + v.search; };
+  const delay = (n) => Math.min(15000, 2000 * Math.pow(1.5, n));
+  const odd = (im) => im.naturalWidth % 2 === 1;
+  /* <img>: every load / error in the document, however the element got there (markup, innerHTML, script) */
+  const imgs = new WeakMap();
+  const onImg = (e) => {
+    try {
+      const img = e.target;
+      const u = img && img.tagName === "IMG" ? gen(img.src) : null;
+      if (!u) return;
+      if (e.type === "load" && !odd(img)) { imgs.delete(img); return; }      // the picture, or a final placeholder
+      let s = imgs.get(img);
+      if (!s || s.src !== img.src) imgs.set(img, s = { n: 0, t0: Date.now(), src: img.src, timer: 0 });
+      if (s.timer || Date.now() - s.t0 > HOUR) return;
+      s.timer = setTimeout(() => {
+        try {
+          s.timer = 0;
+          if (!img.isConnected || img.src !== s.src) return;                 // gone, or the page changed it
+          img.setAttribute("src", ask(u, ++s.n));
+          s.src = img.src;
+        } catch (e2) { /* never the app's bug */ }
+      }, delay(s.n));
+    } catch (e1) { /* never the app's bug */ }
+  };
+  document.addEventListener("load", onImg, true);
+  document.addEventListener("error", onImg, true);
+  /* CSS backgrounds: each /genimg/ URL in a computed background-image is asked once (?_r=1, at once); a pending one
+     is polled like an <img>, and the picture goes inline on every element that uses it */
+  const asked = new Set(), got = new Map();
+  let css = false, timer = 0;
+  const scan = () => {
+    try {
+      css = css || [...document.querySelectorAll("style")].some((st) => st.textContent.indexOf("/genimg/") >= 0);
+      for (const el of document.querySelectorAll("*")) {
+        const b = getComputedStyle(el).backgroundImage;
+        if (!b || b.indexOf("/genimg/") < 0) continue;
+        let nb = b;
+        for (const part of b.split('url("').slice(1)) {
+          const raw = part.slice(0, part.indexOf('"'));
+          const u = gen(raw);
+          if (!u || u.searchParams.has("_r")) continue;
+          if (got.has(raw)) nb = nb.split(raw).join(got.get(raw));
+          else if (!asked.has(raw)) { asked.add(raw); poll(raw, u, 0, Date.now()); }
+        }
+        if (nb !== b) el.style.backgroundImage = nb;
+      }
+    } catch (e) { /* never the app's bug */ }
+  };
+  const poll = (raw, u, n, t0) => {
+    const im = new Image();
+    im.onload = im.onerror = (e) => {
+      try {
+        if (e.type === "load" && !odd(im)) { if (n) { got.set(raw, im.src); scan(); } return; }
+        if (Date.now() - t0 < HOUR) setTimeout(() => poll(raw, u, n + 1, t0), delay(n));
+      } catch (e3) { /* never the app's bug */ }
+    };
+    im.src = ask(u, n + 1);
+  };
+  const soon = () => { clearTimeout(timer); timer = setTimeout(scan, 800); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", soon); else soon();
+  if (typeof MutationObserver === "function") {
+    new MutationObserver((ms) => {
+      try {
+        for (const m of ms) {
+          for (const nd of m.addedNodes) {
+            if (nd.nodeType === 1 && (css || nd.tagName === "STYLE" || (nd.getAttribute("style") || "").indexOf("/genimg/") >= 0
+                || nd.querySelector('style,[style*="/genimg/"]'))) return soon();
+          }
+        }
+      } catch (e) { /* never the app's bug */ }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  }
+})();
 <\/script>`;
 
 /* the storage seed for an app: what its localStorage shim saved last time (one OS store
@@ -699,10 +792,12 @@ function injectBridge(html, seed) {
 }
 
 async function pollJob(jobId) {
+  if (!jobId) throw new Error("no job was started");     // [2026-10-14] e.g. a 503: the engine is not installed
   for (;;) {
     const r = await fetch(`/api/job/${jobId}`).then((r) => r.json());
     if (r.status === "done") return r.result;
     if (r.status === "error") throw new Error(r.error);
+    if (!r.status && r.error) throw new Error(r.error);   // "unknown job" (the kernel restarted)
     await new Promise((res) => setTimeout(res, 1500));
   }
 }
@@ -756,11 +851,9 @@ async function handleBridge(win, d) {
     return r.text;
   }
   if (method === "game") {
-    toast("🕹️ forging game — a window will open on your desktop…");
-    const r = await fetch("/api/game", { method: "POST", headers: apiHeaders(),
-      body: JSON.stringify({ prompt: args[0] }) }).then((r) => r.json());
-    if (r.error) throw new Error(r.error);
-    return await pollJob(r.job);
+    // [R82] the game runs in a desktop window frame (shell/games.js): an existing game plays its current
+    // version at once, a new one is forged first; ✨ improve in that window evolves it
+    return await launchGame({ prompt: String(args[0] ?? "") });
   }
   if (method === "forge") {
     // App Launcher: full AI development cycle — app + its generated resources
@@ -920,7 +1013,9 @@ async function handleBridge(win, d) {
         mountApp(win, r.html);
         // [N5] the kernel says whether the repaired version parses: a still-failing gate shows the
         // banner now (no remount → SyntaxError → next round); a clean one clears the verdict
-        if (!applyGateVerdict(win, r.broken)) toast("⚕ app healed");
+        const gateBroken = applyGateVerdict(win, r.broken);
+        if (r.truncated && r.warning) toast("✂ " + r.warning, true);   // [2026-10-14] cut at the length limit: not saved
+        else if (!gateBroken) toast("⚕ app healed");
         else toast("⚕ the repair did not fix the syntax error", true);
       }
     } catch (e) { toast("self-heal failed: " + e.message, true); }
@@ -936,7 +1031,7 @@ window.addEventListener("message", async (e) => {
   const d = e.data;
   if (!d || !d.vibe) return;
   const win = [...windows.values()].find((w) => w.iframe && w.iframe.contentWindow === e.source);
-  if (!win) return;
+  if (!win || win.br || win.isPage) return;   // [R83] a /web/ page (the browser, a page window) has no vibe.* bridge
   try {
     const result = await handleBridge(win, d);
     e.source.postMessage({ vibeReply: true, id: d.id, result }, "*");
@@ -975,13 +1070,15 @@ function createWindow(title, { w = 720, h = 520, improvable = true } = {}) {
 
   const focus = () => {
     el.style.zIndex = ++zTop;
+    const was = el.classList.contains("focused");
     document.querySelectorAll(".win").forEach((n) => n.classList.remove("focused"));
     el.classList.add("focused");
+    if (!was) dockChanged();                       // [R81] the active window's icon
   };
   focus();
-  el.addEventListener("pointerdown", focus);
+  el.addEventListener("pointerdown", (e) => { focus(); if (win.onFocus) win.onFocus(e); });   // [R82] a game frame
   el.querySelector(".win-close").onclick = () => closeWin(win);
-  el.querySelector(".win-min").onclick = () => { el.classList.add("minimized"); addTask(win); };
+  el.querySelector(".win-min").onclick = () => minimizeWin(win);
   el.querySelector(".win-max").onclick = () => {
     if (win.restore) {
       Object.assign(el.style, win.restore);
@@ -997,8 +1094,10 @@ function createWindow(title, { w = 720, h = 520, improvable = true } = {}) {
                                 width: "100%", height: `calc(100% - 30px - ${dockRoom()}px)` });
       el.classList.add("maximized");
     }
+    if (win.onMove) win.onMove("end");             // [R82] the game window follows its frame
   };
   el.querySelector(".win-improve").onclick = async () => {
+    if (win.onImprove) return win.onImprove();     // [R84] the browser: ✨ improves the page it shows
     if (!win.appId) return toast("this app is part of the OS — it can't be modified", true);
     const instruction = await stickyPrompt(win);
     if (instruction === null) return; // note closed — just keep using the old app
@@ -1010,18 +1109,24 @@ function createWindow(title, { w = 720, h = 520, improvable = true } = {}) {
   bar.addEventListener("pointerdown", (e) => {
     if (e.target.closest("button")) return;
     const sx = e.clientX - el.offsetLeft, sy = e.clientY - el.offsetTop;
+    // [R82] win.onMove: a game frame's X window follows every step (shell/games.js)
     const move = (e) => { el.style.left = Math.max(0, e.clientX - sx) + "px";
-                          el.style.top = Math.max(30, e.clientY - sy) + "px"; };
-    const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); };
+                          el.style.top = Math.max(30, e.clientY - sy) + "px";
+                          if (win.onMove) win.onMove("move"); };
+    const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up);
+                       if (win.onMove) win.onMove("end"); };
     addEventListener("pointermove", move); addEventListener("pointerup", up);
   });
   // resize
   el.querySelector(".win-resize").addEventListener("pointerdown", (e) => {
     e.preventDefault();
     const sw = el.offsetWidth - e.clientX, sh = el.offsetHeight - e.clientY;
-    const move = (e) => { el.style.width = Math.max(280, sw + e.clientX) + "px";
-                          el.style.height = Math.max(180, sh + e.clientY) + "px"; };
-    const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); };
+    // [R82] a game frame never gets smaller than its (fixed-size) game: win.minW / win.minH
+    const move = (e) => { el.style.width = Math.max(win.minW || 280, sw + e.clientX) + "px";
+                          el.style.height = Math.max(win.minH || 180, sh + e.clientY) + "px";
+                          if (win.onMove) win.onMove("move"); };
+    const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up);
+                       if (win.onMove) win.onMove("end"); };
     addEventListener("pointermove", move); addEventListener("pointerup", up);
   });
   return win;
@@ -1051,12 +1156,14 @@ function releaseFrame(win) {
 function closeWin(win) {
   if (!windows.has(win.id)) return;
   windows.delete(win.id);
+  if (win.onClose) { try { win.onClose(); } catch {} }   // [R82] a game frame ends its game
   removeTask(win);
   if (win.iconTimer) { clearInterval(win.iconTimer); win.iconTimer = null; }
   if (win.abort) { try { win.abort.abort(); } catch {} win.abort = null; }
   releaseFrame(win);
   win.el.remove();
   win.el = null;
+  dockChanged();                                   // [R81]
 }
 
 function setBody(win, node) {
@@ -1097,8 +1204,11 @@ async function mountApp(win, html) {
 }
 
 /* ---------------- taskbar: minimized-window management [R61] ----------------
-   Every minimized window gets a chip (its generated icon + title) in the taskbar;
-   clicking it restores + focuses the window. Chips are removed on restore/close. */
+   A minimized window gets a chip (its generated icon + title) in the taskbar; clicking it
+   restores + focuses the window. Chips are removed on restore/close. [R81] Only for windows
+   WITHOUT a dock icon: a /web/ page window, a quick viewer (picture, video, file), an X window
+   that is not a game. Apps, built-ins, the browser and games have their icon on the dock,
+   which shows their state (1.33 = minimized, a glow = shown) and restores them. */
 function winGlyph(win) {
   if (win.icon) return `<img src="${win.icon}" alt="">`;
   const t = (win.title || "▢").trim();
@@ -1136,18 +1246,27 @@ function layoutTaskbar() {
   bar.style.maxWidth = stacked ? "" : `${Math.max(0, room)}px`;
 }
 window.addEventListener("resize", layoutTaskbar);
+function minimizeWin(win) {
+  if (!win || !win.el) return;
+  win.el.classList.add("minimized");
+  if (!dockKeyOf(win)) addTask(win);               // [R81] a window with a dock icon needs no chip
+  dockChanged();
+}
 function restoreWin(win) {
+  if (!win || !win.el) return;
   win.el.classList.remove("minimized");
   win.el.style.zIndex = ++zTop;
   document.querySelectorAll(".win").forEach((n) => n.classList.remove("focused"));
   win.el.classList.add("focused");
   removeTask(win);
+  dockChanged();
 }
 function setWinIcon(win, icon) {   // called when an app's generated icon is known
   if (!icon) return;
   win.icon = icon;
   const c = $("#taskbar").querySelector(`[data-win="${win.id}"] .task-ic`);
   if (c) c.innerHTML = `<img src="${icon}" alt="">`;
+  dockChanged();                                   // [R81] the dock shows it too
 }
 /* a new app's icon is painted in the background — poll until it lands (once) */
 function pollAppIcon(win, appId) {
@@ -1174,14 +1293,21 @@ function pollAppIcon(win, appId) {
    X events), a refresh every 5 s while a game runs, a keepalive every 30 s otherwise:
    no polling loop in this page, and nothing at all when the kernel has no X
    (available:false). Screen 0 only [R52]; EventSource reconnects by itself. */
-const xwins = new Map();   // xid -> chip
+const xwins = new Map();   // xid -> chip (X windows WITHOUT a dock icon: not a game)
+const xrecs = new Map();   // [R81] xid -> the snapshot record of every listed X window (the dock's games)
 function xwinOp(id, op, body) {
   return fetch(`/api/windows/${id}/${op}`, { method: "POST", headers: apiHeaders(),
     body: JSON.stringify(body || {}) }).then((r) => r.json()).catch(() => ({ ok: false }));
 }
-function renderXWindows(list) {
+function renderXWindows(list, frames) {
   const bar = $("#taskbar"), seen = new Set();
-  for (const w of list) {          // every monitor's games: screen 0 is the one taskbar that manages them [R52]
+  xrecs.clear();
+  if (typeof gamesSync === "function") gamesSync(list, frames || []);   // [R82] the game frames (shell/games.js)
+  for (const w of list) {          // every monitor's games: screen 0 is the one dock/taskbar that manages them [R52]
+    if (w.frame) continue;         // [R82] a game in its frame: the frame (a DOM window on its screen's page) is its record
+    if (!SCREEN.primary) continue; // [R82] the feed reaches every screen now (their game frames); unframed X windows stay screen 0's
+    xrecs.set(w.id, w);
+    if (w.kind === "game") continue;     // [R81] a game's icon is on the dock (click = raise / minimize, right-click = close)
     seen.add(w.id);
     let chip = xwins.get(w.id);
     if (!chip) {
@@ -1203,6 +1329,7 @@ function renderXWindows(list) {
   }
   for (const [id, chip] of xwins) if (!seen.has(id)) { chip.remove(); xwins.delete(id); }
   layoutTaskbar();
+  dockChanged();
 }
 /* [D-R68-6] a game that died after the kernel reported it running: the kernel keeps the
    record (games/<slug>/meta.json, the job's result) and lists the last few as `crashed`
@@ -1210,22 +1337,24 @@ function renderXWindows(list) {
    the record to the forge as a bug report (no repair starts on its own, R35). */
 const crashSeen = new Set();
 function noteGameCrashes(list) {
+  if (!SCREEN.primary) return;                       // [R82] every screen watches the feed; one toast is enough
   for (const c of list || []) {
     if (!c || crashSeen.has(c.id)) continue;
     crashSeen.add(c.id);
     if (Date.now() / 1000 - c.at > 300) continue;      // an old record after a page reload
     toast(`🎮 ${(c.title || c.slug || "game")} crashed after ${c.after_s} s (${c.summary || "no error output"})` +
-          " — relaunch it to forge a repaired version", true);
+          " — ✨ improve in its window repairs it", true);
   }
 }
 let xsource = null;
 function watchXWindows() {
-  if (!SCREEN.primary || xsource || typeof EventSource === "undefined") return;
+  // [R82] every screen: a game's frame lives on the page of its screen [R52] (screen 0 alone has the chips)
+  if (xsource || typeof EventSource === "undefined") return;
   xsource = new EventSource("/api/windows/stream");
   xsource.onmessage = (e) => {
     let d; try { d = JSON.parse(e.data); } catch { return; }
-    renderXWindows(d && d.available ? d.windows : []);
-    noteGameCrashes(d && d.crashed);                     // with or without X [D-R68-6]
+    renderXWindows(d && d.available ? d.windows : [], (d && d.frames) || []);
+    noteGameCrashes(d && d.crashed);                     // with or without X [D-R68-6]; screen 0 only
   };
 }
 
@@ -1236,12 +1365,35 @@ async function showAppsMenu() {
   $("#appsmenu-search").focus();
   const grid = $("#appsmenu-grid");
   grid.innerHTML = "<div class='appsmenu-empty'>loading…</div>";
-  let apps = [];
-  try { apps = (await fetch("/api/apps").then((r) => r.json())).apps || []; } catch {}
+  let apps = [], games = [];
+  try { const r = await fetch("/api/apps").then((r) => r.json()); apps = r.apps || []; games = r.games || []; } catch {}
+  DOCK.apps = apps.slice();               // [R81] the dock's list follows
+  dockChanged();
+  // [R81] the system apps first — Files, Notes and News are not on the dock (owner 2026-10-15): here and in the search
+  const cached = new Map(apps.map((a) => [a.app_id, a]));
+  const system = [{ id: "browser", icon: "🌐", name: "Browser", hint: "the built-in browser — the imaginary web" }]
+    .concat([...DOCK.sys.values()].map((it) => ({ id: it.app, icon: it.icon, name: it.title, hint: it.prompt,
+                                                  img: cached.get(it.app) && cached.get(it.app).icon })));
+  apps = apps.filter((a) => !DOCK.sys.has(a.app_id));
   const render = (filter) => {
     const f = filter.trim().toLowerCase();
     const list = apps.filter((a) => !f || (a.app_id + " " + (a.prompt || "")).toLowerCase().includes(f));
-    grid.innerHTML = list.length ? "" : "<div class='appsmenu-empty'>no apps yet — summon one with ✨</div>";
+    const sys = system.filter((a) => !f || (a.id + " " + a.name).toLowerCase().includes(f));
+    const gl = games.filter((g) => !f || (g.slug + " " + (g.prompt || "")).toLowerCase().includes(f));   // [R82]
+    grid.innerHTML = list.length || sys.length || gl.length ? "" : "<div class='appsmenu-empty'>no apps yet — summon one with ✨</div>";
+    sys.forEach((a) => {
+      const b = document.createElement("button");
+      b.className = "appsmenu-item appsmenu-system";
+      b.dataset.sysapp = a.id;
+      b.innerHTML = `<span class="appsmenu-ic">${a.img ? `<img src="${a.img}" alt="">` : ""}</span>`;
+      if (!a.img) b.querySelector(".appsmenu-ic").textContent = a.icon;
+      const label = document.createElement("span");
+      label.className = "appsmenu-name"; label.textContent = a.name;
+      b.appendChild(label);
+      b.title = a.id === "browser" ? a.hint : "system app";
+      b.onclick = () => { hideAppsMenu(); openSysApp(a.id); };
+      grid.appendChild(b);
+    });
     list.forEach((a) => {
       const b = document.createElement("button");
       b.className = "appsmenu-item";
@@ -1252,6 +1404,18 @@ async function showAppsMenu() {
       b.appendChild(label);
       b.title = a.prompt || name;
       b.onclick = () => { hideAppsMenu(); openApp(a.prompt || a.app_id, a.app_id); };
+      grid.appendChild(b);
+    });
+    gl.forEach((g) => {               // [R82] the games: a click plays the current version in its window
+      const b = document.createElement("button");
+      b.className = "appsmenu-item appsmenu-game";
+      b.dataset.game = g.slug;
+      b.innerHTML = `<span class="appsmenu-ic">🕹️</span>`;
+      const label = document.createElement("span");
+      label.className = "appsmenu-name"; label.textContent = g.slug.replace(/-/g, " ");
+      b.appendChild(label);
+      b.title = `v${g.version} · ${g.prompt || g.slug}` + (g.last_crash ? " · crashed last time — ✨ improve in its window repairs it" : "");
+      b.onclick = () => { hideAppsMenu(); launchGame({ slug: g.slug }).catch(() => {}); };
       grid.appendChild(b);
     });
   };
@@ -1294,6 +1458,11 @@ async function streamApp(win, payload, codeEl, title) {
     const resp = await fetch("/api/app", { method: "POST",
       headers: apiHeaders(), signal: ctl.signal,
       body: JSON.stringify(payload) });
+    if (!resp.ok) {   // [2026-10-14] a JSON error before any stream, e.g. 503 "the LLM engine is not installed"
+      let msg = "HTTP " + resp.status;
+      try { const j = await resp.json(); if (j && j.error) msg = j.error; } catch (e) { /* not JSON */ }
+      throw new Error(msg);
+    }
     const reader = resp.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
@@ -1313,6 +1482,8 @@ async function streamApp(win, payload, codeEl, title) {
           codeEl.scrollTop = codeEl.scrollHeight;
         } else if (ev === "done" || ev === "cached" || ev === "fallback") {
           win.appId = data.app_id;
+          dockChanged();                        // [R81] the window's dock icon is the app's now
+          if (ev === "done") dockLoadApps();    // a new app (or version) joins the dock
           win.healRounds = 0;                   // [D1] a new version gets its own repair budget
           win.el.querySelectorAll(".heal-stop").forEach((n) => n.remove());
           mountApp(win, data.html);
@@ -1327,7 +1498,7 @@ async function streamApp(win, payload, codeEl, title) {
           const gateBroken = applyGateVerdict(win, data.broken);
           if (gateBroken) {
             // the banner + its toast said it; nothing else to announce
-          } else if (ev === "done") {
+          } else if (ev === "done" && !data.truncated) {   // [2026-10-14] a cut version: its warning said it
             toast(data.version > 1 ? `✦ ${title} improved to v${data.version}` : "✨ " + title + " exists now");
           } else if (ev === "fallback") {
             toast("improvement failed — running previous version (v" + data.version + ")", true);
@@ -1405,17 +1576,18 @@ const STUDIO = {
     button{padding:10px 18px;border-radius:10px;border:0;background:#7c5cff;color:#fff;cursor:pointer;font-weight:600}
     button:disabled{opacity:.4}
     .gallery{flex:1;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;padding:0 12px 12px}
-    .gallery img{width:100%;border-radius:12px;border:1px solid rgba(255,255,255,.1)}
+    .gallery img{width:100%;border-radius:12px;border:1px solid rgba(255,255,255,.1);cursor:zoom-in}
     .status{padding:0 14px 10px;color:#9a9ab0;font-size:12px}</style></head><body>
     <div class="bar"><input id="p" placeholder="a chrome koi fish swimming through clouds…">
-    <button id="go">Generate</button></div><div class="status" id="s">local Krea 2 Turbo — first run loads the model into VRAM</div>
+    <button id="go">Generate</button></div><div class="status" id="s">local Muse (a Krea 2 fine-tune) — first run loads the model into VRAM · click a picture to ✨ improve it</div>
     <div class="gallery" id="g"></div>
     <script>
       const go=document.getElementById("go"),p=document.getElementById("p"),s=document.getElementById("s"),g=document.getElementById("g");
       async function gen(){ if(!p.value.trim())return; go.disabled=true; s.textContent="generating… (model swap + diffusion)";
         const t0=Date.now();
-        try{ const url=await vibe.image(p.value);
-          const img=new Image(); img.src=url; g.prepend(img);
+        try{ const url=await vibe.image(p.value), what=p.value;
+          const img=new Image(); img.src=url; img.title="click: open it — ✨ improves it, versions are kept";
+          img.onclick=()=>parent.postMessage({kairosPicture:url,title:what},"*"); g.prepend(img);
           s.textContent="done in "+((Date.now()-t0)/1000).toFixed(1)+"s";
         }catch(e){ s.textContent="error: "+e.message } go.disabled=false; }
       go.onclick=gen; p.onkeydown=e=>{if(e.key==="Enter")gen()};
@@ -1477,14 +1649,14 @@ const STUDIO = {
     pre{flex:1;overflow:auto;margin:0 12px 12px;padding:12px;border-radius:12px;background:rgba(255,255,255,.04);font:11px/1.5 ui-monospace,monospace;color:#8f8fb0}</style></head><body>
     <div class="bar"><input id="p" placeholder="asteroids but the asteroids are pizzas…">
     <button id="go">Forge game</button></div>
-    <div class="status" id="s">a local coder model writes pygame — the game opens as a real desktop window (WSLg)</div>
+    <div class="status" id="s">a local coder model writes pygame — the game opens in its own window on the desktop; ✨ there evolves it</div>
     <pre id="c">// generated source will appear here</pre>
     <script>
       const go=document.getElementById("go"),p=document.getElementById("p"),s=document.getElementById("s"),c=document.getElementById("c");
       go.onclick=async()=>{ if(!p.value.trim())return; go.disabled=true;
         s.textContent="forging… (writes code, test-launches it, self-repairs crashes)"; const t0=Date.now();
         try{ const r=await vibe.game(p.value);
-          s.textContent=(r.running?"🎮 running on your desktop! ":"finished. ")+"attempt "+r.attempt+", "+((Date.now()-t0)/1000|0)+"s";
+          s.textContent=(r.running?"🎮 running in its window (v"+r.version+")! ":"finished. ")+((Date.now()-t0)/1000|0)+"s";
         }catch(e){ s.textContent="error: "+e.message } go.disabled=false; };
     <\/script></body></html>` },
 };
@@ -1495,16 +1667,22 @@ const STUDIO = {
 //   (handled in handleBridge via method === "game")
 
 function openStudio(name) {
+  if (name === "browser") return openBrowser(null, { newWindow: true });   // [R83] shell/browser.js
   const st = STUDIO[name];
+  if (!st) return toast("no such built-in: " + name, true);
   // studio apps are part of the OS: preinstalled, never modified by the AI
   const win = createWindow(st.title, { w: st.w || 760, h: st.h || 560, improvable: false });
+  win.builtin = name;                    // [R81] its dock icon: builtin:<name>
+  dockChanged();
   mountApp(win, st.html);
+  return win;
 }
 
 /* ---------------- imaginary-web page windows (shell-level) ----------------
-   NOT an app — this is the OS shell rendering a single imagined page (e.g. from a
-   desktop-search result). The BROWSER is a generated app (see the dock + the
-   browser wiki recipe). Links inside a /web/ page navigate the iframe natively. */
+   NOT an app — the OS shell rendering a single imagined page. Since R83 the desktop search
+   opens addresses and website hits in the built-in BROWSER (shell/browser.js); this plain
+   page window stays for the legacy {kairosNavigate} pages. Links inside a /web/ page
+   navigate the iframe natively. */
 async function openPage(address, existingWin) {
   const win = existingWin || createWindow("🌐 " + address, { w: 820, h: 600, improvable: false });
   win.isPage = true;
@@ -1526,25 +1704,28 @@ window.addEventListener("message", (e) => {
 
 /* ---------------- quick media viewer windows ---------------- */
 async function imageQuick(prompt) {
-  const win = createWindow("🖼 " + prompt, { w: 560, h: 580, improvable: false });
+  const win = createWindow("🖼 " + prompt, { w: 560, h: 620 });
+  win.viewer = true;                       // [R81] no dock icon: a chip when minimized
+  win.onImprove = () => toast("the picture is still being painted — ✨ works once it is there", true);   // [R85]
   setBody(win, genViewEl("imagining (fresh random seed)…"));
   try {
     const r = await fetch("/api/image", { method: "POST", headers: apiHeaders(),
       body: JSON.stringify({ prompt }) }).then((r) => r.json());
+    if (r.error) throw new Error(r.error);   // [2026-10-14] e.g. 503: the image engine is not installed
     const url = await pollJob(r.job);
-    const img = document.createElement("img");
-    Object.assign(img.style, { width: "100%", height: "100%", objectFit: "contain" });
-    img.src = url;
-    setBody(win, img);
+    if (!win.el) return;                      // closed while painting
+    openPicture(url, { title: prompt, win });  // [R85] the picture viewer: ✨ improve + the version strip (pictures.js)
   } catch (err) { toast("imagine failed: " + err.message, true); }
 }
 
 async function videoQuick(prompt) {
   const win = createWindow("🎬 " + prompt, { w: 480, h: 600, improvable: false });
+  win.viewer = true;
   setBody(win, genViewEl("dreaming a video — minutes of GPU work…"));
   try {
     const r = await fetch("/api/video", { method: "POST", headers: apiHeaders(),
       body: JSON.stringify({ prompt }) }).then((r) => r.json());
+    if (r.error) throw new Error(r.error);   // [2026-10-14] the add-on (400) or the engine (503) is missing
     const url = await pollJob(r.job);
     const v = document.createElement("video");
     Object.assign(v, { controls: true, autoplay: true, loop: true, src: url });
@@ -1555,6 +1736,7 @@ async function videoQuick(prompt) {
 
 async function fileQuick(path) {
   const win = createWindow("📄 " + path, { w: 640, h: 480, improvable: false });
+  win.viewer = true;
   try {
     const r = await fetch("/api/fs", { method: "POST", headers: apiHeaders(),
       body: JSON.stringify({ op: "read", path }) }).then((r) => r.json());
@@ -1576,19 +1758,15 @@ function runAction(a) {
   dsInput.blur();
   if (a.type === "app") return openApp(a.prompt || a.app_id, a.app_id);
   if (a.type === "summon") return openApp(a.prompt, null);
-  if (a.type === "page") return openPage(a.address);
+  if (a.type === "web" || a.type === "page") return openBrowser(a.address);   // [R83] addresses + website hits: the browser
+  if (a.type === "sysapp") return openSysApp(a.app_id);                       // [R81] Notes, News, Files … by name
   if (a.type === "image") return imageQuick(a.prompt);
   if (a.type === "video") return videoQuick(a.prompt);
-  if (a.type === "file") return a.dir ? document.querySelector('[data-app="files"]').click()
-                                      : fileQuick(a.path);
-  if (a.type === "settings") return document.querySelector('[data-app="settings"]').click();
+  if (a.type === "file") return a.dir ? openSysApp("files") : fileQuick(a.path);
+  if (a.type === "settings") return openSysApp("settings");
   if (a.type === "game") {
-    toast("🕹 forging — a window will open on your desktop…");
-    fetch("/api/game", { method: "POST", headers: apiHeaders(),
-      body: JSON.stringify({ prompt: a.prompt }) })
-      .then((r) => r.json()).then((r) => pollJob(r.job))
-      .then((res) => toast(res.running ? "🎮 game is running!" : "game finished generation"))
-      .catch((e) => toast("forge failed: " + e.message, true));
+    // [R82] in a desktop window frame (shell/games.js): an existing game plays its current version, a new one is forged
+    launchGame({ prompt: a.prompt, slug: a.slug }).catch(() => {});   // the frame + a toast say what went wrong
   }
 }
 
@@ -1632,6 +1810,9 @@ dsInput.addEventListener("blur", () => setTimeout(() => dsResults.classList.add(
 dsInput.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { dsResults.classList.add("hidden"); dsInput.blur(); }
   if (e.key === "Enter") {
+    // [R83] an address opens in the browser at once — before (or without) the results
+    const addr = webAddress(dsInput.value);
+    if (addr) return runAction({ type: "web", address: addr });
     const first = dsResults.querySelector(".ds-item");
     if (first) runAction(first._action);
   }
@@ -1659,15 +1840,299 @@ addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.code === "Space") { e.preventDefault(); showLauncher(); }
 });
 
-/* ---------------- dock ---------------- */
-document.querySelectorAll(".dock-app").forEach((btn) => {
-  btn.addEventListener("click", () => {
-    if (btn.dataset.menu) return showAppsMenu();
-    if (btn.dataset.launch) return showLauncher();
-    if (btn.dataset.builtin) return openStudio(btn.dataset.builtin);
-    openApp(btn.dataset.prompt, btn.dataset.app);
-  });
-});
+/* ---------------- the dock [R81] ----------------
+   Owner: "remove fileexplorer and notes add the vibecoded apps make the icon 1/3 bigger if
+   running and minimized make a glow if running and maximized" (+ 2026-10-15: News goes too).
+   Data-driven, D0's design (results/d0-window-pool/REPORT.md §7):
+   * the PINNED icons are data in shell/index.html (#dock's buttons, read once by dockInit:
+     ⊞, launcher, summon, the browser, the studios, Settings); Files, Notes and News are in
+     <template id="system-apps"> — reachable through ⊞ Apps and the search, not pinned;
+   * the user's vibecoded apps (/api/apps, the most recently opened first) follow, as many as
+     fit the screen (DOCK_APPS_MAX at most); the rest are in ⊞ (its badge says how many);
+   * then whatever runs without an icon yet (a game, an app opened from ⊞, a summon still
+     being written) — while it runs;
+   * ONE list of window records feeds every icon's state: windowRecords() merges this page's
+     DOM windows with the kernel's X windows (/api/windows/stream: wm.py's snapshot already
+     says minimized/active), {id, key, kind: app|builtin|page|viewer|game|x, app, minimized,
+     active}. Moving to real windows later (candidate 2) only swaps that feed.
+   Per icon: running and every window minimized -> 1.33 (.minimized); running and shown ->
+   a glow (.shown; .active = the focused one). Click: not running -> open; running, active ->
+   minimize; running -> restore + raise. Right-click: close, new window (built-ins), remove
+   from / keep in the dock (user apps; the list is the OS store key shell::dock.hidden).
+   Chips stay only for windows without an icon (page windows, quick viewers, X windows that
+   are not games). Every screen [R52] draws its own dock over its own windows; games are on
+   screen 0's, like their chips were. */
+const DOCK_APPS_MAX = 14;                 // user apps on the dock at most (1920 px fits ~20)
+const DOCK_SLOT = 58, DOCK_SEP = 15;      // 52 px icon + 6 px gap; separator 1 + 8 margin + 6 gap
+const DOCK = { pinned: [], sys: new Map(), apps: [], hidden: new Set(), btns: new Map(), items: new Map(), more: 0,
+               queued: false };
+
+function dockItemFromButton(el) {
+  const label = el.querySelector("span") ? el.querySelector("span").textContent.trim() : "";
+  const icon = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim();
+  const d = el.dataset;
+  if (d.menu) return { key: "menu", kind: "menu", icon, title: label };
+  if (d.launch) return { key: "launch", kind: "launch", icon, title: label };
+  if (d.builtin) return { key: "builtin:" + d.builtin, kind: "builtin", builtin: d.builtin, icon, title: label };
+  return { key: "app:" + d.app, kind: "app", app: d.app, prompt: d.prompt, icon, title: label, system: true };
+}
+function dockInit() {
+  const dock = $("#dock");
+  if (!dock || DOCK.pinned.length) return;
+  let n = 0;
+  for (const el of [...dock.children]) {
+    if (el.classList.contains("dock-sep")) DOCK.pinned.push({ key: "sep:" + n++, sep: true });
+    else if (el.classList.contains("dock-app")) DOCK.pinned.push(dockItemFromButton(el));
+  }
+  const tpl = $("#system-apps");
+  for (const el of tpl ? tpl.content.querySelectorAll(".dock-app") : []) {
+    const it = dockItemFromButton(el);
+    DOCK.sys.set(it.app, it);
+  }
+  for (const it of DOCK.pinned) if (it.kind === "app") DOCK.sys.set(it.app, it);
+  dock.textContent = "";
+  dock.setAttribute("role", "toolbar");
+  dock.setAttribute("aria-label", "Dock");
+}
+
+/* the dock key of a DOM window: its icon, or null (a chip) */
+function dockKeyOf(win) {
+  if (win.game) return "game:" + (win.game.slug || "pending-" + win.id);   // [R82] a game's frame
+  if (win.builtin) return "builtin:" + win.builtin;
+  if (win.isPage || win.viewer) return null;
+  if (win.appId) return "app:" + win.appId;
+  if (win.prompt !== undefined) return "pending:" + win.id;    // a summon still being written
+  return null;
+}
+/* [R81, D0 §7] the ONE window-record list: this page's DOM windows + the kernel's X windows */
+function windowRecords() {
+  const out = [];
+  for (const w of windows.values()) {
+    if (!w.el) continue;
+    const min = w.el.classList.contains("minimized");
+    out.push({ id: w.id, key: dockKeyOf(w), dom: true,
+               kind: w.game ? "game" : w.builtin ? "builtin" : w.isPage ? "page" : w.viewer ? "viewer" : "app",
+               app: w.appId || w.builtin || (w.game && w.game.slug) || null, title: w.title, icon: w.icon || null,
+               minimized: min, active: w.el.classList.contains("focused") && !min, z: +w.el.style.zIndex || 0 });
+  }
+  for (const x of xrecs.values()) {
+    const game = x.kind === "game";
+    out.push({ id: "x" + x.id, xid: x.id, key: game ? "game:" + (x.app || x.id) : null, dom: false,
+               kind: game ? "game" : "x", app: x.app || null, title: x.title || (x.app ? x.app.replace(/-/g, " ") : "game"),
+               icon: x.icon || null, minimized: !!x.minimized, active: !!x.active && !x.minimized, z: x.active ? 1e9 : 0 });
+  }
+  return out;
+}
+
+async function dockLoadApps() {
+  try {
+    const r = await fetch("/api/apps").then((r) => r.json());
+    DOCK.apps = Array.isArray(r.apps) ? r.apps : [];
+  } catch { /* keep the last list */ }
+  dockChanged();
+}
+async function dockLoadHidden() {
+  try {
+    const r = await fetch(`/api/store/${encodeURIComponent("shell::dock.hidden")}`).then((r) => r.json());
+    if (Array.isArray(r.value)) DOCK.hidden = new Set(r.value.map(String));
+  } catch {}
+  dockChanged();
+}
+function dockSetHidden(appId, hide) {
+  DOCK.hidden[hide ? "add" : "delete"](appId);
+  fetch("/api/store", { method: "POST", headers: apiHeaders(),
+    body: JSON.stringify({ key: "shell::dock.hidden", value: [...DOCK.hidden] }) }).catch(() => {});
+  toast(hide ? `“${appId.replace(/-/g, " ")}” left the dock — it is in ⊞ Apps` : `“${appId.replace(/-/g, " ")}” is on the dock`);
+  dockChanged();
+}
+
+/* the dock's items, in order: pinned | the user's apps | what runs without an icon. A user app keeps its
+   place while it runs; one that did not fit (or was removed from the dock) shows at the end while it runs */
+function dockItems(recs) {
+  const items = DOCK.pinned.slice();
+  const pinned = new Set(items.map((i) => i.key));
+  const user = DOCK.apps.filter((a) => a.app_id && !DOCK.sys.has(a.app_id) && !DOCK.hidden.has(a.app_id));
+  const userKeys = new Set(user.map((a) => "app:" + a.app_id));
+  const running = [], seen = new Set();
+  for (const r of recs) {
+    if (!r.key || pinned.has(r.key) || seen.has(r.key)) continue;
+    seen.add(r.key);
+    running.push(r);
+  }
+  const extraOf = (r) => {
+    if (r.key.startsWith("app:")) {
+      const id = r.key.slice(4), a = DOCK.apps.find((x) => x.app_id === id), sys = DOCK.sys.get(id);
+      return { key: r.key, kind: "app", app: id, prompt: (a && a.prompt) || (sys && sys.prompt) || id,
+               icon: sys ? sys.icon : "✦", iconUrl: r.icon || (a && a.icon) || null,
+               title: sys ? sys.title : id.replace(/-/g, " "), user: !sys };
+    }
+    if (r.key.startsWith("builtin:")) return { key: r.key, kind: "builtin", builtin: r.key.slice(8), icon: "▣", title: r.title };
+    if (r.key.startsWith("game:")) return { key: r.key, kind: "game", app: r.app, icon: "🕹️", iconUrl: r.icon, title: r.title };
+    return { key: r.key, kind: "pending", icon: "✦", title: "summoning: " + String(r.title || "").slice(0, 40) };
+  };
+  const extra = running.filter((r) => !userKeys.has(r.key)).map(extraOf);
+  // how many user apps fit: the screen minus the pinned icons, the running extras, the separators and the
+  // margin every running icon may need when it grows to 1.33 (2 x 9 px); a running user app always keeps its place
+  const nFixed = items.filter((i) => !i.sep).length + extra.length, nSep = items.filter((i) => i.sep).length + 2;
+  const room = (innerWidth || SCREEN.w) - 32 - 26 - running.length * 18;
+  const fit = Math.max(0, Math.min(DOCK_APPS_MAX, Math.floor((room - nFixed * DOCK_SLOT - nSep * DOCK_SEP) / DOCK_SLOT)));
+  const runKeys = new Set(running.map((r) => r.key));
+  let left = fit - user.filter((a) => runKeys.has("app:" + a.app_id)).length;
+  const shown = user.filter((a) => runKeys.has("app:" + a.app_id) || left-- > 0);
+  DOCK.more = user.length - shown.length + DOCK.apps.filter((a) => DOCK.hidden.has(a.app_id)).length;
+  if (shown.length) items.push({ key: "sep:apps", sep: true });
+  for (const a of shown) {
+    items.push({ key: "app:" + a.app_id, kind: "app", app: a.app_id, prompt: a.prompt || a.app_id, icon: "✦",
+                 iconUrl: a.icon || null, title: a.app_id.replace(/-/g, " "), user: true });
+  }
+  if (extra.length) items.push({ key: "sep:running", sep: true });
+  return items.concat(extra);
+}
+
+function dockButton(it) {
+  let b = DOCK.btns.get(it.key);
+  if (!b) {
+    b = document.createElement(it.sep ? "span" : "button");
+    if (it.sep) b.className = "dock-sep";
+    else {
+      b.className = "dock-app";
+      b.type = "button";
+      b.dataset.key = it.key;
+      b.addEventListener("click", () => dockClick(b.dataset.key));
+      b.addEventListener("contextmenu", (e) => { e.preventDefault(); dockMenu(b.dataset.key, b); });
+    }
+    DOCK.btns.set(it.key, b);
+  }
+  if (it.sep) return b;
+  const sig = [it.iconUrl || it.icon || "", it.title, it.kind].join("|");
+  if (b._sig !== sig) {
+    b._sig = sig;
+    b.textContent = "";
+    if (it.iconUrl) {
+      const img = document.createElement("img");
+      img.className = "dock-img"; img.alt = ""; img.src = it.iconUrl;
+      img.onerror = () => { img.replaceWith(document.createTextNode(it.icon || "✦")); };
+      b.appendChild(img);
+    } else b.appendChild(document.createTextNode(it.icon || "✦"));
+    const label = document.createElement("span");
+    label.textContent = it.title;
+    b.appendChild(label);
+    b.setAttribute("aria-label", it.title);
+    for (const k of ["app", "builtin", "game", "menu", "launch"]) b.removeAttribute("data-" + k);
+    if (it.kind === "app") b.dataset.app = it.app;
+    else if (it.kind === "builtin") b.dataset.builtin = it.builtin;
+    else if (it.kind === "game") b.dataset.game = it.app || it.key.slice(5);
+    else if (it.kind === "menu") b.dataset.menu = "1";
+    else if (it.kind === "launch") b.dataset.launch = "1";
+    b.dataset.kind = it.kind;
+  }
+  return b;
+}
+
+function renderDock() {
+  DOCK.queued = false;
+  const dock = $("#dock");
+  if (!dock) return;
+  const recs = windowRecords();
+  const items = dockItems(recs);
+  DOCK.items = new Map(items.map((i) => [i.key, i]));
+  const want = items.map(dockButton);
+  for (const [key, b] of DOCK.btns) if (!DOCK.items.has(key)) { b.remove(); DOCK.btns.delete(key); }
+  if (want.length !== dock.children.length || want.some((b, i) => dock.children[i] !== b)) {
+    for (const b of want) dock.appendChild(b);       // appendChild moves: the order follows `items`
+  }
+  for (const it of items) {
+    if (it.sep) continue;
+    const b = DOCK.btns.get(it.key);
+    const mine = recs.filter((r) => r.key === it.key);
+    const min = mine.length > 0 && mine.every((r) => r.minimized);
+    b.classList.toggle("running", mine.length > 0);
+    b.classList.toggle("minimized", min);                       // 1.33: running, every window minimized
+    b.classList.toggle("shown", mine.length > 0 && !min);       // the glow: running and on screen
+    b.classList.toggle("active", mine.some((r) => r.active));
+    b.dataset.windows = String(mine.length);
+    if (it.kind === "menu") {
+      if (DOCK.more > 0) b.dataset.more = "+" + DOCK.more; else delete b.dataset.more;
+    }
+  }
+  layoutTaskbar();
+}
+function dockChanged() {
+  if (DOCK.queued) return;
+  DOCK.queued = true;
+  setTimeout(renderDock, 0);              // one render per burst of changes (focus + minimize + chip …)
+}
+window.addEventListener("resize", dockChanged);
+
+function dockLaunch(it, newWindow = false) {
+  if (!it) return;
+  if (it.kind === "menu") return showAppsMenu();
+  if (it.kind === "launch") return showLauncher();
+  if (it.kind === "builtin") return it.builtin === "browser" ? openBrowser(null, { newWindow }) : openStudio(it.builtin);
+  if (it.kind === "app") return openApp(it.prompt || it.app, it.app);
+  if (it.kind === "game" && it.app) return launchGame({ slug: it.app }).catch(() => {});   // [R82]
+}
+function dockClick(key) {
+  hideDockMenu();
+  const it = DOCK.items.get(key);
+  if (!it) return;
+  if (it.kind === "menu" || it.kind === "launch") return dockLaunch(it);
+  const mine = windowRecords().filter((r) => r.key === key).sort((a, b) => a.z - b.z);
+  if (!mine.length) return dockLaunch(it);
+  if (mine.some((r) => r.active)) {                            // the active one: minimize
+    for (const r of mine) if (!r.minimized) (r.dom ? minimizeWin(windows.get(r.id)) : xwinOp(r.xid, "minimize"));
+    return;
+  }
+  for (const r of mine) (r.dom ? restoreWin(windows.get(r.id)) : xwinOp(r.xid, "raise"));   // raise, topmost last
+}
+
+function hideDockMenu() { const m = $("#dock-menu"); if (m) m.classList.add("hidden"); }
+function dockMenu(key, btn) {
+  const it = DOCK.items.get(key), m = $("#dock-menu");
+  if (!it || !m || it.kind === "menu" || it.kind === "launch") return;
+  const mine = windowRecords().filter((r) => r.key === key);
+  const acts = [];
+  if (!mine.length) acts.push(["Open", () => dockLaunch(it)]);
+  if (it.kind === "builtin" && mine.length) acts.push(["New window", () => dockLaunch(it, true)]);
+  if (mine.length) acts.push([mine.length > 1 ? `Close all (${mine.length})` : "Close", () => {
+    for (const r of mine) (r.dom ? closeWin(windows.get(r.id)) : xwinOp(r.xid, "close"));
+  }]);
+  if (it.kind === "app" && it.user && !DOCK.hidden.has(it.app)) acts.push(["Remove from dock", () => dockSetHidden(it.app, true)]);
+  if (it.kind === "app" && it.user && DOCK.hidden.has(it.app)) acts.push(["Keep in dock", () => dockSetHidden(it.app, false)]);
+  m.textContent = "";
+  const head = document.createElement("div");
+  head.className = "dm-title";
+  head.textContent = it.title;
+  m.appendChild(head);
+  for (const [label, fn] of acts) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "dm-item"; b.setAttribute("role", "menuitem");
+    b.textContent = label;
+    b.onclick = () => { hideDockMenu(); fn(); };
+    m.appendChild(b);
+  }
+  m.classList.remove("hidden");
+  const r = btn.getBoundingClientRect(), w = m.offsetWidth;
+  m.style.left = Math.max(8, Math.min(innerWidth - w - 8, Math.round(r.left + r.width / 2 - w / 2))) + "px";
+  m.style.bottom = Math.round(innerHeight - r.top + 10) + "px";
+  setTimeout(() => (m.querySelector(".dm-item") || m).focus(), 20);
+}
+document.addEventListener("pointerdown", (e) => {
+  const m = $("#dock-menu");
+  if (m && !m.classList.contains("hidden") && !m.contains(e.target)) hideDockMenu();
+}, true);
+addEventListener("keydown", (e) => { if (e.key === "Escape") hideDockMenu(); });
+
+/* a system app by its id (the search, ⊞ Apps, the file/settings actions): the browser is built in,
+   the others are generated apps with the prompt from shell/index.html */
+function openSysApp(id) {
+  if (id === "browser") return openBrowser();
+  const it = DOCK.sys.get(id);
+  if (!it) return toast("no such system app: " + id, true);
+  return openApp(it.prompt, it.app);
+}
+dockInit();
+renderDock();
 
 /* ---------------- translation layer [R71]: the DOM translator ----------------
    kairosTranslator(translateBatch, win) follows the document of `win`: every visible text node
@@ -1849,12 +2314,35 @@ function applySettings(s) {
   document.documentElement.style.setProperty("--accent2", s.accent2 || "#41e2ff");
   $(".mb-logo").textContent = "❖ " + (s.os_name || "kAIrOS") +
     (SCREEN.primary ? "" : " · screen " + (SCREEN.index + 1));
-  $("#wallpaper").style.backgroundImage = s.wallpaper ? `url(${s.wallpaper})` : "";
+  applyWallpaper(s.wallpaper || "");
   // [R71] off, or English: nothing is translated (and whatever was is restored)
   setTranslation(s.translation === "on" && s.language && s.language !== "en" ? s.language : null);
 }
 async function pollSettings() {
   try { applySettings(await fetch("/api/settings").then((r) => r.json())); } catch {}
+}
+/* [SD run 2026-10-13] the wallpaper setting is painted when it CHANGES (pollSettings runs every 5 s). An app may set a
+   /genimg/ picture as the wallpaper: one that is still rendering comes as the kernel's pending placeholder (an odd
+   width — see BRIDGE_SRC's data-kairos-genimg block, which does the same for app and page pictures), so it is asked
+   again (?_r=n, answered at once) with the same backoff until the picture comes, then painted. */
+let wallpaperShown = null;
+function applyWallpaper(url) {
+  if (url === wallpaperShown) return;
+  wallpaperShown = url;
+  $("#wallpaper").style.backgroundImage = url ? `url(${url})` : "";
+  if (url && /^\/genimg\//.test(url)) lateWallpaper(url, 0, Date.now());
+}
+function lateWallpaper(url, n, t0) {
+  const im = new Image();
+  im.onload = im.onerror = (e) => {
+    if (wallpaperShown !== url) return;                       // another wallpaper since
+    if (e.type === "load" && im.naturalWidth % 2 === 0) {     // the picture (or a final placeholder)
+      if (n) $("#wallpaper").style.backgroundImage = `url(${im.src})`;
+      return;
+    }
+    if (Date.now() - t0 < 3600000) setTimeout(() => lateWallpaper(url, n + 1, t0), Math.min(15000, 2000 * 1.5 ** n));
+  };
+  im.src = url + (url.includes("?") ? "&" : "?") + "_r=" + (n + 1);
 }
 
 /* ---------------- wallpaper ---------------- */
@@ -2159,13 +2647,15 @@ setInterval(pollSettings, 5000);
   setTimeout(() => {
     $("#boot").classList.add("hidden");
     $("#desktop").classList.remove("hidden");
+    dockLoadApps();                // [R81] the user's apps on the dock (every screen)
+    dockLoadHidden();
     if (SCREEN.primary) {          // [R52] first-boot setup / installer only once, on screen 0
       toast("❖ welcome to kAIrOS — everything here is generated on your GPU");
       checkSetup();
       checkInstallable();
-      watchXWindows();             // [R68] game windows -> taskbar chips
     } else {
       toast("❖ screen " + (SCREEN.index + 1) + " — an extra workspace (system dialogs stay on screen 1)");
     }
+    watchXWindows();               // [R68] X windows -> chips (screen 0); [R82] the game frames of every screen
   }, 900);
 })();

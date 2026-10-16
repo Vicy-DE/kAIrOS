@@ -14,7 +14,7 @@ const info = await vibe.system.setup();       // GPU VRAM, model tiers, download
 // {
 //   first_boot: false, vram_mb: 8188,                   // GPU memory in MB → `${(info.vram_mb / 1024).toFixed(0)} GB VRAM`
 //   current_tier: "8gb", recommended_tier: "8gb",
-//   tiers: [ {tier:"8gb",  present:true,  total_gb:23.6, have_gb:23.6, llm:"Gemma 4 26B-A4B-it (UD-IQ4_XS, MoE, experts partly in RAM)"},
+//   tiers: [ {tier:"8gb",  present:true,  total_gb:23.6, have_gb:23.6, llm:"Gemma 4 26B-A4B-it ultra-uncensored heretic"},
 //            {tier:"16gb", present:false, total_gb:24.1, have_gb:9.7,  llm:"Gemma 4 26B-A4B-it (…)"},
 //            {tier:"24gb", present:false, total_gb:41.3, have_gb:0,    llm:"Qwen3-Coder-30B-A3B-Instruct (Q4_K_M)"}, … ],
 //   upgrade: null          // or {tier:"16gb", status:"downloading"|"switching"|"done"|"error", current:"llm/…gguf", error:null}

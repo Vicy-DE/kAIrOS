@@ -25,17 +25,18 @@
    "preamble",
    "encoder"
   ],
-  "comment": "[R86, docs/REFUSAL-FALLBACK-2026-10-09.md] what the kernel does when the LLM declines a request (kernel/refusal.py judges every user-facing answer): \"preamble\" = the same model again with prompts.ADULT_PREAMBLE prepended to the system prompt (no model swap; drop or reorder here once the preamble is measured on Gemma); \"llm_uncensored\" = the decensored add-on section below, swapped in like llm_fast and skipped while its file is absent or empty (the v7.5-1 stick ships no new model file). Every rung declined -> a plain error, nothing cached. expander_ladder = the image-prompt expander's own cheap rungs: \"encoder\" = the image section's baked text encoder (or its optional expander_fallback_file) with the krea-18plus rules, then the raw prompt; \"preamble\" first (integrator 2026-10-09: the refusal screen measured 0/20 refused expansions on Gemma with the preamble — results/r86-refusal-fallback/screen/SCREEN.md — so a refused prompt needs no encoder swap, R79's no-thrash win kept). The minors guard (refusal.minor_risk) runs before any rung and cannot be configured away."
+  "comment": "[R86 round 4, docs/REFUSAL-FALLBACK-2026-10-09.md] what the kernel does when the LLM declines a request (kernel/refusal.py judges every user-facing answer): \"preamble\" = the same model again with prompts.ADULT_PREAMBLE prepended to the system prompt (no model swap); \"llm_uncensored\" = the uncensored LLM: a tier's llm_uncensored section when it has one, else the default llm when that carries \"uncensored\": true (this tier: the heretic Gemma 4 IS the default since 2026-10-10, so the rung serves the fast-mode primary and is skipped while the default itself answers). The rung never runs the model that declined (compared by file); a section's file absent / empty / incomplete or a failed load skips it too. Every rung declined -> the request is DECLINED: a plain error for the user, nothing cached, nothing rendered, never a 502. expander_ladder = the image-prompt expander's own cheap rungs: \"preamble\" first (integrator 2026-10-09: 0/20 refused expansions with it, results/r86-refusal-fallback/screen/SCREEN.md), then \"encoder\" = the image section's baked text encoder (or its optional expander_fallback_file) with the krea-18plus rules; every rung refused -> the picture is declined, never rendered from the refusal or the raw prompt. The narrow minors block (refusal.minor_block, round 4b lists: an explicit under-18 age or word together with a sexual term; csam / pthc / child porn / kiddie porn / Kinderporno / jailbait on their own; loli / shota with a sexual term; never a negated or age-gate disclaimer, an age difference or a measurement) runs at every media entry, on the final image/video prompt, once on a refused text request before any rung, and at the entry when the primary LLM is uncensored; it cannot be configured away."
  },
  "llm": {
   "role": "HTML app generation + Python game generation",
-  "name": "Gemma 4 26B-A4B-it (UD-IQ4_XS, MoE, experts partly in RAM)",
-  "comment": "Feature test 2026-09-28 (docs/FEATURE-TEST-2026-09-28.md §6): 36/37 functional app items, text editor 6/6, 7/7 apps error-free at first load vs 11/37 for Qwen2.5-Coder-7B and 13/37 for Qwen3.5-9B — the only candidate whose generated apps work; LiveCodeBench 65 % / AIME 60 % (docs/LLM-PROBLEM-SOLVING-2026-09.md). Costs: 3–4.7 min per app (28.8 tok/s, prompt 535 tok/s), llama-server RSS 15.5 GB (mmap'd GGUF), 6.4–8.2 s reload after every image job. 13.6 GB MoE on the 8 GB card: NO -ngl here on purpose — llama.cpp b11223's `--fit` (default on) placed it in the benchmark (all 31 layers' dense weights on CUDA0, the MoE experts of ~22 of 31 layers overflow to system RAM, 6.7 GB VRAM). `--reasoning off` + enable_thinking=false as for Qwen3.5. Vendor sampling: temp 1.0, top_k 64, top_p 0.95. Fast mode: settings key llm_model=fast serves the llm_fast add-on (Qwen2.5-Coder-7B, 40 s per app) instead (docs/FIXES-2026-09-28.md A2).",
-  "file": "llm/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf",
-  "url": "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/resolve/main/gemma-4-26B-A4B-it-UD-IQ4_XS.gguf",
-  "size_gb": 13.6,
-  "size_bytes": 13597177568,
-  "sha256": "babd1e389d386352f71600765d37390f7dc993fbfad6725caccf996ffe34aecf",
+  "name": "Gemma 4 26B-A4B-it ultra-uncensored heretic (i1-IQ4_XS, MoE, experts partly in RAM)",
+  "uncensored": true,
+  "comment": "[R86 round 4] The owner's choice (2026-10-10 21:35, the model triage page): the uncensored heretic edition (mradermacher's i1-IQ4_XS of the same gemma4 MoE architecture, 128 experts / 8 active) is the default LLM; stock Gemma 4 26B-A4B-it (unsloth UD-IQ4_XS, 13 597 177 568 B) left the manifests and the stick (it stays on the build host). Same serve args. \"uncensored\": true tells the kernel that this model answers adult requests itself: the refusal ladder's uncensored rung is this very model (skipped when it is the primary) and the narrow minors block (kernel/refusal.py minor_block) checks every text request at the entry. The measurements below were taken on stock Gemma (same architecture; the llm-ps benchmark on the heretic ran 2026-10-10, unit kairos-llmps-heretic). Feature test 2026-09-28 (docs/FEATURE-TEST-2026-09-28.md §6): 36/37 functional app items, text editor 6/6, 7/7 apps error-free at first load vs 11/37 for Qwen2.5-Coder-7B and 13/37 for Qwen3.5-9B — the only candidate whose generated apps work; LiveCodeBench 65 % / AIME 60 % (docs/LLM-PROBLEM-SOLVING-2026-09.md). Costs: 3–4.7 min per app (28.8 tok/s, prompt 535 tok/s), llama-server RSS 15.5 GB (mmap'd GGUF), 6.4–8.2 s reload after every image job. 13.6 GB MoE on the 8 GB card: NO -ngl here on purpose — llama.cpp b11223's `--fit` (default on) placed it in the benchmark (all 31 layers' dense weights on CUDA0, the MoE experts of ~22 of 31 layers overflow to system RAM, 6.7 GB VRAM). `--reasoning off` + enable_thinking=false as for Qwen3.5. Vendor sampling: temp 1.0, top_k 64, top_p 0.95. Fast mode: settings key llm_model=fast serves the llm_fast add-on (Qwen2.5-Coder-7B, 40 s per app) instead (docs/FIXES-2026-09-28.md A2).",
+  "file": "llm/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf",
+  "url": "https://huggingface.co/mradermacher/gemma-4-26B-A4B-it-ultra-uncensored-heretic-i1-GGUF/resolve/main/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf",
+  "size_gb": 13.92,
+  "size_bytes": 13917722144,
+  "sha256": "e2f223775fa6e4e2129b7d7802fa7326b8da3fe261e8834baf65b722f9df3742",
   "serve_args": [
    "-c",
    "16384",
@@ -85,40 +86,6 @@
   ],
   "parallel": 2,
   "parallel_comment": "2 llama-server slots, each with the full -c above (-c 2*C -np 2 --no-kv-unified) [R72]: two LLM requests at once; CPU-measured 2026-10-06 (docs/PARALLEL-LLM-2026-10-06.md), GPU validation follows the current GPU benchmark",
-  "addon": true
- },
- "llm_uncensored": {
-  "role": "the refusal fallback's last rung [R86] — the decensored coder LLM; settings key llm_model = \"uncensored\" makes it the primary",
-  "name": "Gemma 4 26B-A4B-it ultra-uncensored heretic (i1-IQ4_XS, MoE, experts partly in RAM)",
-  "comment": "Downloadable add-on [R86]: PROVISIONAL candidate (mradermacher's heretic/abliterated imatrix quant of the same Gemma 4 26B-A4B architecture; the integrator may swap the file after the benchmark — the kernel reads only this section, nothing is hard-coded). Serves two ways: (a) the refusal ladder's \"llm_uncensored\" rung — a request whose answer was a refusal (also after the 18+ preamble) is retried here, the model swap is the llm_fast kind (ModelManager keys llama-server by section; the next normal request swaps the default back); (b) vibe.settings.set('llm_model', 'uncensored') runs it as the primary LLM (not downloaded -> the default serves, /api/status says why). Download: vibe.models.download('llm_uncensored') — the alias 'uncensored' names the baked image model. Serve args, chat_template_kwargs and sampling are the llm section's (same architecture). Not on the v7.5-1 stick (2.2 GB free).",
-  "file": "llm/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf",
-  "url": "https://huggingface.co/mradermacher/gemma-4-26B-A4B-it-ultra-uncensored-heretic-i1-GGUF/resolve/main/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf",
-  "size_gb": 13.92,
-  "size_bytes": 13917722144,
-  "sha256": "e2f223775fa6e4e2129b7d7802fa7326b8da3fe261e8834baf65b722f9df3742",
-  "serve_args": [
-   "-c",
-   "16384",
-   "-fa",
-   "on",
-   "--cache-ram",
-   "4096",
-   "--ctx-checkpoints",
-   "8",
-   "--jinja",
-   "--reasoning",
-   "off"
-  ],
-  "parallel": 2,
-  "parallel_comment": "2 llama-server slots, each with the full -c above (-c 2*C -np 2 --no-kv-unified) [R72]: two LLM requests at once; CPU-measured 2026-10-06 (docs/PARALLEL-LLM-2026-10-06.md), GPU validation follows the current GPU benchmark",
-  "chat_template_kwargs": {
-   "enable_thinking": false
-  },
-  "sampling": {
-   "temperature": 1.0,
-   "top_k": 64,
-   "top_p": 0.95
-  },
   "addon": true
  },
  "image": {
@@ -330,6 +297,59 @@
   "max_pixels": 1048576,
   "addon": true,
   "comment": "kept reachable as the second uncensored model [R29]: Chroma1-HD has no safety alignment (Apache-2.0) but is 9x slower than Kroma/Z-Image on the 8 GB card (244.5 s/image at 26 steps cfg 4, 6.5 GB, 2026-09-28) and frames nudity modestly. T5-XXL encoder + FLUX VAE. --model-args chroma_use_dit_mask=false per sd.cpp docs/chroma.md (needs sd.cpp >= 2026-09-27); --clip-on-cpu keeps the 4.7B T5 in RAM (sd.cpp's deprecated spelling of --backend te=cpu, still accepted)."
+ },
+ "image_edit": {
+  "name": "Qwen-Image-2.1 Turbo edit (Q4_K_M, 8 steps) — the ✨ picture editor",
+  "comment": "[R85, docs/PICTURE-EDIT-2026-10-15.md] ✨ improve a picture: Muse (`image`) creates, this section edits a picture with the user's words — POST /api/image/improve, an sd-server session whose request carries the picture as its reference image (extra_images; sd-cli -r), `vision` = the Qwen3-VL-8B mmproj (--llm_vision). Qwen-Image-2.1-Turbo (Qwen, 2026-10-09: the official 8-step distill of Qwen-Image-2.1, text-to-image AND edit, CFG 1) with its saved schedule: --sigmas = model_index.json sample_sigmas + the terminal 0, --steps 8 = sigmas - 1 (the shipped sd.cpp 3f8527a; no --scheduler, no --flow-shift); the user's image_steps/cfg/sampler/scheduler tuning never applies here. Chosen by the GPU A/B of 2026-10-15 on Muse pictures (10 SFW + 5 adult edits, RTX 4070 8 GB, the shipped engine): vs Qwen-Image-Edit-2511 Q3_K_M + Lightning 4-step (20 GB, Apache) the same warm speed (66.5 vs 67.9 s per 1024² edit), first edit 82.5 vs 109.3 s, peak RSS 8.1 vs 20.4 GB (fits next to the 13.9 GB heretic on 31 GB), 0.004 vs 0.114 change outside the edited region, text written exactly; by eye 14/15 each, 18+ never re-censored (5/5). VRAM peak 7.3 GB. session_idle_s: R79's idle window for this section (a second ✨ within 2 minutes joins the open session; any other GPU waiter still closes it at once). An add-on: the v7.5-2 media image pre-installs it; elsewhere vibe.models.download('image_edit'). The VAE is the image_qwen add-on's (one file).",
+  "addon": true,
+  "licence": "Qwen Research License (Qwen-Image-2.1-Turbo + its VAE, Alibaba / Tongyi Lab): use for non-commercial (research or evaluation) purposes; redistribution as part of a product allowed with a copy of the licence and the NOTICE (§3) — fine for the free, non-commercial kAIrOS. The Qwen3-VL-8B-Instruct encoder GGUF + mmproj: Apache-2.0.",
+  "notice": "/usr/share/doc/kairos/model-licences/qwen-image-2.1/NOTICE.txt",
+  "diffusion": {
+   "file": "image/qwen_image_2.1_turbo_Q4_K_M.gguf",
+   "url": "https://huggingface.co/Abiray/Qwen-Image-2.1-Turbo-GGUF/resolve/main/qwen_image_2.1_turbo_Q4_K_M.gguf",
+   "size_gb": 4.19,
+   "size_bytes": 4189346592,
+   "sha256": "0f5a11ebbaf3110a16120311454eaac35db13798e0102339e4f2b8fd5be6ba82"
+  },
+  "text_encoder": {
+   "file": "image/Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+   "url": "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+   "size_gb": 5.03,
+   "size_bytes": 5027784800,
+   "sha256": "67d1659bfe71b89d50b45a4ad1a9e5b997e5bb16ce5da66a6a6167abd569e9e2"
+  },
+  "vision": {
+   "file": "image/mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf",
+   "url": "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF/resolve/main/mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf",
+   "size_gb": 0.75,
+   "size_bytes": 752289728,
+   "sha256": "c6ba85508d82f42590e6eb77d5340369ab6fecf107a7561d809523d8aa5f3bfd"
+  },
+  "vae": {
+   "file": "image/qwen_image_2.1_vae_bf16.safetensors",
+   "url": "https://huggingface.co/Comfy-Org/Qwen-Image-2.1/resolve/main/vae/qwen_image_2.1_vae_bf16.safetensors",
+   "size_gb": 0.68,
+   "size_bytes": 675509688,
+   "sha256": "bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9"
+  },
+  "gen_args": [
+   "--steps",
+   "8",
+   "--sigmas",
+   "1.0,0.978453,0.95418,0.926626,0.89508,0.845148,0.704534,0.414568,0.0",
+   "--cfg-scale",
+   "1.0",
+   "--sampling-method",
+   "euler",
+   "-W",
+   "1024",
+   "-H",
+   "1024",
+   "--diffusion-fa",
+   "--vae-tiling"
+  ],
+  "max_pixels": 1048576,
+  "session_idle_s": 120
  },
  "video": {
   "name": "Wan2.2-TI2V-5B (Q4_K_M)",

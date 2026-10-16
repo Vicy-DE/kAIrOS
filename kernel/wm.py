@@ -63,6 +63,13 @@ DESKTOP_CLASSES = ("chrom", "mpv", "unclutter", "x11vnc")
 LISTED_TYPES = {"_NET_WM_WINDOW_TYPE_NORMAL", "_NET_WM_WINDOW_TYPE_DIALOG"}
 GAME_CLASSES = ("pygame", "python", "sdl", "main.py")   # SDL derives WM_CLASS from argv[0]: `python3 main.py`
 OPS = ("raise", "activate", "restore", "minimize", "close", "move", "resize", "place")
+# [R82] the frame <-> game-window pairs: a game runs inside a desktop window frame (a DOM window of the web shell);
+# the kernel glues the pygame X window over the frame's body and moves, stacks, covers and minimizes it with the frame
+FRAME_OPS = ("place", "follow", "snapshot", "cover", "uncover", "minimize", "restore", "focus", "close", "adopt",
+             "release")
+FRAME_KEEP = 32                        # frame records kept (ended ones go first)
+WM_TRANSIENT_FOR, XA_WINDOW = 68, 33   # predefined atoms (Xatom): no intern round trip
+P_MIN_SIZE, P_MAX_SIZE = 16, 32        # WM_NORMAL_HINTS flags
 
 
 class WMError(Exception):
@@ -364,6 +371,91 @@ class EWMH:
             raise WMError(f"unsupported screen depth {img.depth} (need a 24/32-bit TrueColor visual)")
         return bytes(img.data)
 
+    # ---- [R82] what a frame needs to know about its game window and its screen
+    def size_fixed(self, xid):
+        """does the client ask for a fixed size? SDL's non-resizable window (every generated game: 960x540) sets
+        WM_NORMAL_HINTS min == max; a RESIZABLE one sets a minimum only. Unreadable hints count as fixed: a game is
+        centred in its frame, never stretched, unless it says it can grow."""
+        try:
+            h = self.win(xid).get_wm_normal_hints()
+        except Exception as e:
+            if self.lost(e):
+                raise
+            return True
+        flags = getattr(h, "flags", 0) if h is not None else 0
+        if not flags:
+            return True
+        if flags & P_MAX_SIZE:
+            return not (flags & P_MIN_SIZE) or (h.min_width, h.min_height) == (h.max_width, h.max_height)
+        return False
+
+    def set_transient(self, xid, parent):
+        """WM_TRANSIENT_FOR = parent. The kiosk Chromium is FULLSCREEN, and openbox lifts a FOCUSED fullscreen window
+        above every other layer, _NET_WM_STATE_ABOVE included: a click on the desktop hid the game (measured in Xvfb
+        + openbox 3.6 with the kiosk's rc.xml, 2026-10-15). A transient stays above its parent, in the parent's
+        layer — a game transient for the kiosk of its frame's screen stays over the desktop [R82]."""
+        try:
+            if parent:
+                self.win(xid).change_property(WM_TRANSIENT_FOR, XA_WINDOW, 32, [int(parent)])
+            else:                                  # out of the kiosk's group (a covered or minimized game)
+                self.win(xid).delete_property(WM_TRANSIENT_FOR)
+            self.d.flush()
+        except Exception as e:
+            if self.lost(e):
+                raise
+            return False
+        return True
+
+    def restack(self, xid, sibling=0, below=False):
+        """_NET_RESTACK_WINDOW (source: pager): below/above `sibling` (0 = the bottom/top of its layer)"""
+        self.send(xid, "_NET_RESTACK_WINDOW", [SOURCE_PAGER, int(sibling or 0), 1 if below else 0])
+
+    def stacked_above(self, xid, other):
+        """is xid above `other` in openbox's stacking order? None when the WM does not say"""
+        v = self.prop(self.root, "_NET_CLIENT_LIST_STACKING")
+        if not v:
+            return None
+        order = [int(x) for x in v]                # bottom to top
+        if xid not in order or other not in order:
+            return None
+        return order.index(xid) > order.index(other)
+
+    def kiosk_at(self, x, y, w=None):
+        """the Chromium window whose origin is (x, y) root px (±2; the one w px wide first) -> (xid, (x, y, w, h)) or
+        (0, None): the page tells where its own window is (window.screenX/Y x devicePixelRatio) — the most direct
+        way to its window, independent of how the monitors are reported"""
+        best, names = (0, None, -1), {}
+        for xid in self.clients():
+            inst, cls = self.wm_class(xid)
+            if "chrom" not in f"{inst} {cls} {_proc_name(self.pid(xid), names)}".lower():
+                continue
+            g = self.geom(xid)
+            if g is None or not g[4] or abs(g[0] - x) > 2 or abs(g[1] - y) > 2:
+                continue
+            score = (2 if w and abs(g[2] - w) <= 2 else 1, g[2] * g[3])
+            if best[2] == -1 or score > best[2]:
+                best = (xid, g[:4], score)
+        return best[0], best[1]
+
+    def kiosk_for(self, rect):
+        """the kiosk Chromium window that shows the monitor rect (x, y, w, h): the largest mapped Chromium window
+        whose centre lies on it -> (xid, (x, y, w, h)) or (0, None). Its geometry maps the page's CSS pixels to
+        root pixels (kiosk mode: no browser chrome, the viewport IS the window)."""
+        best, names = (0, None, 0), {}
+        for xid in self.clients():
+            inst, cls = self.wm_class(xid)
+            if "chrom" not in f"{inst} {cls} {_proc_name(self.pid(xid), names)}".lower():
+                continue
+            g = self.geom(xid)
+            if g is None or not g[4]:
+                continue
+            cx, cy = g[0] + g[2] // 2, g[1] + g[3] // 2
+            if not (rect[0] <= cx < rect[0] + rect[2] and rect[1] <= cy < rect[1] + rect[3]):
+                continue
+            if g[2] * g[3] > best[2]:
+                best = (xid, g[:4], g[2] * g[3])
+        return best[0], best[1]
+
     # ---- EWMH client messages
     def send(self, xid, name, data):
         data = list(data) + [0] * (5 - len(data))
@@ -535,6 +627,7 @@ class WindowService:
         self._watcher = None
         self._closing = False           # kernel stopping: streams return [D-R68-3]
         self.registry = GameRegistry()
+        self.frames = {}                # [R82] frame id -> the pair record (see attach_frame)
         self.xerrors = 0
         self.reconnects = 0
 
@@ -566,15 +659,17 @@ class WindowService:
         reported them running [D-R68-6] (part of every stream snapshot: a change pushes)"""
         name, sock = self.display()
         crashed = self.registry.crashes()
+        frames = self.frames_out()       # [R82] the pairs: a reloaded kiosk page rebuilds its game frames from them
         if not sock.exists():
-            return dict(self.unavailable(f"no X display ({sock} missing)", name), crashed=crashed)
+            return dict(self.unavailable(f"no X display ({sock} missing)", name), crashed=crashed, frames=frames)
         try:
             snap = await self._run(self._snapshot, name)
         except asyncio.TimeoutError:
-            return dict(self.unavailable(f"{name} did not answer within {self.OP_TIMEOUT:.0f} s", name), crashed=crashed)
+            return dict(self.unavailable(f"{name} did not answer within {self.OP_TIMEOUT:.0f} s", name), crashed=crashed,
+                        frames=frames)
         except WMError as e:
-            return dict(self.unavailable(str(e), name), crashed=crashed)
-        return dict({"available": True, "display": name, "crashed": crashed}, **snap)
+            return dict(self.unavailable(str(e), name), crashed=crashed, frames=frames)
+        return dict({"available": True, "display": name, "crashed": crashed, "frames": self.frames_out()}, **snap)
 
     async def wait_window(self, pid, timeout, until=None):
         """[D-R68-6] Wait until a MAPPED window owned by pid is listed on the kiosk display
@@ -644,13 +739,161 @@ class WindowService:
             res["detail"] = detail
         return res
 
-    def register_game(self, pid, app, title=None, icon=None):
+    def register_game(self, pid, app, title=None, icon=None, frame=None):
+        """[R82] `frame` = the desktop frame the game runs in ({id, screen, x, y, w, h, vw, vh}: the frame body's
+        rect in the page's CSS pixels + the page's viewport): its window is paired with the frame as soon as it maps"""
         self.registry.register(pid, app, title, icon)
+        if frame:
+            self.attach_frame(frame, pid, app, title)
         self._notify()
 
     def forget_game(self, pid):
         self.registry.forget(pid)
         self._notify()
+
+    def running_for(self, app):
+        """[R82] the live processes the kernel launched for this app (slug): [(pid, registry entry)]"""
+        return [(p, g) for p, g in self.registry.running().items() if g["app"] == app and _alive(p)]
+
+    # ---- [R82] the frame <-> game-window pairs (D0 REPORT §7: in the kernel, not in shell.js, so the pairing survives
+    # a move to real browser windows). One record per desktop frame, keyed by the frame's id (the page makes it
+    # unique): the frame body's rect in CSS pixels + the page's viewport and screen, the game process and its window,
+    # covered (a menu, a toast, a dialog, another window lies over the frame: the shell shows the R70 screenshot and
+    # the game is minimized + frozen), minimized (the frame is minimized), ended (the game exited: pid, code, crash).
+    @staticmethod
+    def _frame_spec(spec):
+        """the CSS rect + viewport of a frame body from the shell -> dict, or None when malformed"""
+        try:
+            css = [int(round(float(spec[k]))) for k in ("x", "y", "w", "h")]
+            view = [int(round(float(spec.get("vw") or 0))), int(round(float(spec.get("vh") or 0)))]
+            screen = int(spec.get("screen") or 0)
+            # where the page's own window is: window.screenX/Y (CSS px) x devicePixelRatio — optional
+            at = ([float(spec["sx"]), float(spec["sy"])] if spec.get("sx") is not None and spec.get("sy") is not None
+                  else None)
+            dpr = float(spec.get("dpr") or 1.0)
+            # the browser's chrome around the viewport (CSS px): 0 in the kiosk, a title bar in a plain --app window
+            chrome = [max(0.0, min(100.0, float(spec.get("cx") or 0))), max(0.0, min(200.0, float(spec.get("cy") or 0)))]
+        except (KeyError, TypeError, ValueError):
+            return None
+        if css[2] <= 0 or css[3] <= 0 or not 0.25 <= dpr <= 8:
+            return None
+        return {"css": css, "view": view, "screen": max(0, screen), "at": at, "dpr": dpr, "chrome": chrome}
+
+    def attach_frame(self, spec, pid, app, title=None):
+        """the game `pid` (launched for `app`) runs in the frame spec["id"]: a new launch into a frame (first start,
+        ✨ improve, a revert) starts shown — not covered, not minimized, nothing ended"""
+        fid = str((spec or {}).get("id") or "")[:96]
+        geo = self._frame_spec(spec or {})
+        if not fid or geo is None:
+            return None
+        f = self.frames.get(fid) or {"id": fid}
+        f.update(geo, slug=app, title=title or app, pid=int(pid), xid=0, covered=False, minimized=False, ended=None,
+                 kiosk=0, origin=None, scale=None, fixed=None, placed=None, lowered=False, had_focus=False, t=time.time())
+        self.frames[fid] = f
+        g = self.registry.lookup(pid)
+        if g is not None:
+            g["frame"] = fid
+        self._prune_frames()
+        return f
+
+    def _prune_frames(self):
+        if len(self.frames) <= FRAME_KEEP:
+            return
+        for fid, _ in sorted(self.frames.items(), key=lambda kv: (kv[1].get("ended") is None, kv[1].get("t", 0))):
+            if len(self.frames) <= FRAME_KEEP:
+                break
+            self.frames.pop(fid, None)
+
+    def frames_out(self):
+        return [{k: f.get(k) for k in ("id", "screen", "slug", "title", "pid", "xid", "covered", "minimized", "ended")}
+                for f in self.frames.values()]
+
+    def frame_of_pid(self, pid):
+        g = self.registry.lookup(pid)
+        return self.frames.get(g.get("frame")) if g and g.get("frame") else None
+
+    def frame_ended(self, pid, ended):
+        """the game of a frame exited (the reaper): the frame says so — {pid, returncode, after_s, killed, crash}"""
+        for f in self.frames.values():
+            if f.get("pid") == pid:
+                f.update(ended=dict(ended, pid=pid), xid=0, t=time.time())
+                self._notify()
+
+    async def frame_root(self, spec):
+        """[R82] the frame body's rect in ROOT pixels (x, y, w, h) — where a game launched into that frame should map
+        (SDL_VIDEO_WINDOW_POS) — or None without X"""
+        geo = self._frame_spec(spec or {})
+        name, sock = self.display()
+        if geo is None or not sock.exists():
+            return None
+        try:
+            return await self._run(self._guarded, name, lambda c: self._body_root(c, dict(geo), refresh=True))
+        except (asyncio.TimeoutError, WMError):
+            return None
+
+    async def frame_op(self, fid, op, body=None):
+        """POST /api/frames/{fid}/{op} -> {ok, op, frame, detail?|error, status?}; `snapshot` adds the image bytes
+        under "image" (BGRX rows, see EWMH.grab) with its rect. The record is updated first (here, on the loop
+        thread), then the X side runs on the ops thread — without X the record still follows the shell."""
+        body = body if isinstance(body, dict) else {}
+        fid = str(fid)[:96]
+        if op not in FRAME_OPS:
+            return {"ok": False, "error": f"unknown op {op} (ops: {', '.join(FRAME_OPS)})", "status": 400}
+        f = self.frames.get(fid)
+        if op == "adopt":
+            geo = self._frame_spec(body)
+            try:
+                xid = int(str(body.get("xid")), 0)
+            except (TypeError, ValueError):
+                xid = 0
+            if geo is None or not xid:
+                return {"ok": False, "error": "adopt needs the window's xid and the frame body's x y w h", "status": 400}
+        elif f is None:
+            return {"ok": False, "error": "no such frame", "status": 404}
+        elif op in ("place", "follow"):
+            geo = self._frame_spec(dict(body, screen=body.get("screen", f.get("screen"))))
+            if geo is None:
+                return {"ok": False, "error": f"{op} needs the frame body's x y w h (CSS px) and vw vh", "status": 400}
+            if geo["screen"] != f.get("screen") or geo["at"] != f.get("at") or geo["view"] != f.get("view") \
+                    or geo["chrome"] != f.get("chrome"):
+                f.update(kiosk=0, origin=None, scale=None)       # another page / window / viewport: find its kiosk again
+            f.update(geo)
+        elif op == "cover":
+            f["covered"] = True
+        elif op == "uncover":
+            f["covered"] = False
+        elif op == "minimize":
+            f["minimized"] = True
+        elif op == "restore":
+            f["minimized"] = False
+        elif op == "release":
+            self.frames.pop(fid, None)
+            g = self.registry.lookup(f.get("pid"))
+            if g is not None and g.get("frame") == fid:
+                g["frame"] = None
+            self._notify()
+            return {"ok": True, "op": op, "frame": fid}
+        name, sock = self.display()
+        if not sock.exists():
+            return dict(self.unavailable(f"no X display ({sock} missing)", name), ok=False, op=op, frame=fid, status=503)
+        try:
+            ok, detail = await self._run(self._frame_x, name, fid, op, body)
+        except asyncio.TimeoutError:
+            return {"ok": False, "op": op, "frame": fid, "error": f"{name} did not answer within {self.OP_TIMEOUT:.0f} s",
+                    "status": 504}
+        except WMError as e:
+            return dict(self.unavailable(str(e), name), ok=False, op=op, frame=fid, status=503)
+        if op == "close" and ok:
+            self.frames.pop(fid, None)
+        if op != "snapshot":
+            self._notify()
+        res = {"ok": bool(ok), "op": op, "frame": fid}
+        if isinstance(detail, str):
+            res["error"] = detail
+            res["status"] = 404 if detail.startswith("no ") else 400
+        elif detail is not None:
+            res["detail"] = detail
+        return res
 
     async def stream(self, send, busy=5.0, idle=30.0):
         """Push the list through send(snapshot) on every change the watcher sees
@@ -787,13 +1030,244 @@ class WindowService:
                 self.reconnects += 1
 
     def _snapshot(self, name):
-        snap = self._guarded(name, lambda c: c.snapshot(self.registry))
-        for w in snap["windows"]:           # mapped again by anyone (a WM restart, a client
-            if not w["minimized"] and w["pid"] in self.registry.frozen():   # re-map): let it paint
-                self._thaw(w["pid"])
-            if w["app"] is not None:        # a game the kernel launched: the gate/record know its window
-                self.registry.seen(w["pid"], w["id"], not w["minimized"])
+        def run(c):
+            snap = c.snapshot(self.registry)
+            lowered = {f.get("pid") for f in self.frames.values() if f.get("lowered")}   # [R82] covered: mapped, frozen
+            for w in snap["windows"]:           # mapped again by anyone (a WM restart, a client
+                if not w["minimized"] and w["pid"] in self.registry.frozen() and w["pid"] not in lowered:   # re-map): let it paint
+                    self._thaw(w["pid"])
+                if w["app"] is not None:        # a game the kernel launched: the gate/record know its window
+                    self.registry.seen(w["pid"], w["id"], not w["minimized"])
+            self._pair_new(c, snap)             # [R82] a game window that just mapped joins its frame
+            return snap
+        snap = self._guarded(name, run)
+        for w in snap["windows"]:
+            f = self.frame_of_pid(w["pid"])
+            w["frame"] = f["id"] if f is not None and f.get("xid") == w["id"] else None
         return snap
+
+    # ---- [R82] the frame pairs, X side (ops thread)
+    def _pair_new(self, c, snap):
+        """every listed window of a launched game whose frame does not hold it yet: pair it (it just mapped — the
+        first start, the next version after ✨, a revert); a frame that is covered or minimized meanwhile hides it"""
+        for w in snap["windows"]:
+            f = self.frame_of_pid(w["pid"])
+            if f is None or f.get("xid") == w["id"] or w["minimized"]:
+                continue
+            self._pair(c, f, w["id"])
+            if f.get("covered") or f.get("minimized"):
+                self._hide(c, f, "minimize" if f.get("minimized") else "cover")
+
+    def _pair(self, c, f, xid):
+        f["xid"] = xid
+        self._body_root(c, f, refresh=True)
+        if f.get("kiosk"):
+            c.set_transient(xid, f["kiosk"])
+        return self._place(c, f, wait=False)
+
+    def _body_root(self, c, f, refresh=False):
+        """the frame body's rect in root pixels. CSS -> root through the page's own kiosk window: the Chromium window
+        at the origin the page reports (window.screenX/Y), else the one on the monitor of the frame's screen [R52]
+        (its origin; scale = its width / the page's viewport width, i.e. the device pixel ratio); without a kiosk
+        window (a test page in a plain window) through the monitor's rect. Cached per frame; refresh re-reads X."""
+        if refresh or f.get("origin") is None:
+            k, kg = 0, None
+            dpr = f.get("dpr") or 1.0
+            if f.get("at"):
+                vw = f["view"][0] if f.get("view") else 0
+                k, kg = c.kiosk_at(round(f["at"][0] * dpr), round(f["at"][1] * dpr), round(vw * dpr) if vw else None)
+            rects = c.monitors()
+            mon = rects[f["screen"]] if 0 <= f.get("screen", 0) < len(rects) else rects[0]
+            if not k:
+                k, kg = c.kiosk_for(mon)
+            base = kg or tuple(mon)
+            cx = (f.get("chrome") or [0, 0])[0]
+            vw = f["view"][0] + 2 * cx if f.get("view") and f["view"][0] > 0 else 0
+            f.update(kiosk=k, origin=[base[0], base[1]], scale=base[2] / vw if vw else 1.0)
+        s, (ox, oy) = f["scale"], f["origin"]
+        cx, cy = f.get("chrome") or [0, 0]
+        x, y, w, h = f["css"]
+        return (ox + round((cx + x) * s), oy + round((cy + y) * s), max(1, round(w * s)), max(1, round(h * s)))
+
+    def _target(self, c, f, xid):
+        """where the game window goes: a fixed-size game is centred in the frame body (never above/left of it), a
+        resizable one fills it -> (want dict for moveresize, body rect, game geometry)"""
+        bx, by, bw, bh = self._body_root(c, f)
+        g = c.geom(xid)
+        if g is None:
+            return None, (bx, by, bw, bh), None
+        if f.get("fixed") is None:
+            f["fixed"] = c.size_fixed(xid)
+        if f["fixed"]:
+            return {"x": bx + max(0, (bw - g[2]) // 2), "y": by + max(0, (bh - g[3]) // 2)}, (bx, by, bw, bh), g
+        return {"x": bx, "y": by, "w": bw, "h": bh}, (bx, by, bw, bh), g
+
+    def _place(self, c, f, wait):
+        xid = f.get("xid")
+        if not xid:
+            return True, {"pending": True}          # not mapped yet: it is placed when it maps
+        want, body, g = self._target(c, f, xid)
+        if want is None:
+            return False, "no such window"
+        c.moveresize(xid, **want)
+        got = None
+        if wait:
+            def placed():
+                gg = c.geom(xid)
+                return gg if gg and all(gg["xywh".index(k)] == v for k, v in want.items()) else None
+            got = c.wait(placed, 1.0)
+        gg = got or c.geom(xid) or g
+        w, h = want.get("w", g[2]), want.get("h", g[3])
+        f["placed"] = [want["x"], want["y"], w, h]
+        s = f["scale"] or 1.0
+        return (bool(got) if wait else True), {
+            "x": want["x"], "y": want["y"], "w": w, "h": h, "body": list(body), "fixed": f["fixed"],
+            "verified": bool(got) if wait else None, "now": list(gg[:4]) if gg else None,
+            # what the shell needs to size the frame and to lay the screenshot where the game is (CSS px)
+            "css": {"x": round((want["x"] - body[0]) / s, 2), "y": round((want["y"] - body[1]) / s, 2),
+                    "w": round(w / s, 2), "h": round(h / s, 2)}}
+
+    def _hide(self, c, f, how):
+        """cover: the game drops UNDER the desktop + SIGSTOP (D-R68-2's freeze); minimize: iconified + SIGSTOP.
+        Either way it leaves the kiosk's transient group FIRST: iconifying a transient of the FOCUSED kiosk makes
+        openbox drop the focus (measured 2026-10-15: active -> none, Chromium blurs — the R74 system menu that
+        covered the game closed itself at once). A covered game is lowered, not unmapped: openbox restacks it under
+        the kiosk without any focus change and the transient hint alone lifts it back (no map, no repaint wait, no
+        activation). A game that had the keyboard hands it to the desktop that covers it."""
+        xid, pid = f.get("xid"), f.get("pid")
+        if not xid:
+            return True, {"pending": True}
+        g = c.geom(xid)
+        if g is None:
+            return False, "no such window"
+        visible = g[4] and not f.get("lowered")
+        if visible:
+            f["had_focus"] = c.active() == xid       # uncover "keep" gives it back only if it had it
+        c.set_transient(xid, 0)
+        if how == "minimize":
+            ok, d = (c.op(xid, "minimize") if g[4] else (True, {"minimized": True}))
+        else:
+            c.restack(xid, f.get("kiosk") or 0, below=True)
+            f["lowered"] = True
+            under = c.wait(lambda: c.stacked_above(xid, f["kiosk"]) is not True, 0.5) if f.get("kiosk") else True
+            ok, d = True, {"lowered": True, "verified": bool(under) if f.get("kiosk") else None}
+            if visible and f.get("had_focus") and f.get("kiosk"):
+                c.activate(f["kiosk"])               # the keyboard goes to the desktop that covers the game
+        if ok and self.registry.lookup(pid):
+            self._freeze(pid, xid)
+        if not ok:
+            return False, d if isinstance(d, str) else "the window did not minimize"
+        return True, dict(d if isinstance(d, dict) else {},
+                          frozen=bool(self.registry.lookup(pid) and self.registry.lookup(pid).get("frozen")))
+
+    def _show(self, c, f, focus):
+        """uncover/restore: thaw first (a stopped game cannot repaint), then openbox's activate (maps + raises).
+        It also FOCUSES the game (measured: a map request of an iconic window is an activation in openbox too) —
+        unless `focus` says so (true: the user clicked the frame / the dock; "keep": the game gets the keyboard back
+        only if it had it when it was covered — a toast that passed over a game in the background must not take the
+        keyboard from the user) the window that had the focus gets it back at once."""
+        if focus == "keep":
+            focus = bool(f.get("had_focus"))
+        xid, pid = f.get("xid"), f.get("pid")
+        if not xid:
+            return True, {"pending": True}
+        if f.get("covered") or f.get("minimized"):
+            return True, {"held": "covered" if f.get("covered") else "minimized"}
+        g = c.geom(xid)
+        if g is None:
+            return False, "no such window"
+        prev = c.active()
+        self._thaw(pid)                              # first: a stopped game cannot repaint
+        if f.get("kiosk"):
+            c.set_transient(xid, f["kiosk"])         # back into the kiosk's group: over the desktop again
+        refocused = False
+        if not g[4]:                                 # minimized: openbox's activate maps it (and focuses it)
+            ok, d = c.op(xid, "restore")
+            if ok and not focus and prev and prev != xid and prev in c.clients():
+                c.activate(prev)
+                refocused = True
+        else:                                        # lowered under the desktop: lifted, the focus untouched
+            c.restack(xid, 0, below=False)
+            up = c.wait(lambda: c.stacked_above(xid, f["kiosk"]) is not False, 0.5) if f.get("kiosk") else True
+            ok, d = True, {"raised": True, "verified": bool(up) if f.get("kiosk") else None}
+            if focus:
+                c.activate(xid)
+        f["lowered"] = False
+        if ok:
+            self._place(c, f, wait=False)            # the frame may have moved while the game was hidden
+        if not ok:
+            return False, d if isinstance(d, str) else "the window did not come back"
+        return True, dict(d if isinstance(d, dict) else {}, refocused=refocused, focus=bool(focus))
+
+    def _frame_x(self, name, fid, op, body):
+        def run(c):
+            f = self.frames.get(fid)
+            if op == "adopt":
+                xid = int(str(body.get("xid")), 0)
+                if xid not in c.clients():
+                    return False, "no such window"
+                pid = c.pid(xid)
+                g = self.registry.lookup(pid)
+                if g is None:
+                    return False, "not a game the kernel launched"
+                old = g.get("frame")
+                if old and old != fid:
+                    self.frames.pop(old, None)           # the page that held it is gone (reloaded) or it moves on
+                f = self.attach_frame(dict(body, id=fid), pid, g["app"], g.get("title"))
+                if f is None:
+                    return False, "adopt needs the frame body's x y w h"
+                self._thaw(pid)
+                gg = c.geom(xid)
+                if gg is not None and not gg[4]:
+                    c.op(xid, "restore")
+                return self._pair(c, f, xid)
+            if f is None:
+                return False, "no such frame"
+            xid = f.get("xid")
+            if xid and c.geom(xid) is None:
+                f["xid"] = xid = 0
+            if op in ("place", "follow"):
+                if op == "place":
+                    self._body_root(c, f, refresh=True)
+                return self._place(c, f, wait=(op == "place"))
+            if op == "snapshot":
+                if not xid:
+                    return False, "no window to capture"
+                g = c.geom(xid)
+                if not g[4]:
+                    return False, "no window to capture (hidden)"
+                rg = c.root.get_geometry()
+                x0, y0 = max(0, g[0]), max(0, g[1])
+                x1, y1 = min(rg.width, g[0] + g[2]), min(rg.height, g[1] + g[3])
+                if x1 <= x0 or y1 <= y0:
+                    return False, "the window is off screen"
+                rect = (x0, y0, x1 - x0, y1 - y0)
+                body_root = self._body_root(c, f)
+                s = f["scale"] or 1.0
+                return True, {"image": c.grab(rect), "rect": list(rect), "body": list(body_root),
+                              "css": {"x": round((rect[0] - body_root[0]) / s, 2), "y": round((rect[1] - body_root[1]) / s, 2),
+                                      "w": round(rect[2] / s, 2), "h": round(rect[3] / s, 2)}}
+            if op in ("cover", "minimize"):
+                return self._hide(c, f, op)
+            if op in ("uncover", "restore"):
+                want = body.get("focus", op == "restore")
+                return self._show(c, f, "keep" if want == "keep" else bool(want))
+            if op == "focus":
+                if not xid:
+                    return True, {"pending": True}
+                if f.get("covered") or f.get("minimized"):
+                    return True, {"held": True}
+                self._thaw(f.get("pid"))
+                return c.op(xid, "raise")
+            if op == "close":
+                if not xid:
+                    return True, {"pending": True}
+                pid = f.get("pid")
+                if self.registry.lookup(pid):
+                    self._thaw(pid)
+                return c.op(xid, "close", kill=lambda x, force: self._kill(c, x, force))
+            return False, f"unknown op {op}"
+        return self._guarded(name, run)
 
     def _op(self, name, xid, op, body):
         def run(c):

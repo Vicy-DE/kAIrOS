@@ -298,8 +298,14 @@ async def t_paths(ctx):
     callers = re.findall(r"await (render_images|MM\.sd_job)\(([^,]+),", src)
     kinds = sorted({k.strip() for f, k in callers})
     assert set(kinds) <= {'"image"', "kind", '"video"'}, kinds
-    assert src.count("await MM.sd_batch(") == 1, "render_images is the one sd_batch caller"
-    return f"sd-cli exec only in {names}; image callers {kinds} all via render_images/sd_job -> sd_batch"
+    # render_images is the one sd_batch caller for CREATED pictures; [R85] the picture editor (`_image_improve_job`) is the
+    # other: no expander (the user's instruction goes verbatim), its own entry block + the same sd_batch floor
+    assert src.count("await MM.sd_batch(") == 2, "render_images + the picture editor are the sd_batch callers"
+    callers_of = sorted(re.findall(r"\n(?:async )?def (\w+)", src[:m.start()])[-1] for m in re.finditer(r"await MM\.sd_batch\(", src))
+    assert callers_of == ["_image_improve_job", "render_images"], callers_of
+    improve = src.split("async def h_image_improve(")[1].split("\nasync def ")[0]
+    assert 'block_check("image", instruction' in improve, "the editor's entry block (R86 check point 1)"
+    return f"sd-cli exec only in {names}; image callers {kinds} all via render_images/sd_job -> sd_batch; the editor's own sd_batch call"
 
 
 # ============================================================================= C. a kernel of its own
@@ -451,7 +457,9 @@ async def t_cli(ctx):
     assert p.endswith(TAG) and p.count("<lora:") == 1 and p[:-len(TAG)] == d["prompt"], (p, d["prompt"])
     assert "expanded by the mock expander for everyone" in p, p
     ex = [m for m in k.msgs()[m0:] if m["system"] and m["system"].startswith("You are an expert prompt engineer")]
-    assert ex and ex[-1]["system"] == ctx["server"].prompts.KREA_EXPAND_SYSTEM_NEUTRAL, "the neutral rule set must reach the expander"
+    P = ctx["server"].prompts       # [R86 r4b, S5] the expander runs on the flagged default (the heretic): + the one limits line
+    assert ex and ex[-1]["system"] == P.KREA_EXPAND_SYSTEM_NEUTRAL.rstrip() + "\n\n" + P.UNCENSORED_LIMITS, \
+        "the neutral rule set (+ the uncensored default's limits line) must reach the expander"
     # the stock model: no LoRA, the SFW rules
     n0, m0 = len(k.cli_lines()), len(k.msgs())
     d = await job(ctx, "/api/image", {"prompt": "a red fox", "model": "safe"})
@@ -459,7 +467,8 @@ async def t_cli(ctx):
     argv = k.cli_lines()[n0:][-1]
     assert "--lora-model-dir" not in argv and "--lora-apply-mode" not in argv and "<lora:" not in flag(argv, "-p"), argv
     ex = [m for m in k.msgs()[m0:] if m["system"] and m["system"].startswith("You are an expert prompt engineer")]
-    assert ex and ex[-1]["system"] == ctx["server"].prompts.KREA_EXPAND_SYSTEM, "safe keeps the SFW expander"
+    assert ex and ex[-1]["system"] == P.KREA_EXPAND_SYSTEM.rstrip() + "\n\n" + P.UNCENSORED_LIMITS, \
+        "safe keeps the SFW expander (+ the uncensored default's limits line [R86 r4b, S5])"
     # uncensored flag / adult flag
     for body in ({"prompt": "two lovers", "uncensored": True}, {"prompt": "two lovers", "adult": True}):
         n0 = len(k.cli_lines())

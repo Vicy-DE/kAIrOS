@@ -36,10 +36,10 @@ Chromium kiosk(s) ── http://localhost:1337     tty1 autologin → startx →
    │                                     page that meta-refreshes into the LLM-written site;
    │                                     rewrite_page() makes every link a /web/ URL
    ├── /genimg/<description>        ──► the picture tool [R58]: on-demand image, hash-cached
-   ├── /api/image, /api/wallpaper   ──► sd-cli (Krea 2 Turbo default; add-ons qwen/classic/
-   │                                     uncensored [R42/R47]; max_pixels clamp)   ─┐ GPU jobs,
+   ├── /api/image, /api/wallpaper   ──► sd-cli (Muse Q4_0 default; add-ons qwen/classic/
+   │                                     chroma [R42/R47]; max_pixels clamp)       ─┐ GPU jobs,
    ├── /api/video                   ──► sd-cli (Wan 2.2 add-on, → ffmpeg)         ─┤ queued,
-   ├── /api/music                   ──► manifest cmd (acestep.cpp — NOT built, R31)─┤ LLM evicted
+   ├── /api/music                   ──► manifest cmd (acestep.cpp ace-lm/synth, R31)┤ LLM evicted
    ├── /api/game                    ──► llama-server → syntax gate → launch test    ─┘ first
    │                                     → traceback fed back, ≤4 attempts → pygame window
    │                                     on the kiosk X display (:0, as the kiosk user)
@@ -168,15 +168,18 @@ Chosen for the GGUF/llama.cpp + stable-diffusion.cpp stack — the deciding fact
 that **stable-diffusion.cpp covers Krea 2 / Qwen-Image / Z-Image / Chroma image gen and
 Wan 2.2 video**, eliminating PyTorch+ComfyUI from the image.
 
-- **HTML LLM**: 8 GB `Qwen2.5-Coder-7B-Instruct` Q4_K_M; 16 GB+ `Qwen3-Coder-30B-A3B`
-  (MoE, `--n-cpu-moe` on 16 GB, full GPU on 24/32). All tiers run ≥16k context [R43].
-- **Image (default, baked)**: `Krea 2 Turbo` (June 2026, 12.9B DiT) — Qwen3-VL-4B LLM
-  encoder + Wan 2.1 VAE, er_sde/simple, 8 steps, cfg 1 [R34]. **Add-ons** (downloaded
+- **HTML LLM**: 8 and 16 GB `Gemma 4 26B-A4B-it` *ultra-uncensored heretic* i1-IQ4_XS (MoE,
+  experts partly in RAM; `"uncensored": true` — R86; since 2026-10-10, stock Gemma 4 before; fast
+  mode: the `Qwen2.5-Coder-7B` add-on); 24/32 GB `Qwen3-Coder-30B-A3B` (full GPU). All tiers run
+  ≥16k context [R43].
+- **Image (default, baked)**: `Muse v3.5 Extended` Q4_0 (a Krea 2 fine-tune, uncensored, no
+  LoRA; since 2026-10-10, Krea 2 Turbo + the Kroma LoRA before) — Qwen3-VL-4B LLM encoder + the
+  Qwen-Image VAE, 8 steps, cfg 1 [R34/R76]. **Add-ons** (downloaded
   in-OS): `Qwen-Image` (euler/beta/40 steps, best text), `Z-Image-Turbo` (classic,
   fastest), `Chroma1-HD` (uncensored) [R42/R47].
 - **Video (add-on)**: `Wan 2.2 TI2V-5B` (Q4_K_M on 8 GB, Q8_0 above) + umt5-xxl encoder.
-- **Music**: `ACE-Step 1.5` GGUF files ship, but the engine (acestep.cpp) is not built and
-  the manifest names a binary that does not exist — see R31's status note.
+- **Music (add-on)**: `ACE-Step 1.5` GGUF via acestep.cpp (`ace-lm` + `ace-synth`, built by
+  `scripts/install-engines.sh`, CUDA since 2026-09-14 — `docs/ENGINES-CUDA-2026-09.md`).
 - **Python/games**: `Qwen2.5-Coder-32B` on 24/32 GB tiers; smaller tiers share the HTML LLM.
 - **Knowledge**: `wikipedia_en_all_mini` ZIM (~12 GB) in every tier [R32].
 

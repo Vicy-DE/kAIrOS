@@ -1,0 +1,24 @@
+NOTICE — the kAIrOS picture editor (manifest section "image_edit", R85)
+
+Qwen is licensed under the Qwen RESEARCH LICENSE AGREEMENT, Copyright (c) 2026 Hangzhou Tongyi Laboratory Technology Co., Ltd. All Rights Reserved.
+
+The full licence text is LICENSE.txt in this directory. kAIrOS is free and non-commercial; the Qwen materials below
+are used and redistributed for non-commercial purposes only, as the licence requires (§2, §3).
+
+Files (in /opt/vibeos/models/image/ when the picture editor is installed):
+
+- qwen_image_2.1_turbo_Q4_K_M.gguf
+  Qwen-Image-2.1-Turbo (Qwen/Qwen-Image-2.1-Turbo) converted to GGUF and quantised to Q4_K_M by a third party
+  (Hugging Face: Abiray/Qwen-Image-2.1-Turbo-GGUF). MODIFIED from the original weights by that conversion and
+  quantisation (Qwen Research License §3b); kAIrOS redistributes the file as downloaded, unmodified,
+  sha256 0f5a11ebbaf3110a16120311454eaac35db13798e0102339e4f2b8fd5be6ba82.
+- qwen_image_2.1_vae_bf16.safetensors
+  The Qwen-Image-2.1 VAE (Comfy-Org/Qwen-Image-2.1 repackaging), unmodified,
+  sha256 bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9.
+- Qwen3VL-8B-Instruct-Q4_K_M.gguf, mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf
+  Qwen3-VL-8B-Instruct (Qwen/Qwen3-VL-8B-Instruct-GGUF), Apache License 2.0, unmodified,
+  sha256 67d1659bfe71b89d50b45a4ad1a9e5b997e5bb16ce5da66a6a6167abd569e9e2 and
+  c6ba85508d82f42590e6eb77d5340369ab6fecf107a7561d809523d8aa5f3bfd.
+
+kAIrOS uses these files to edit pictures the system painted (✨ improve a picture). The project is not named after
+Qwen, and no model is trained, fine-tuned or improved with these files or their outputs.

@@ -1,55 +1,147 @@
 {
- "at": "2026-10-10 11:43:51",
+ "at": "2026-10-15 13:28:52",
  "tests": {
-  "refusal_detector_true_refusals": {
+  "refusal_detector_real_refusals": {
    "reqs": [
     "R86"
    ],
    "status": "pass",
-   "detail": "19 refusals detected (EN incl. both real ones, DE, FR, ES, IT); reason e.g. \"en_cant: 'I cannot fulfill' (visible 180 chars, 0 tags)\""
+   "detail": "51 refusals detected: 9 real (screen) + 9 review I2 + 33 forms; reason e.g. \"en_cant: 'I cannot fulfill' (visible 180 chars, 0 tags)\""
   },
-  "refusal_detector_false_positive_guards": {
+  "refusal_detector_normal_answers_pass": {
    "reqs": [
     "R86"
    ],
    "status": "pass",
-   "detail": "15 non-refusals pass (FAQ, quoted dialogue, idioms, app error text, explanation, code, prompt, mock page/app/forge)"
+   "detail": "76 normal answers pass (review S1 / Y2 / \u00a7I, limitations followed by help, quoted sign, mock page/app/forge)"
   },
-  "refusal_minors_guard": {
+  "refusal_detector_per_kind": {
    "reqs": [
     "R86"
    ],
    "status": "pass",
-   "detail": "18 blocked incl. the real icon prompt ('hentai' + 'small titted girl'); 19 adult/non-sexual pass"
+   "detail": "prompt: recall (unquoted slogan = refusal, quoted sign text = not); html: real page never, short doc + button yes; text: bare or policy"
   },
-  "refusal_manifests_ladder_and_addon": {
+  "refusal_block_must_fire": {
+   "reqs": [
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "45 must-fire probes fire (EN + DE ages as digits and words, under-18 words, illegal terms, loli/shota + term)"
+  },
+  "refusal_block_must_not_fire": {
+   "reqs": [
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "73 adult/SFW/measurement/negated texts pass; 45 kernel prompts pass; H1 22/26 pass (4 accepted-cost hits); H2 26/26"
+  },
+  "refusal_block_linear_and_types": {
+   "reqs": [
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "8MB plain 7 ms; 8MB nfkc 88 ms; 1MB mixed 13 ms; 50k words 10 ms; 50k \u00e9 4 ms; 50k jp 5 ms; 50k combining 5 ms; 50k 1a 4 ms; parts/dict/bytes judged as text"
+  },
+  "refusal_r4b_block_lists": {
+   "reqs": [
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "26 must-fire (R3 compounds / under the age of / kiddie porn, S3 forms, person nouns, no-gate statements); 45 must-pass (R1, R2, R3 FP hunt, S4 gates, S5 echoes)"
+  },
+  "refusal_r4b_detector": {
+   "reqs": [
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "S1 14 + 5 innocent answers pass; S2 17 refusals; R4 5 short docs; R5 5 expander refusals, 6 expansions pass; Y5 6 UI translations kept"
+  },
+  "refusal_r4b_linear_scanners": {
+   "reqs": [
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "4010 samples identical to the regex forms; pathological shapes <think> x8000 9 ms, <script> x8000 6 ms, <a x30000 4 ms, <!-- x8000 4 ms"
+  },
+  "refusal_r4c_block_k1_k2_k4": {
+   "reqs": [
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "K1 23 conditional / rhetorical / plain-statement requests fire, 20 real age gates pass; K2 12 people counts pass, 10 age forms fire; K4 30 limits-line echoes pass"
+  },
+  "refusal_r4c_detector_k3": {
+   "reqs": [
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "K3 7 answers about third-party rules pass; 23 refusals detected (text + html)"
+  },
+  "sdrun_adult_rule_generation_prompts": {
+   "reqs": [
+    "R86",
+    "R57"
+   ],
+   "status": "pass",
+   "detail": "rule in 7 prompts + the repair clause; conditional, brand kept, 25+, no minors, no real people, SFW sentence; none in wallpaper/vision/expander; minors block silent; personas intact"
+  },
+  "refusal_manifests_round4": {
    "reqs": [
     "R86",
     "R47"
    ],
    "status": "pass",
-   "detail": "4 tiers: ladder + expander_ladder; llm_uncensored add-on on ['8gb', '16gb'] mirrors llm; 13.92 GB"
+   "detail": "8/16 GB llm = the heretic (uncensored: true, 13.92 GB, sha, HF url, serve args kept); llm_uncensored gone from 7 manifests; round-4 comments; variants = tier-8gb + llm"
   },
-  "refusal_ladder_config_and_plan": {
+  "refusal_ladder_config_and_rung": {
    "reqs": [
     "R86"
    ],
    "status": "pass",
-   "detail": "ladders from the manifest (defaults, unknown dropped); uncensored rung skipped: empty/missing/no section/was the decliner; error texts"
+   "detail": "shipped: rung = the flagged default (key llm_default), skipped for the default itself, runs for fast; add-on section wins; absent/empty/incomplete/none skipped; ladder [] off; texts"
   },
   "refusal_llm_generate_rungs": {
    "reqs": [
     "R86"
    ],
    "status": "pass",
-   "detail": "pass-through; preamble rung; uncensored rung; exhausted \u2192 RefusalError; vision preamble-only; guard before any call; manifest ladder obeyed (7 fallbacks counted)"
+   "detail": "pass-through; preamble rung; default's uncensored rung skipped \u2192 declined; fast climbs to llm_default; vision preamble-only; ladder obeyed (8 fallbacks)"
   },
   "refusal_llm_stream_early_verdict": {
    "reqs": [
     "R86"
    ],
    "status": "pass",
-   "detail": "short refusal judged whole; long refusal cut at 400 chars; HTML passed from its first tag; callback (from, to, reason); exhausted; guard"
+   "detail": "short refusal judged whole; long refusal cut at 400 chars; HTML passed from its first tag; callback (from, to, reason); exhausted"
+  },
+  "refusal_stream_late_verdict": {
+   "reqs": [
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "wrapped refusal with a long head: judged at the end, replaced by the next rung; short head: judged on its first words"
+  },
+  "refusal_sticky_rung": {
+   "reqs": [
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "the rung that answered is remembered per request; a sticky rung that refuses climbs on; no memory = as before"
+  },
+  "refusal_uncensored_negative_cache": {
+   "reqs": [
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "a failed load skips the rung (error says 'retried in'); cleared \u2192 usable"
+  },
+  "refusal_block_check_points_with_mocks": {
+   "reqs": [
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "uncensored primary: 0 calls; censored primary answers: never checked; refused: blocked after 1 call, no rung; expander adding an age caught at the floor (0 renders); floors"
   },
   "refusal_expander_spec_and_settings": {
    "reqs": [
@@ -59,135 +151,45 @@
    "status": "pass",
    "detail": "fallback file: present \u2192 used, empty/missing/absent \u2192 the encoder; key expander:<file>; settings alias; download keys; preamble shape"
   },
-  "refusal_sd_batch_floor_blocks": {
+  "refusal_r4b_limits_line_and_wiring": {
    "reqs": [
     "R86"
    ],
    "status": "pass",
-   "detail": "floor: blocked job answered without an engine, siblings render; sd_job raises; render_images blocks before expansion"
+   "detail": "limits line = the brief's sentence, appended for a flagged served section (idempotent, not after the preamble, not fast/vision/MT); S7; R5 wiring; Y5 kept"
   },
-  "refusal_r2_b1_guard_phrases": {
+  "refusal_r4b_expander_sanitising_refusal": {
    "reqs": [
     "R86"
    ],
    "status": "pass",
-   "detail": "42 review phrases blocked (e.g. 'nude' + '12 year old'); normaliser; cites_minors 5+/5-"
+   "detail": "sanitising expansion \u2192 preamble rung's text rendered (2 calls); all rungs sanitising \u2192 declined, 0 renders; normal expansion \u2192 1 call"
   },
-  "refusal_r2_s3_no_overblocking": {
-   "reqs": [
-    "R86"
-   ],
-   "status": "pass",
-   "detail": "32 review phrases pass; adult age overrides soft indicators only"
-  },
-  "refusal_r2_s1_detector_false_positives": {
-   "reqs": [
-    "R86"
-   ],
-   "status": "pass",
-   "detail": "16 review texts pass; 4 colon-led + 5 strong refusals detected"
-  },
-  "refusal_r2_s5_sticky_rung": {
-   "reqs": [
-    "R86"
-   ],
-   "status": "pass",
-   "detail": "the rung that answered is remembered per request; a sticky rung that refuses climbs on; no memory = as before"
-  },
-  "refusal_r2_s2_stream_late_verdict": {
-   "reqs": [
-    "R86"
-   ],
-   "status": "pass",
-   "detail": "wrapped refusal with a long head: judged at the end, replaced by the next rung; short head: judged on its first words"
-  },
-  "refusal_r2_b1_refusal_citing_minors_blocks": {
-   "reqs": [
-    "R86"
-   ],
-   "status": "pass",
-   "detail": "a refusal naming minors blocks (generate + stream), no rung runs; other refusals climb"
-  },
-  "refusal_r2_n4_uncensored_negative_cache": {
-   "reqs": [
-    "R86"
-   ],
-   "status": "pass",
-   "detail": "a failed load skips the rung (error says 'retried in'), the primary falls back; cleared \u2192 usable"
-  },
-  "refusal_r2_b3_video_music_floors": {
-   "reqs": [
-    "R86"
-   ],
-   "status": "pass",
-   "detail": "video (sd-cli path) and music (caption + lyrics) floors raise the block message"
-  },
-  "refusal_r3_x1_guard_regressions_and_natural_forms": {
-   "reqs": [
-    "R86"
-   ],
-   "status": "pass",
-   "detail": "92 review inputs blocked (e.g. 'sex' + '12 year old'); the round-1 set holds"
-  },
-  "refusal_r3_y4_no_overblocking": {
-   "reqs": [
-    "R86"
-   ],
-   "status": "pass",
-   "detail": "18 SFW + 21 adult texts pass"
-  },
-  "refusal_r3_y2_detector_limits_and_apps": {
-   "reqs": [
-    "R86"
-   ],
-   "status": "pass",
-   "detail": "23 limits/apps/slogans pass; 12 refusals detected; cites_minors generic 3/3; MT sources"
-  },
-  "refusal_r3_y1_x3_guard_linear_and_types": {
-   "reqs": [
-    "R86"
-   ],
-   "status": "pass",
-   "detail": "50 KB inputs: worst 98 ms; content parts / dict / bytes judged as text"
-  },
-  "refusal_r3_z1_primary_uncensored_negative_cache": {
-   "reqs": [
-    "R86"
-   ],
-   "status": "pass",
-   "detail": "a failed PRIMARY load is negative-cached; llm_choice serves the default meanwhile"
-  },
-  "refusal_e2e_page_preamble_rung": {
+  "refusal_e2e_default_uncensored_first_time": {
    "reqs": [
     "R86",
-    "R57"
+    "R80"
    ],
    "status": "pass",
-   "detail": "refused \u2192 preamble on the same model \u2192 real page cached + profile; 2 LLM requests, no swap; last_fallback; DE too"
+   "detail": "adult page + ask answered first time on the heretic (1 request, no rung); status/models: default+fast, section llm, R80 name"
   },
-  "refusal_e2e_page_uncensored_rung_swaps": {
+  "refusal_e2e_declined_never_cached_never_502": {
+   "reqs": [
+    "R86",
+    "R57",
+    "R62"
+   ],
+   "status": "pass",
+   "detail": "declined: error page (every model, rephrase), nothing cached, retry next visit; ask/browse 422; app error, nothing saved; 2 requests"
+  },
+  "refusal_e2e_fast_mode_climbs_to_heretic": {
    "reqs": [
     "R86",
     "R72",
     "R80"
    ],
    "status": "pass",
-   "detail": "preamble refused \u2192 llama-server on the uncensored GGUF (same argv shape) \u2192 real page; gpu.kind llm_uncensored; swapped back by the next request"
-  },
-  "refusal_e2e_exhausted_nothing_cached": {
-   "reqs": [
-    "R86"
-   ],
-   "status": "pass",
-   "detail": "exhausted \u2192 error page (every model), nothing cached, retry on next visit; uncensored missing \u2192 download hint, 502 on ask"
-  },
-  "refusal_e2e_cached_refusal_page_regenerates": {
-   "reqs": [
-    "R86",
-    "R75"
-   ],
-   "status": "pass",
-   "detail": "owner's refusal page + empty profile \u2192 regenerated on the visit (file + profile real); /api/browse the same"
+   "detail": "fast: preamble on the same model (2 requests, no swap); preamble refused \u2192 the heretic under key llm (1 launch), swapped back; DE; summon climbs once"
   },
   "refusal_e2e_app_stream_refusal_event": {
    "reqs": [
@@ -195,31 +197,64 @@
     "R62"
    ],
    "status": "pass",
-   "detail": "`refusal` event {from llm, to preamble} before the real app's deltas (short + long refusal); cached refusal app regenerated; exhausted \u2192 error, nothing saved"
+   "detail": "`refusal` event {from llm_fast, to preamble} before the real app's deltas (short + long refusal); cached refusal app regenerated; hosted refusal 404"
   },
-  "refusal_e2e_expander_encoder_rung_then_raw": {
+  "refusal_e2e_cached_refusal_page_regenerates": {
+   "reqs": [
+    "R86",
+    "R75"
+   ],
+   "status": "pass",
+   "detail": "owner's refusal page + empty profile \u2192 regenerated on the visit (file + profile real); /api/browse the same; 'I can't create this page.' regenerated [R4]"
+  },
+  "refusal_e2e_expander_rungs_and_declined": {
    "reqs": [
     "R86",
     "R79",
     "R76"
    ],
    "status": "pass",
-   "detail": "LLM expansion refused \u2192 preamble rung on the same LLM (no encoder launch); preamble refused \u2192 encoder rung on expander_fallback_file (18+ rules); all refused \u2192 declined, nothing rendered; encoder setting path ok"
+   "detail": "fast: expansion refused \u2192 preamble rung on the same LLM (no encoder launch); \u2192 encoder rung on the fallback file; all refused \u2192 declined; default: no rung"
   },
-  "refusal_e2e_llm_model_uncensored_setting": {
+  "refusal_e2e_block_check_points": {
    "reqs": [
     "R86",
-    "R47"
+    "R69"
    ],
    "status": "pass",
-   "detail": "uncensored as the primary: listed, served, no fallback on a hard refusal; missing \u2192 default + download hint; keys"
+   "detail": "media entries 400 / placeholder (0 engines); uncensored default: ask/app/web/browse/game blocked, 0 requests, not in the session log; fast: answered = unchecked, refused = blocked after 1 request"
   },
-  "refusal_e2e_minors_guard_every_entry": {
+  "refusal_e2e_translation_hop": {
    "reqs": [
-    "R86"
+    "R86",
+    "R71"
    ],
    "status": "pass",
-   "detail": "app/ask/web/image/images/genimg/game/browse all blocked with the one message; no model request, nothing cached, not in the session log"
+   "detail": "refused + hidden pair: blocked through the English hop after 1 request (fast); answered as typed on the default; MT refusal not cached; refusal-shaped source translated"
+  },
+  "refusal_e2e_cached_apps_never_hidden": {
+   "reqs": [
+    "R86",
+    "R60"
+   ],
+   "status": "pass",
+   "detail": "planted app listed + hosted, cached page served, nothing moved, no quarantine dir"
+  },
+  "refusal_e2e_cached_app_summon_unchecked": {
+   "reqs": [
+    "R86",
+    "R60"
+   ],
+   "status": "pass",
+   "detail": "cached app summoned (cached, unchecked) = its host page; \u2728 improve blocked at the entry; 0 LLM requests"
+  },
+  "refusal_e2e_uncensored_limits_line": {
+   "reqs": [
+    "R86",
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "default ask + expander end with the limits line; fast ask without; preamble + heretic rungs = ADULT_PREAMBLE + prompt, no second line"
   },
   "refusal_e2e_status_and_models_shape": {
    "reqs": [
@@ -227,47 +262,7 @@
     "R80"
    ],
    "status": "pass",
-   "detail": "status + models shapes; 27 fallbacks, 8 blocked in this run"
-  },
-  "refusal_e2e_r2_blockers_every_media_entry": {
-   "reqs": [
-    "R86",
-    "R69"
-   ],
-   "status": "pass",
-   "detail": "video/music/search 400; expander refusal naming minors \u2192 job error, nothing rendered; uncensored primary carries the preamble; download kind=llm"
-  },
-  "refusal_e2e_r2_s4_quarantine_cached_content": {
-   "reqs": [
-    "R86",
-    "R60"
-   ],
-   "status": "pass",
-   "detail": "pre-guard app hidden by listing/host/status, moved by the summon (+ icon); legit app listed; game hidden; hosted refusal 404; /genimg cache quarantined; page not served"
-  },
-  "refusal_e2e_r2_s5_sticky_rung_no_thrash": {
-   "reqs": [
-    "R86",
-    "R72"
-   ],
-   "status": "pass",
-   "detail": "spec \u2192 uncensored once; the stream starts on it: one launch for the summon, no refusal event"
-  },
-  "refusal_e2e_r2_translation_hop": {
-   "reqs": [
-    "R86",
-    "R71"
-   ],
-   "status": "pass",
-   "detail": "hidden pair blocked through the English hop (ask, video, page); MT refusal \u2192 text as typed, not cached"
-  },
-  "refusal_e2e_r3_blockers_and_should_fixes": {
-   "reqs": [
-    "R86",
-    "R71"
-   ],
-   "status": "pass",
-   "detail": "bypass forms 400 at image/web/browse; list prompt 400; spec refusal naming minors \u2192 error after 1 call; wallpaper classic scene; refusal-shaped sentence translated"
+   "detail": "status + models shapes; 23 fallbacks, 18 blocked in this run"
   }
  }
 }

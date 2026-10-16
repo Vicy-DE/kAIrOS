@@ -1,5 +1,5 @@
 {
- "at": "2026-10-10 11:42:40",
+ "at": "2026-10-15 13:27:44",
  "tests": {
   "imaging_cursor_hw_on_amdgpu_conf": {
    "reqs": [
@@ -63,8 +63,8 @@
    "reqs": [
     "R79"
    ],
-   "status": "fail",
-   "detail": "AssertionError: [kernel] page cache: image's 3 file(s) (11.1 GB) are dropped while sd reads them (RAM 68.7 GB; sd keeps its own copy) [R79]\n[kernel] page cache after the image engine: LLM gemma-4-26B-A4B-it-UD-IQ4_XS.gguf 97% resident, image files 1%\n @ 402"
+   "status": "pass",
+   "detail": "auto: 30 GB drops / 64 GB keeps; on/off; 5 drops of the 3 files in 0.75 s + final; residency logged"
   },
   "imaging_sd_mmap_opt_in": {
    "reqs": [
@@ -103,7 +103,7 @@
     "R72"
    ],
    "status": "pass",
-   "detail": "3 expansions on the LLM's server, 1 llama launch(es) all gemma-4-26B-A4B-it-UD-IQ4_XS.gguf, none of the encoder"
+   "detail": "3 expansions on the LLM's server, 1 llama launch(es) all gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf, none of the encoder"
   },
   "imaging_e2e_kernel_prompts_not_expanded": {
    "reqs": [
@@ -120,8 +120,8 @@
    "reqs": [
     "R79"
    ],
-   "status": "fail",
-   "detail": "AssertionError: [kernel] sd-server image: session of 1 picture(s)\n[kernel] page cache: image's 3 file(s) (0.0 GB) are dropped while sd reads them (RAM 32.9 GB; sd keeps its own copy) [R79]\n[kernel] sd-server ready in 0.5 s\n[kernel] sd-server image: a cached orb, high quality, sharp detail\n[kernel] j"
+   "status": "pass",
+   "detail": "DiT 1.00 -> 0.00 (dropped), LLM 1.00 -> 1.00 (kept); log lines present"
   },
   "imaging_e2e_session_idle_window_joins_and_fifo": {
    "reqs": [

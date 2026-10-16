@@ -140,8 +140,9 @@ python3 "$REPO/tests/test_splash.py" || RC=1
 echo "== running tests/test_desktop_web.py =="
 python3 "$REPO/tests/test_desktop_web.py" || RC=1
 
-# the v7.5 default image model [R76]: Krea 2 + the Kroma v0.3 LoRA — manifest pins, the bake list,
-# sd-cli/sd-server argv + the /sdapi/v1/loras contract, key resolution, the neutral expander (own kernel :1346)
+# the default image model [R76 → Muse, 2026-10-10]: Muse v3.5 Extended Q4_0, no LoRA (v7.5: Krea 2 + the Kroma
+# v0.3 LoRA) — manifest pins, the bake list, sd-cli/sd-server argv + the /sdapi/v1/loras contract (the kernel's
+# LoRA mechanism on a test-only `lora` entry), key resolution, the neutral expander (own kernel :1346)
 echo "== running tests/test_image_lora.py =="
 python3 "$REPO/tests/test_image_lora.py" || RC=1
 
@@ -163,12 +164,31 @@ python3 "$REPO/tests/test_imaging_workflow.py" || RC=1
 echo "== running tests/test_wifi_bt.py =="
 python3 "$REPO/tests/test_wifi_bt.py" || RC=1
 
-# the refusal fallback [R86]: the detector (EN/DE/FR/ES/IT + false-positive guards), the minors guard, and a
+# the refusal fallback [R86]: the detector (EN/DE/FR/ES/IT + false-positive guards), the narrow minors block (round 4), and a
 # kernel of its own (:1366) with the mock llama-server's refusal tokens — preamble rung, the llm_uncensored
 # swap, the exhausted ladder (nothing cached), cached refusal pages regenerating, the streaming `refusal`
 # event, the expander's encoder rung / raw prompt, llm_model=uncensored, the image entry points blocked
 echo "== running tests/test_refusal_fallback.py =="
 python3 "$REPO/tests/test_refusal_fallback.py" || RC=1
+
+# the dock, the built-in browser, ✨ improve a website [R81/R83/R84]: the kernel's web routes in-process with a mocked
+# LLM (a private VIBEOS_DIR), and the REAL shell in a headless Chromium over CDP (skips without Chromium — run it in
+# kairos-fix-chromium:local; KAIROS_SHOTS=<dir> saves the screenshots)
+echo "== running tests/test_dock_browser.py =="
+python3 "$REPO/tests/test_dock_browser.py" || RC=1
+
+# games in windows [R82]: launch = run, ✨ = evolve, the frame <-> game-window pairs; the e2e part needs a REAL X server
+# (Xvfb + openbox with the kiosk's rc.xml + a kiosk Chromium + real pygame windows) and skips without one — run the suite
+# in kairos-fix-x11:local (bash dev/docker/build.sh x11; KAIROS_TEST_IMAGE=kairos-fix-x11:local); KAIROS_SHOTS=<dir>
+echo "== running tests/test_games_windows.py =="
+python3 "$REPO/tests/test_games_windows.py" || RC=1
+
+# ✨ improve a picture [R85]: the `image_edit` manifest section, the editor's argv (--llm_vision, its own schedule) and the
+# reference picture through the mock sd-server (own port :8151), the version chain + revert + whole-chain eviction, the
+# entry checks (the minors block, the add-on missing), the translation hop, the sd floor; the e2e part (the picture viewer,
+# the version strip, the quick viewer, Imagine, the wallpaper ✨) needs Chromium and skips without it (KAIROS_SHOTS=<dir>)
+echo "== running tests/test_picture_edit.py =="
+python3 "$REPO/tests/test_picture_edit.py" || RC=1
 
 if [ -z "${KAIROS_TEST_ONLY:-}" ]; then          # a subset run (iterating on a fix) never rewrites the progress page
     echo "== regenerating docs/PROGRESS.md =="

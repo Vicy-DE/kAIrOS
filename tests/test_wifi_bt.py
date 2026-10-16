@@ -874,8 +874,10 @@ def t_bridge():
     try:
         import jscheck
         if jscheck.enabled():
-            script = b.split("<script>", 1)[1].rsplit("<\\/script>", 1)[0]
-            for label, src in (("BRIDGE_SRC", script), ("shell.js", js), ("host.js", host)):
+            # every <script> element of the bridge on its own (the main one + the late-picture block, SD run 2026-10-13)
+            scripts = re.findall(r"<script\b[^>]*>(.*?)<\\/script>", b, re.S)
+            assert len(scripts) >= 2, len(scripts)
+            for label, src in [(f"BRIDGE_SRC script {i + 1}", s) for i, s in enumerate(scripts)] + [("shell.js", js), ("host.js", host)]:
                 ok, msg, line, col = jscheck._run(src)
                 assert ok, f"{label}: {msg} at {line}:{col}"
             parsed = f"parsed by {jscheck.CHECKER['kind']}"

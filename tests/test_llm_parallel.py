@@ -522,7 +522,7 @@ async def t_specs(ctx):
 async def t_gpu_values(ctx):
     """[GPU validation 2026-10-07, docs/PARALLEL-LLM-2026-10-06.md §5/§6] the shipped values: 8/16 GB
     llm + llm_fast at 2 slots with their host-RAM caps (--cache-ram 4096 / 2048, --ctx-checkpoints 8),
-    the Krea 2 / Kroma expanders (Qwen3VL-4B) at 2 slots in every tier, vision and the other
+    the Muse (Krea 2 family) expanders (Qwen3VL-4B) at 2 slots in every tier, vision and the other
     expanders at 1; the derived argv keeps the caps and gives every slot the section's full context."""
     server = kernel()
     caps = {"llm": ["--cache-ram", "4096", "--ctx-checkpoints", "8"],
@@ -530,7 +530,7 @@ async def t_gpu_values(ctx):
     n = 0
     for t in ("8gb", "16gb", "24gb", "32gb"):
         m = json.loads((REPO / "manifests" / f"tier-{t}.json").read_text())
-        for s in ("image", "image_safe"):          # [R76] the stock Krea 2 replaced the Kroma v0.2 add-on
+        for s in ("image", "image_safe"):          # [R76] image_safe replaced the Kroma v0.2 add-on; both = Muse since 2026-10-10
             assert "Qwen3VL-4B-Instruct" in m[s]["text_encoder"]["file"] and m[s].get("expander_parallel") == 2, (t, s)
             e = server.expander_llm_spec(s, m)
             assert server.MM.llama_serve_args(e) == ["-ngl", "99", "-c", "16384", "--jinja", "-np", "2", "--no-kv-unified"], (t, s)
@@ -1462,8 +1462,7 @@ async def t_e2e_vanished(ctx):
     for so in socks:
         so.close()
     r = await ask(s, "[hold 0s] after the vanish")
-    took = r["t1"] - t_first
-    assert r["status"] == 200 and 3.0 < took < 12.0, f"the ask took {took:.1f} s (expected ≈ the remaining stream)"
+    assert r["status"] == 200, r
     assert k.inflight_max() <= 2 and not k.overflow()
     for _ in range(60):                                    # the saved apps (+ their icons: mock sd-cli, exclusive)
         await asyncio.sleep(0.5)
@@ -1474,7 +1473,23 @@ async def t_e2e_vanished(ctx):
             break
     else:
         raise AssertionError(f"apps not saved / state not idle: {names[:300]}")
-    return f"both vanished generations completed (ask waited {took:.1f} s), apps saved, state idle"
+    # [R86 r4b, S13, test only] measured from the STREAMS' start — the mock's own request log — not from the first delta the
+    # client saw: R86's stream verdict holds the first delta back until it can judge the document (chunk 4 of 8 here), so
+    # "the remaining stream after the first delta" sat exactly on the old 3.0 s floor (bimodal 2.3 / 3.0 s, review R4 §7).
+    # Each vanished app holds a slot twice (the spec step 6 s, then the stream 6 s), so a bound from the POSTs cannot tell
+    # the cases apart either. Kept slots = both vanished streams ran their full 6 s hold, the ask's request started only
+    # after one of them ended, and the ask ended ≥ 6 s after the streams began; the R62 defect (a vanished client frees
+    # its slot) cuts the streams short and lets the ask in early
+    streams = sorted((q for q in k.requests() if q["stream"] and q["t0"] >= t0 - 1.0), key=lambda q: q["t0"])[:2]
+    asked = [q for q in k.requests() if q["prompt"].startswith("[hold 0s] after the vanish")]
+    assert len(streams) == 2 and all(q["t1"] - q["t0"] >= 5.5 for q in streams), \
+        f"the vanished streams were cut short: {[round(q['t1'] - q['t0'], 2) for q in streams]}"
+    assert asked and asked[-1]["t0"] >= min(q["t1"] for q in streams) - 0.3, \
+        f"the ask's request started {min(q['t1'] for q in streams) - asked[-1]['t0']:.2f} s before a vanished stream ended"
+    took = r["t1"] - min(q["t0"] for q in streams)
+    assert 5.5 < took < 12.0, f"the ask ended {took:.1f} s after the streams began (expected ≈ the 6 s hold)"
+    return (f"both vanished streams ran their full hold; the ask ended {took:.1f} s after the streams began "
+            f"({r['t1'] - t_first:.1f} s after the first delta), apps saved, state idle")
 
 
 # ============================================================================= main

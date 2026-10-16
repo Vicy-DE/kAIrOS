@@ -277,8 +277,17 @@ elif [ -n "$GPU_BAD" ]; then check gpu_driver FAIL "boot GPU has NO kernel drive
 elif [ -n "$GPU_WARN" ]; then check gpu_driver WARN "GPU without driver (compute lost, display ok): $GPU_WARN— $GPUS"
 else check gpu_driver PASS "$GPUS"; fi
 
-FW=$(dmesg 2>/dev/null | grep -i firmware | grep -iE 'fail|error|not found|timed out|no such file' | head -n 4 | tr '\n' ';')
-if [ -n "$FW" ]; then check firmware WARN "firmware load problems: $FW"; else check firmware PASS "no firmware load failures in dmesg"; fi
+# optional DEBUG firmware is not a load problem [SD run 2026-10-13]: iwlwifi asks for iwl-debug-yoyo.bin on every
+# boot and runs fine without it (-2 = not shipped by Debian's firmware packages) — the owner's microSD run was WARN
+# for that line alone. A "*-debug-*" firmware file name is counted as benign and named in the PASS detail.
+FWOPT='[[:alnum:]_.+]+-debug-[[:alnum:]_.+-]*'
+FW=$(dmesg 2>/dev/null | grep -i firmware | grep -iE 'fail|error|not found|timed out|no such file' \
+     | grep -vE "$FWOPT" | head -n 4 | tr '\n' ';')
+FWDBG=$(dmesg 2>/dev/null | grep -i firmware | grep -iE 'fail|error|not found|timed out|no such file' \
+     | grep -oE "$FWOPT" | sort -u | head -n 3 | tr '\n' ' ')
+if [ -n "$FW" ]; then check firmware WARN "firmware load problems: $FW"
+elif [ -n "$FWDBG" ]; then check firmware PASS "no firmware load failures in dmesg (optional debug firmware absent, benign: ${FWDBG% })"
+else check firmware PASS "no firmware load failures in dmesg"; fi
 # real load failures only: "module verification failed: signature and/or required
 # key missing - tainting kernel" is the standard notice for every out-of-tree /
 # DKMS module — the product's own NVIDIA driver prints it on every healthy boot
