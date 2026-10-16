@@ -1,0 +1,282 @@
+{
+  "labels": [
+    {
+      "name": "enhancement",
+      "color": "a2eeef",
+      "description": "A new feature or an improvement of an existing one"
+    },
+    {
+      "name": "bug",
+      "color": "d73a4a",
+      "description": "Something does not work as documented"
+    },
+    {
+      "name": "documentation",
+      "color": "0075ca",
+      "description": "Docs, how-tos, README"
+    },
+    {
+      "name": "tests",
+      "color": "c5def5",
+      "description": "The mock-engine suite, GPU smokes, VM tests"
+    },
+    {
+      "name": "build",
+      "color": "fbca04",
+      "description": "Engines, models, the appliance image, flashing"
+    },
+    {
+      "name": "infra",
+      "color": "bfd4f2",
+      "description": "CI, releases, the test rig"
+    },
+    {
+      "name": "models",
+      "color": "5319e7",
+      "description": "Model choice, manifests, downloads, licences"
+    },
+    {
+      "name": "desktop",
+      "color": "1d76db",
+      "description": "The shell: windows, dock, launcher, browser"
+    },
+    {
+      "name": "kernel",
+      "color": "0e8a16",
+      "description": "kernel/server.py and friends"
+    },
+    {
+      "name": "decision",
+      "color": "e99695",
+      "description": "Needs a decision by the owner before work can start"
+    },
+    {
+      "name": "needs-benchmark",
+      "color": "f9d0c4",
+      "description": "Decide with measurements, not opinions"
+    },
+    {
+      "name": "hardware",
+      "color": "d4c5f9",
+      "description": "Needs a specific machine or GPU to verify"
+    },
+    {
+      "name": "help wanted",
+      "color": "008672",
+      "description": "An outside contributor could take this"
+    },
+    {
+      "name": "good first issue",
+      "color": "7057ff",
+      "description": "Small, self-contained, well described"
+    }
+  ],
+  "issues": [
+    {
+      "title": "Choose a licence for the repository",
+      "labels": [
+        "decision",
+        "documentation"
+      ],
+      "body": "No licence has been chosen yet; without one, outside developers cannot legally reuse or redistribute the code (the README says so).\n\nThe project stance so far: free, non-commercial, 18+ appliance; model weights have their own licences (see `docs/MODEL-REFRESH-2026-09.md` and the manifests). The code licence is the owner's decision — this issue only tracks it.\n\nThings to decide:\n- the code licence (e.g. a permissive OSI licence, or a non-commercial one if that matches the stance; note that NC licences are not OSI-approved)\n- whether the generated-app prompts and docs (`docs/API.md`, `docs/wiki/`, `kernel/prompts.py`) fall under the same licence\n- a `LICENSE` file at the repo root and a line in `README.md`\n\nUntil decided, contributions are accepted under the assumption that the contributor agrees to the licence chosen later (`CONTRIBUTING.md`)."
+    },
+    {
+      "title": "CI: run the mock-engine test suite on every pull request",
+      "labels": [
+        "infra",
+        "tests",
+        "help wanted"
+      ],
+      "body": "There is no CI. The whole level-0 suite needs no GPU and no models (`docs/how-to/TESTING.md`): build `dev/docker/Dockerfile.kernel-test` and run `tests/run-tests.sh` inside it.\n\nProposal (GitHub Actions):\n1. build the `kernel-test` target of `dev/docker/Dockerfile.kernel-test` (cache the layers)\n2. run `bash dev/docker/run-suite.sh` — about 10 minutes on a 2-core runner\n3. run `bash dev/docker/run-js-checks.sh` (node:24-alpine)\n4. fail the job on a non-zero exit; upload `dev/work/suite-*.log` as an artifact\n\nOpen question: the suite rewrites `tests/results*.json` and `docs/PROGRESS.md` (see the issue about keeping result files out of the tree); CI should run on a copy or discard those changes."
+    },
+    {
+      "title": "tests/run-tests.sh rewrites tests/results*.json and docs/PROGRESS.md on every run",
+      "labels": [
+        "tests",
+        "good first issue"
+      ],
+      "body": "Every full run of `tests/run-tests.sh` regenerates `tests/results.json`, the eight `tests/results-*.json` files and `docs/PROGRESS.md` (via `scripts/update-progress.py`). For contributors that means a noisy diff after every local run, and in CI it means an unclean tree.\n\nProposal: write the result files to `$KAIROS_RESULTS_DIR` (default: the tree, to keep the owner's workflow) and regenerate `docs/PROGRESS.md` only when `KAIROS_UPDATE_PROGRESS=1`; `dev/docker/run-suite.sh` would set the results dir to `dev/work/` by default.\n\n`KAIROS_TEST_ONLY=1` already skips the PROGRESS.md step but still writes the json files."
+    },
+    {
+      "title": "Hard-coded out-of-repo paths in tests/test_kernel.py",
+      "labels": [
+        "tests",
+        "good first issue"
+      ],
+      "body": "Two tests look for files that only exist on the owner's machine:\n\n- the translation/dictionary test cross-checks checksums against a download queue at `/images/pod/translation-2026-10-06.queue` (skips cleanly with `queue cross-check skipped (no /images/pod)` when absent)\n- the music language table test reads `acestep.cpp/src/metadata-fsm.h` from a Vulkan engine tree under the owner's home directory or `/images/vibeos-vulkan` (optional: static checks only when absent)\n\nBoth degrade gracefully, so the suite passes on a fresh clone, but the checks are silently weaker. Proposal: resolve both through documented env vars (`KAIROS_DOWNLOAD_QUEUE`, `KAIROS_ENGINES`) with the current paths as fallbacks, and mention them in `docs/how-to/TESTING.md`."
+    },
+    {
+      "title": "scripts/update-progress.py prints the owner's pod/ command into docs/PROGRESS.md",
+      "labels": [
+        "documentation",
+        "good first issue"
+      ],
+      "body": "The \"Verification workflow\" section that `scripts/update-progress.py` writes into `docs/PROGRESS.md` names the owner's out-of-repo test rig (`pod/` under a personal home directory) as the way to run the suite.\n\nReplace it with the in-repo command (`bash dev/docker/run-suite.sh`, see `docs/how-to/TESTING.md`) and keep the pod/ command as an aside for the owner. `PROGRESS.md` is generated — fix the generator, not the file."
+    },
+    {
+      "title": "Reproducible engine builds for outside developers (or prebuilt engine artefacts)",
+      "labels": [
+        "build",
+        "help wanted"
+      ],
+      "body": "The engines (llama.cpp, stable-diffusion.cpp, acestep.cpp) are built by `scripts/install-engines.sh` as root into `/opt/vibeos` with the CUDA 13 toolkit from NVIDIA's Debian 13 repository (`docs/how-to/BUILDING.md`). That is hours of compile time, needs root, and pins no upstream commits — a build today may not match the set the manifests were validated against (`bin/ENGINES.json`, the kernel's `check_engines`).\n\nWanted:\n- a containerised build (`docker build` from `debian:trixie` + the CUDA repo) that writes a relocatable engine set (bin/ + lib/ + ENGINES.json) without touching the host\n- pinned upstream commits (the ones the reports name: `docs/ENGINES-CUDA-2026-10-06.md`) with an opt-in for HEAD\n- ideally a release artefact of the proven set so testers can skip the build"
+    },
+    {
+      "title": "Release images: publish the appliance image (or a reproducible build) so testers do not need the owner's VM overlay",
+      "labels": [
+        "infra",
+        "build",
+        "decision"
+      ],
+      "body": "Every released image so far (v2 to v7.5) was produced by flattening the owner's verified VM overlay, not by `iso/build-iso.sh` + `iso/build-img.sh` (`iso/README.md`, honesty notes). v7.5-1 (2026-10-11/12) was made the same way: a hotfix kit for flashed v7.5 sticks, and an 80.5 GB media image with the video and music add-ons pre-installed (for media of 128 GB or more). The scripted pipeline exists but has not been run end to end for a release, and no image is downloadable.\n\nOutside testers therefore cannot do levels 2-4 of `docs/how-to/TESTING.md` (VM test, stick test) without building everything themselves (engines + 26 GB of baked models + the 12.5 GB ZIM + a root build).\n\nOptions:\n1. publish an image (the standard one is about 51 GiB raw, gzipped smaller) with its sha256 somewhere outside GitHub's per-file limit — needs the licence question answered for the baked model weights, and a build with empty operator secrets (an image trusts only the SSH keys it was built with)\n2. make `iso/build-iso.sh` + `iso/build-img.sh` the real pipeline again and document a run\n3. both"
+    },
+    {
+      "title": "Rootless / containerised appliance image build",
+      "labels": [
+        "build",
+        "help wanted"
+      ],
+      "body": "`iso/build-iso.sh` (live-build) and `iso/build-img.sh` need root on the build host, write to `/srv/kairos-out`, and expect engines + models + the ZIM under `/opt/vibeos`. A contributor cannot run them on a shared machine.\n\nProposal: run both inside a privileged `debian:trixie` container with the inputs bind-mounted (`KAIROS_MODELS`, `KAIROS_KNOWLEDGE`, `KAIROS_ENGINES` from `dev/rig/.env`) and the output dir mounted, so the host stays untouched. Document the exact command in `docs/how-to/BUILDING.md`."
+    },
+    {
+      "title": "Hardware test matrix: the image is verified on one laptop only",
+      "labels": [
+        "hardware",
+        "help wanted"
+      ],
+      "body": "Every real-hardware result in `docs/` comes from one machine: an HP laptop with an AMD Phoenix CPU + Radeon 780M iGPU and an RTX 4070 Laptop GPU (8 GB), 32 GB RAM, booted from a USB 3 stick. The image also targets NVIDIA-only desktops (R41/R50: boot-VGA detection, `nvidia-drm` modesetting) and the Vulkan engine set for machines without an NVIDIA driver (R30), but nobody has reported a boot on them.\n\nIf you have other hardware: flash the image, boot it, and file a bug report with the boot-log verdict (`KAIROS-LOGS/latest.json` on the EFI partition — `dev/rig/stick-logs.sh` collects it). Even a FAIL verdict is useful."
+    },
+    {
+      "title": "The VM test rig assumes the reference laptop's PCI layout",
+      "labels": [
+        "infra",
+        "hardware"
+      ],
+      "body": "`dev/rig/` defaults to the reference laptop: GPU at `0000:01:00.0` (+ audio `01:00.1`), IDs `10de:2820,10de:22bd`, IOMMU group 14. The in-repo copy reads `KAIROS_GPU_PCI`, `KAIROS_GPU_AUDIO_PCI`, `KAIROS_GPU_IDS` and `VFIO_GROUP` from `dev/rig/.env`, but that parameterisation has not been exercised on another machine.\n\nAlso untested elsewhere: the live rebind (`gpu-to-vfio.sh` / `gpu-to-host.sh`) only works when the host display runs on a different GPU; single-GPU hosts need the vfio-at-boot config and a reboot.\n\nReports from a second machine (what `host-setup.sh status` prints, whether `vm.sh test` reaches 16/16) are welcome."
+    },
+    {
+      "title": "D0: per-app browser windows (pre-warmed window pool) — decide with numbers",
+      "labels": [
+        "desktop",
+        "needs-benchmark",
+        "decision"
+      ],
+      "body": "Today every app runs in an iframe inside one fullscreen Chromium kiosk per display. `docs/DESKTOP-TECH-EVAL-2026-09.md` measured the alternative (one Chromium window per app under openbox, the kernel driving EWMH through `kernel/wm.py`): +88 MiB at 10 apps, better input latency (p95 12.3 vs 18.1 ms), less CPU when minimized, works across monitors, a runaway app cannot freeze the desktop — but app-open latency 176 vs 33 ms plus an 80 ms white flash.\n\nThe documented upgrade path is a pre-warmed off-screen window pool (navigate a hidden window, reveal after first paint). A prototype exists in `bench/proto/`; the measurement series (M2, M2b white flash, M3 against the baseline) has not been run on a quiet machine. If a warm open lands under about 80 ms, switch; this also decides how games-in-windows and the dock states get built.\n\nA C++ rewrite of kernel or desktop was evaluated and rejected with measurements (the Python kernel uses 0.5 % of a core; the waits are model I/O)."
+    },
+    {
+      "title": "R81: the dock shows the user's apps with running / minimized / maximized states",
+      "labels": [
+        "desktop",
+        "enhancement"
+      ],
+      "body": "Owner request: remove Files and Notes from the dock (they stay in the Apps menu and the search), add the user's own generated apps (`cache/apps`) as dock icons (overflow into the Apps menu), and show state per icon: running + minimized = icon 1/3 bigger, running + shown/maximized = glow. Same for built-ins and games.\n\nToday: `#dock` in `shell/index.html` (notes/news/browser/files/settings are generated `data-app` entries) plus a separate `#taskbar` with window chips (R61/R68). Decide whether the dock absorbs the taskbar. Depends on the window-architecture decision (D0) only for games."
+    },
+    {
+      "title": "R82: games open in desktop windows with an improve button",
+      "labels": [
+        "desktop",
+        "enhancement"
+      ],
+      "body": "Games are pygame X windows managed by openbox through `kernel/wm.py` (R68). Today every launch forges the next version; wanted: launch = run the current version, the window's improve button = evolve with the user's instruction (like apps, with the R77 quality gates).\n\nWeb-shell path: a shell frame, the kernel places the X window over its content (`wm.py` move/resize), a snapshot while covered or dragged (R70). Per-app-window path: the game window glued to a host window. Depends on D0."
+    },
+    {
+      "title": "R83: the browser becomes a hand-written system app; the search bar opens addresses in it",
+      "labels": [
+        "desktop",
+        "enhancement"
+      ],
+      "body": "Owner request: make the browser a built-in (`data-builtin=\"browser\"`, hand-written, not a generated `data-app` with a recipe prompt): address bar, back/forward/reload, history, the `/web/` imaginary web, an improve-page button (see the R84 issue).\n\nThe desktop search (`#ds-input`) should recognise addresses (`example.com`, `www.x.de/y`, `https://…`) and open them in the browser; website hits in the results open there too."
+    },
+    {
+      "title": "R84: improve a generated website from the browser",
+      "labels": [
+        "desktop",
+        "kernel",
+        "enhancement"
+      ],
+      "body": "The improve button in the browser: the current `/web/` page becomes its next version from the previous HTML + the site profile (R75) + the user's optional instruction; the previous version stays reachable (back to it) and the site's other pages stay consistent (R75). The evolution loop for apps (`docs/DESIGN.md`, living software) is the model."
+    },
+    {
+      "title": "R85: improve a picture — the image model creates, an edit model edits",
+      "labels": [
+        "models",
+        "kernel",
+        "needs-benchmark"
+      ],
+      "body": "Every picture (Imagine; wallpapers and page pictures to be decided) gets an improve button: the default image model makes the first version, an image-edit model edits it with the user's instruction, versions kept.\n\nOpen: which edit checkpoint and quantisation runs in the shipped stable-diffusion.cpp (reference-image edit) within 8 GB VRAM / 30 GB RAM, its encoder, image size, time per edit cold from the stick and warm, how it coexists with the imaging swap rules (R79), and the disk budget (the current stick root has about 2 GB free, so this needs the next image). Candidate research started under the Qwen image-edit family; a GPU A/B is required before anything is wired in."
+    },
+    {
+      "title": "R86: the refusal fallback ladder",
+      "labels": [
+        "kernel",
+        "enhancement"
+      ],
+      "body": "When the coder LLM declines a request, the kernel must route around it instead of caching or rendering the refusal: retry with an 18+ preamble, then the uncensored LLM, then a clean \"declined\" answer to the UI (never cached, never rendered as a page, never passed on as an image prompt, a 422 and never a 502).\n\nStatus: shipped in v7.5-1 — rounds 4, 4b and 4c (the ladder + a narrow minors block that refuses only a request pairing an explicit under-18 age or word with a sexual term, plus a few illegal-content terms), each round reviewed independently. Since 2026-10-10 the 8/16 GB default LLM is the uncensored heretic Gemma 4 (`\"uncensored\": true` in the manifests), so the ladder mostly serves fast mode and the image-prompt expander. Design record: `docs/REFUSAL-FALLBACK-2026-10-09.md` §11; tests: `tests/test_refusal_fallback.py`. This issue stays open for findings from real use: a request the ladder still loses, or a block that fires on an adult request."
+    },
+    {
+      "title": "Confirm the Muse test pins on a fresh clone once they are committed",
+      "labels": [
+        "tests",
+        "models"
+      ],
+      "body": "On 2026-10-10 the default image model changed from Krea 2 Turbo + the Kroma LoRA to the Muse Q4_0 GGUF in every manifest (`docs/IMAGE-MODEL-MUSE-2026-10-10.md`). Five tests pinned the old file names, sizes or the LoRA: `unit_manifest_image_sections_2026_09`, `unit_r47_baked_set_and_build_scripts` (tests/test_kernel.py), `imaging_drop_policy_auto_and_periodic`, `imaging_e2e_image_files_leave_page_cache` and `imaging_e2e_menubar_gpu_model` (tests/test_imaging_workflow.py).\n\nThe first public commit (2026-10-10) does not contain the updated pins: an independent run of the suite on a fresh clone of it plus the docs gave test_kernel.py 123 passed / 2 failed / 5 skipped and test_imaging_workflow.py 14 / 3 / 0 — exactly these five. The updated pins live in the working tree and pass there: the full suite of 2026-10-14 had 0 failed in every result file (291 passed / 8 skipped with `--network none`).\n\nTo close: after the commit that carries them, run `bash dev/docker/run-suite.sh` on a fresh clone and confirm 0 failed in every file."
+    },
+    {
+      "title": "Length-limit cuts: verify on the real engine, and stop runaway generations earlier",
+      "labels": [
+        "kernel",
+        "needs-benchmark"
+      ],
+      "body": "Since 2026-10-14 a page, app or game whose generation stopped at the length limit is served once with a note and never cached (`docs/REQUIREMENTS.md` R43; tests `unit_finish_info_length_limit` and `http_length_cut_*` against the mock llama-server, which answers `finish_reason: \"length\"` on `[length-stop]`). Two parts are open:\n\n1. **Not verified on a GPU.** The kernel reads llama-server's `finish_reason` (`\"length\"` = max_tokens reached or the slot's context full) and, when a reply carries none, the token counts in `usage` / `timings`. A GPU smoke with a deliberately small `-c` should confirm that the pinned llama.cpp build reports a context-full stop as `\"length\"` in the streaming and the non-streaming path.\n2. **The time is still spent.** The R86 GPU check saw one page run 15 783 tokens / 456 s into the 16k context before the cut. Options, to be decided with numbers: a per-kind `max_tokens` for pages, a repetition detector on the stream that ends a looping generation early, or both. First measure how often real pages and apps hit the limit on the 8 GB card."
+    },
+    {
+      "title": "README: generate the model-tier table from the manifests",
+      "labels": [
+        "documentation",
+        "good first issue"
+      ],
+      "body": "The README's stack and model-tier tables are hand-written and drifted in October 2026 (Krea 2 Turbo → Muse, stock Gemma 4 → the heretic edition, the music engine row said \"build pending\" long after acestep.cpp was built). They were brought in line with `manifests/tier-*.json` on 2026-10-14.\n\nProposal: generate the tier table from the manifests (section names, quantisation, add-on flags) with a small script, and add a unit test that fails when the README table and the manifests disagree, so it cannot drift again."
+    },
+    {
+      "title": "Image model redistribution: the baked Muse file is an early-access download",
+      "labels": [
+        "models",
+        "decision"
+      ],
+      "body": "The default image model since 2026-10-10 (`image/museByStableYogi_v35Q4Extended.gguf`, civitai) is an early-access release that needs a civitai login to download, so `scripts/download-models.py` cannot fetch it anonymously, and whether the file may be redistributed inside the appliance image is an open question for the owner.\n\nNeeded: (1) the owner's decision on redistribution, (2) a documented manual download step or an alternative public file for people who build their own image, (3) a note in the model licence audit (`docs/MODEL-REFRESH-2026-09.md` or a successor)."
+    },
+    {
+      "title": "Language benchmark: finish the remaining runs (stopped at 14/40)",
+      "labels": [
+        "needs-benchmark",
+        "help wanted"
+      ],
+      "body": "`docs/LANG-BENCH-2026-09.md` asks whether local LLMs produce more valid programs in compiled languages than in Python (LLM-written tests, per-language harness under `bench/`). The series was stopped at 14 of 40 runs and is resume-safe. Finishing it needs a GPU with 8 GB VRAM and several hours; the early findings are in the document."
+    },
+    {
+      "title": "Docs: dated reports should get a short status header",
+      "labels": [
+        "documentation",
+        "good first issue"
+      ],
+      "body": "`docs/` holds about 40 dated reports (`docs/README.md` sorts them). Many are implementation logs whose conclusions were superseded later (e.g. the image model changed three times). A three-line header at the top of each report — date, status (current / superseded by X / historical), what to read instead — would save readers a lot of time. Start with the engine and image-model reports."
+    },
+    {
+      "title": "scripts/download-models.py ignores the addon / bake / knowledge-store flags",
+      "labels": [
+        "build",
+        "good first issue"
+      ],
+      "body": "`scripts/download-models.py <manifest>` downloads every `{url, file}` entry of the manifest — for `tier-8gb.json` it announces 72 files and 113.9 GB (68 distinct files, 102.5 GB: a file that two sections share is counted again), including every add-on and the seven Wiktionary ZIMs (`store: knowledge`), which it would put under `models/` instead of `knowledge/`. The script predates the `addon`, `bake` and `store` flags (R47, `docs/IMAGE-BAKE-ADDONS-2026-10-07.md`).\n\n`dev/tools/download-baked-models.py` is a stop-gap that takes its list from `scripts/check_tier_present.py --list` (the image's definition of \"baked\") and has `--all` for the add-ons. Proposal: fold that behaviour into `scripts/download-models.py` (default = baked set, `--addons`, never the knowledge store), verify sha256 after each download, and mark entries that need a manual/logged-in download."
+    },
+    {
+      "title": "VM rig: judge an image without SSH, and say \"key refused\" instead of \"no SSH\"",
+      "labels": [
+        "tests",
+        "infra",
+        "enhancement"
+      ],
+      "body": "An outside tester can boot an existing kAIrOS image in `dev/rig`, but every image built so far trusts only the owner's rig key (`iso/secrets/authorized_keys` at build time; sshd is key-only), and there is no test image without operator keys. Verified on 2026-10-15 with the v7.5-1 media image, GPU off, the in-repo rig and its own fresh key:\n\n- `vm.sh test` waits the full 420 s and reports `no SSH after 420s` plus a console tail with only the two firmware lines, although the guest was up within seconds and sshd answered `Permission denied (publickey)`. None of the 16 checks runs.\n- The image's own verdict was there all along: `KAIROS-LOGS/latest.json` on the overlay's EFI partition said PASS (15/15) for both boots. `docs/how-to/VM-TEST-RIG.md` (\"Judging an image you cannot log in to\") now has the manual, unprivileged commands (`qemu-img convert` of partition 1 + host mtools).\n- The host `:1337` forward stays dead (`expose-ui.sh` is piped over SSH) and QEMU's VNC (port 5901) is not published, so the desktop is visible only at the container's address.\n\nProposal:\n1. `vm.sh`: when sshd answers but refuses the key, stop early with \"this image does not trust <key>.pub\" instead of waiting 420 s for \"no SSH\".\n2. A no-SSH verdict mode (`vm.sh verdict`, or a fallback inside `test`): after the boot, extract the overlay's ESP with `qemu-img convert`, read `KAIROS-LOGS/latest.json` inside the container (add `mtools` to `dev/rig/testrig/Dockerfile`) and judge this attempt's PASS / WARN / FAIL, so level 2 of `docs/how-to/TESTING.md` has a pass criterion without a login.\n3. Together with the release-image issue: publish a test image built with an empty `iso/secrets/authorized_keys`, so the documented level 2 has something to run against."
+    }
+  ]
+}

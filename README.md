@@ -54,6 +54,20 @@ dream the video. Press Enter and it exists.
 
 **Never the same image twice:** every image/video generation rolls a fresh random seed.
 
+## Project status
+
+- **Pre-release.** One developer, no releases on GitHub yet. The code is public since
+  2026-10-10 so that others can build it, test it and file issues; expect rough edges in
+  everything that was not needed on the reference machine.
+- **Tested on one machine:** an HP laptop with an **NVIDIA RTX 4070 Laptop GPU (8 GB)** and
+  an **AMD Radeon 780M iGPU** (which drives the display), 32 GB RAM, booted from a USB stick,
+  with Ubuntu 26.04 as the development/host OS. Other NVIDIA cards, NVIDIA-only desktops and
+  the Vulkan-only path (no NVIDIA driver) are designed for but unverified.
+- **18+.** kAIrOS runs uncensored local models with no content filter, by design. It is not
+  for minors, and nothing in this repository is meant to be. The one hard line is in
+  [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+- **No licence yet** — see the bottom of this page.
+
 ## The stack (deliberately slim)
 
 | Layer | Tech | Why |
@@ -61,8 +75,8 @@ dream the video. Press Enter and it exists.
 | Image | Debian 13 (trixie) + systemd, **raw GPT `.img.gz`**: systemd-boot ESP + ext4 root that auto-grows on first boot | flash to any ≥ 64 GB stick or disk (the raw image is ≈ 51 GiB), UEFI boot, works offline; `kairos-install` clones it onto an internal disk (R48) |
 | Desktop | tty1 autologin → X → **one fullscreen Chromium kiosk per connected display** (R52) | no boot menu, no kernel text, no login banner — a self-dreamed boot animation covers the warm-up (R27/R28) |
 | LLM serving | [llama.cpp](https://github.com/ggml-org/llama.cpp) `llama-server` (CUDA, sm_89 + sm_120 PTX) | GGUF, fast, zero Python |
-| Image **and** video | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) `sd-cli` | one C++ binary covers Krea 2, Qwen-Image, Z-Image, Chroma *and* Wan 2.2 video — no PyTorch, no ComfyUI |
-| Music | ACE-Step 1.5 (turbo DiT + 1.7B LM, GGUF) via [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) `ace-lm` + `ace-synth` | pure C++/GGML like the rest; request-JSON driven, two stages; add-on download; **engine build pending** (R31 status note) |
+| Image **and** video | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) `sd-cli` | one C++ binary covers Muse (a Krea 2 fine-tune), Qwen-Image, Z-Image, Chroma *and* Wan 2.2 video — no PyTorch, no ComfyUI |
+| Music | ACE-Step 1.5 (turbo DiT + 1.7B LM, GGUF) via [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) `ace-lm` + `ace-synth` | pure C++/GGML like the rest; request-JSON driven, two stages; add-on download; built by `scripts/install-engines.sh` (CUDA since 2026-09-14, `docs/ENGINES-CUDA-2026-09.md`) |
 | Knowledge | [kiwix-serve](https://kiwix.org) + `wikipedia_en_all_mini` ZIM (~12 GB, every tier) | offline encyclopedia; one static binary |
 | Web | DuckDuckGo (keyless) with auto-fallback to kiwix | same `vibe.search` API online or offline |
 | Kernel | `kernel/server.py` — Python + aiohttp | orchestrates models, swaps VRAM, RAG, the virtual web, self-repair loops |
@@ -86,10 +100,10 @@ paints what you asked for.
 
 | VRAM | HTML/app LLM | Python/game LLM | Image (default, baked) | Video (add-on) |
 |---|---|---|---|---|
-| 8 GB | Gemma 4 26B-A4B-it UD-IQ4_XS (MoE, experts partly in RAM; fast mode: Qwen2.5-Coder-7B add-on) | shared | Krea 2 Turbo Q4_K_M (1024²) | Wan 2.2 TI2V-5B Q4_K_M (add-on) |
-| 16 GB | Gemma 4 26B-A4B-it UD-IQ4_XS (fits whole; fast mode: Qwen2.5-Coder-7B add-on) | shared | Krea 2 Turbo Q4_K_M | Wan 2.2 TI2V-5B Q8_0 (add-on) |
-| 24 GB | Qwen3-Coder-30B-A3B Q4_K_M (full GPU) | Qwen2.5-Coder-32B Q4_K_M | Krea 2 Turbo Q6_K | Wan 2.2 TI2V-5B Q8_0 |
-| 32 GB | Qwen3-Coder-30B-A3B Q6_K | Qwen2.5-Coder-32B Q5_K_M | Krea 2 Turbo Q8_0 | Wan 2.2 TI2V-5B Q8_0 |
+| 8 GB | Gemma 4 26B-A4B-it ultra-uncensored heretic i1-IQ4_XS (MoE, experts partly in RAM; `"uncensored": true`; fast mode: Qwen2.5-Coder-7B add-on) | shared | Muse v3.5 Extended Q4_0, no LoRA (1024²) | Wan 2.2 TI2V-5B Q4_K_M (add-on) |
+| 16 GB | Gemma 4 26B-A4B-it ultra-uncensored heretic i1-IQ4_XS (same file and flags as 8 GB; fast mode: Qwen2.5-Coder-7B add-on) | shared | Muse v3.5 Extended Q4_0, no LoRA | Wan 2.2 TI2V-5B Q8_0 (add-on) |
+| 24 GB | Qwen3-Coder-30B-A3B Q4_K_M (full GPU) | Qwen2.5-Coder-32B Q4_K_M | Muse v3.5 Extended Q4_0, no LoRA | Wan 2.2 TI2V-5B Q8_0 (add-on) |
+| 32 GB | Qwen3-Coder-30B-A3B Q6_K | Qwen2.5-Coder-32B Q5_K_M | Muse v3.5 Extended Q4_0, no LoRA | Wan 2.2 TI2V-5B Q8_0 (add-on) |
 
 Every tier also lists three **add-on** image models — Qwen-Image (best text rendering),
 Z-Image-Turbo (classic, fastest) and Chroma1-HD (uncensored) — downloadable in-OS with
@@ -99,33 +113,85 @@ evict it, run, and the LLM lazily reloads (fast — the weights stay in the page
 Every image model carries a `max_pixels` budget so requests are auto-fitted to the card.
 Manifests live in [manifests/](manifests/) and are plain JSON — swap any model you like.
 
+**The uncensored default LLM.** On 8 and 16 GB the default LLM is the "heretic" edition of Gemma 4
+26B-A4B, marked `"uncensored": true` in the manifest: it answers adult requests itself. When a model
+still declines (fast mode, the image-prompt expander), the kernel never caches or renders the
+refusal: R86's ladder retries with an 18+ system preamble, then on the uncensored model, and only
+then answers "declined" (HTTP 422). The one content block is narrow: a request that pairs an
+explicit under-18 age or word with a sexual term (plus a few illegal-content terms) is refused
+before any model runs — there is no other filter (`docs/REFUSAL-FALLBACK-2026-10-09.md` §11).
+Stock Gemma 4, Krea 2 Turbo and the Kroma LoRA left the manifests on 2026-10-10.
+
 **One image fits everyone:** the shipped image embeds only the 8 GB starter set (< 58 GiB
 in total, R47). At first boot the OS reads the GPU's VRAM and shows a welcome dialog
 offering to download the matching tier in the background (OS stays usable, brain switches
 live when done). Decline and upgrade later from ⚙ Settings — apps can drive it too via
 `vibe.system.upgrade(tier)`.
 
-## Dev setup
+**Images.** None is published yet. The current builds (v7.5-1, on the owner's machine) are the
+**v7.5-1 hotfix kit**, which brings an already flashed v7.5 stick to v7.5-1 (Muse and the heretic
+LLM replace Krea 2, the Kroma LoRA and stock Gemma; with a rollback), and
+**`kairos-hwtest-4070-v7.5-1-media.img`** — 80.5 GB, the same system with the video and music
+add-ons pre-installed, for media of **128 GB or more**. See
+[docs/how-to/BUILDING.md](docs/how-to/BUILDING.md) §4.
+
+> The tables follow `manifests/tier-*.json` as of 2026-10-14; the manifests are the truth.
+> Generating the tier table from them is a seed issue.
+
+## Requirements
+
+**To run the test suite or hack on kernel/shell:** any Linux (or macOS/WSL2) with Docker.
+No GPU, no models, 2 GB of disk. The suite's container has no network access.
+
+**To run the real kernel on your own GPU:** Linux, an NVIDIA GPU with **8 GB VRAM or more**
+and the R580+ driver (or an AMD/Intel GPU with Vulkan for the slower static engine set),
+32 GB RAM recommended, a Debian 13 environment with root to build the engines (hours), and
+26.4 GB of model weights for the baked 8 GB set — about 102 GB with every add-on and the
+Wiktionary ZIMs, plus the 12.5 GB Wikipedia ZIM.
+
+**To build or test the appliance image:** root on a Debian/Ubuntu host, ~120 GB free, the
+12 GB Wikipedia ZIM; a 64 GB USB stick (or bigger) to flash; for the VM rig Docker with
+`/dev/kvm`, and for GPU passthrough a second GPU (or headless host) plus IOMMU.
+
+## Choose your path
+
+| I want to… | do this | guide |
+|---|---|---|
+| run the test suite, no GPU | `bash dev/docker/build.sh && bash dev/docker/run-suite.sh` | [docs/how-to/TESTING.md](docs/how-to/TESTING.md) |
+| see the desktop in a browser window | `bash dev/docker/build.sh chromium && bash dev/rig/desk-window.sh ui` (headless: `server` prints the URL instead of opening Firefox) | [docs/how-to/VM-TEST-RIG.md](docs/how-to/VM-TEST-RIG.md) |
+| build the engines + fetch the models | `scripts/install-engines.sh`, `dev/tools/download-baked-models.py`, `scripts/download-knowledge.sh` | [docs/how-to/BUILDING.md](docs/how-to/BUILDING.md) |
+| build the bootable image | `sudo bash iso/build-iso.sh && sudo bash iso/build-img.sh` | [docs/how-to/BUILDING.md](docs/how-to/BUILDING.md) §4 |
+| test an image in a VM | `cd dev/rig && docker compose run --rm dev /workspace/repo/dev/rig/testrig/vm.sh test` | [docs/how-to/VM-TEST-RIG.md](docs/how-to/VM-TEST-RIG.md) |
+| flash a stick and read the boot-log verdict | `gunzip -c kairos-hwtest-4070.img.gz \| sudo dd of=/dev/sdX bs=4M conv=fsync,nocreat` then `bash dev/rig/stick-logs.sh` | [docs/how-to/TESTING.md](docs/how-to/TESTING.md) level 4 |
+
+[docs/how-to/GETTING-STARTED.md](docs/how-to/GETTING-STARTED.md) explains the paths and lists
+honestly what an outside developer cannot do yet (no published image, no prebuilt engines, one
+model behind a login, results from one GPU).
+
+### Dev setup (the kernel on a plain Linux box)
 
 The kernel runs on any Linux box with the engines under `/opt/vibeos` — no image needed:
 
 ```bash
 scripts/install-engines.sh                                   # llama.cpp + sd.cpp (CUDA), once
-python3 scripts/download-models.py manifests/tier-8gb.json   # models for your tier
+python3 scripts/download-models.py manifests/tier-8gb.json   # models for your tier (every entry, ~103 GB; the baked set only: dev/tools/download-baked-models.py)
 scripts/download-knowledge.sh                                # the Wikipedia ZIM
 scripts/start-vibeos.sh            # -> open http://localhost:1337
 ```
 
 The automated suite boots the kernel on **mock engines** (no GPU) and needs
-`python3-aiohttp`; the project's Docker testrig (`pod/`, a sibling of this repo, not part
-of it) provides that environment:
+`python3-aiohttp` plus trixie's `quickjs`; the in-repo container provides that environment:
 
 ```bash
-cd ../../pod && docker compose run --rm --entrypoint bash dev -lc \
-  'cd /images/repo/vibeOS-local && bash tests/run-tests.sh'
+bash dev/docker/run-suite.sh       # = tests/run-tests.sh in dev/docker/Dockerfile.kernel-test, --network none
 ```
 
-## Building the appliance image
+On 2026-10-14 the full suite on this tree gave **291 passed / 0 failed / 8 skipped** in the default
+`--network none` mode and **292 / 0 / 7** with `KAIROS_TEST_NET=internal` (nine result files, each
+0 failed; the standard data mounts present — without a Wikipedia ZIM one more test skips);
+[docs/how-to/TESTING.md](docs/how-to/TESTING.md) lists every skip and why.
+
+### Building the appliance image
 
 ```bash
 # on a build host with multi-arch engines + the 8gb models + the ZIM under /opt/vibeos:
@@ -135,7 +201,7 @@ sudo bash iso/build-img.sh     # -> kairos-hwtest-4070.img.gz  (GPT, systemd-boo
 ```
 
 See [iso/README.md](iso/README.md) for what is on the image and how recent releases were
-actually produced (flattened from the testrig VM — outside this repo).
+actually produced (flattened from the testrig VM — the rig is now in `dev/rig/`).
 `scripts/build-image.sh` is the pre-appliance WSL tarball builder and is not the product.
 
 ## Repo map
@@ -163,12 +229,42 @@ actually produced (flattened from the testrig VM — outside this repo).
   bar), `render-assets.py` (the logos, from the shell's font), `install.sh`;
   `shell/boot-wait.html` continues the bar inside the kiosk until the kernel answers
 - `scripts/` — engine builds, manifest-driven downloads, `update-progress.py`
-- `docs/REQUIREMENTS.md` — every owner request as numbered requirements (R1–R73), with
+- `docs/REQUIREMENTS.md` — every owner request as numbered requirements (R1–R86), with
   status notes where a later requirement superseded an earlier one
 - `docs/PROGRESS.md` — auto-generated: implemented vs implemented-and-tested per requirement
 - `docs/SESSION-HANDOFF.md` — the chronological build log; `docs/MODEL-REFRESH-2026-09.md` —
-  the current model/licensing audit
+  the current model/licensing audit; **[docs/README.md](docs/README.md)** — the index of
+  all ~40 dated reports by category
+- `docs/how-to/` — getting started, testing, building, the VM rig, architecture
 - `tests/` — mock engines + `run-tests.sh`: boots the kernel and tests every requirement;
   regenerates PROGRESS.md. Claude workflow `kairos-verify` runs it + repairs failures.
+- `dev/` — the in-repo test container (`docker/`), the VM test rig with VFIO passthrough
+  (`rig/`), the seed issues (`issues/`), small tools (`tools/`)
+- `bench/` — benchmark harnesses and prototypes
+- `CLAUDE.md` — how Claude Code sessions work in this repository (project map, suite, the
+  verification culture, the commit rule); `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`
 
-See [docs/DESIGN.md](docs/DESIGN.md) for architecture details.
+See [docs/DESIGN.md](docs/DESIGN.md) for architecture details, or start with
+[docs/how-to/ARCHITECTURE.md](docs/how-to/ARCHITECTURE.md).
+
+## Contributing and issues
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) (setup, branch flow, which tests a change needs,
+requirement IDs, what must never be committed). File bugs, improvements and model
+suggestions with the templates under
+[.github/ISSUE_TEMPLATE](.github/ISSUE_TEMPLATE); the known gaps and the queued work are seeded
+from `dev/issues/seed-issues.json`. Appliance bug reports want the boot-log verdict
+(`KAIROS-LOGS/latest.json` on the stick's EFI partition).
+
+## Security
+
+Private reporting through GitHub's vulnerability reporting; scope and out-of-scope in
+[SECURITY.md](SECURITY.md).
+
+## Licence
+
+**No licence has been chosen yet.** Until the owner decides, the code is published for
+reading, building and testing; it may not be redistributed or reused beyond what copyright
+law allows. The model weights, the engines and the encyclopedia have their own licences
+(the manifests and `docs/MODEL-REFRESH-2026-09.md` name them). The licence decision is a
+seed issue.

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Vicy-DE/kAIrOS/security/advisories/new
+    about: Report privately through GitHub's vulnerability reporting (see SECURITY.md). Do not open a public issue.
+  - name: How to build and test
+    url: https://github.com/Vicy-DE/kAIrOS/blob/main/docs/how-to/GETTING-STARTED.md
+    about: The how-tos answer most setup questions (test suite without a GPU, engines, models, the image, the VM rig).

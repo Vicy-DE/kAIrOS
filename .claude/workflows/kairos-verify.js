@@ -9,8 +9,12 @@ export const meta = {
   ],
 }
 
-// the suite needs python3-aiohttp: run it in the testrig container (pod/ lives next to repo/)
+// the suite needs python3-aiohttp + trixie's quickjs: run it in a container. RUN is the owner's
+// out-of-repo rig (pod/ lives next to repo/ on the reference laptop, cwd = pod/); RUN_INREPO is the
+// equivalent for a plain checkout (dev/docker/run-suite.sh: kernel-test image, --network none, the
+// data mounts from dev/rig/.env — docs/how-to/TESTING.md). Swap the two when pod/ is not there.
 const RUN = "docker compose run --rm --entrypoint bash dev -lc 'cd /images/repo/vibeOS-local && bash tests/run-tests.sh'"
+const RUN_INREPO = "bash dev/docker/run-suite.sh"   // eslint-disable-line no-unused-vars
 
 const RESULTS_SCHEMA = {
   type: 'object',
@@ -47,9 +51,9 @@ const FIX_SCHEMA = {
 phase('Test')
 const run1 = await agent(
   `Run the kAIrOS verification suite: \`${RUN}\`. ` +
-  `It boots the kernel against mock engines and tests every requirement (R1–R26 map in ` +
-  `C:\\Users\\Layer\\Documents\\vibeOS-local\\docs\\REQUIREMENTS.md). After it finishes, read ` +
-  `C:\\Users\\Layer\\Documents\\vibeOS-local\\tests\\results.json and report the counts and every failing ` +
+  `It boots the kernel against mock engines and tests every requirement (the R-numbered map in ` +
+  `docs/REQUIREMENTS.md of this repository). After it finishes, read ` +
+  `tests/results.json (and the other tests/results-*.json files) and report the counts and every failing ` +
   `test with its requirement ids and failure detail. If the suite cannot even start ` +
   `(e.g. python3-aiohttp missing), report that as a single failure named "suite-boot".`,
   { label: 'run-suite', schema: RESULTS_SCHEMA }
@@ -61,7 +65,7 @@ if (run1 && run1.failures.length > 0) {
   repairs = await parallel(run1.failures.map((f) => () =>
     agent(
       `kAIrOS test "${f.test}" (requirements ${f.reqs ? f.reqs.join(', ') : '?'}) failed: ${f.detail}. ` +
-      `Project: C:\\Users\\Layer\\Documents\\vibeOS-local (kernel/, shell/, tests/). Diagnose and FIX the ` +
+      `Project: this repository (kernel/, shell/, tests/). Diagnose and FIX the ` +
       `product code (or the test, only if the test itself is wrong). Then re-run just the suite ` +
       `(\`${RUN}\`) to confirm your test passes. Keep changes minimal and idiomatic.`,
       { label: `fix:${f.test}`, phase: 'Repair', schema: FIX_SCHEMA }
@@ -71,7 +75,7 @@ if (run1 && run1.failures.length > 0) {
 
 phase('Docs')
 const docs = await agent(
-  `In ~/kairos/repo/vibeOS-local: run \`python3 scripts/update-progress.py\` so docs/PROGRESS.md reflects ` +
+  `In the repository root: run \`python3 scripts/update-progress.py\` so docs/PROGRESS.md reflects ` +
   `the latest tests/results.json. Then read docs/REQUIREMENTS.md and docs/PROGRESS.md and verify every ` +
   `requirement id R1–R26 appears in the progress table. Report a one-paragraph status summary suitable ` +
   `for the project owner.`,

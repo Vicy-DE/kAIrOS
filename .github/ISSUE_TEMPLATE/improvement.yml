@@ -1,0 +1,47 @@
+name: Improvement
+description: A feature, a change of behaviour, better docs, a better test
+title: "[improve] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        kAIrOS is a single-developer project; proposals that come with evidence (a measurement, a reproduction, a reference) land faster.
+        Owner requests are tracked as numbered requirements in `docs/REQUIREMENTS.md` (R1…); name the ones you touch.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is the problem or the gap?
+      placeholder: Today the dock shows … and the user cannot …
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should change, where (kernel / shell / manifests / iso / docs / tests), and roughly how.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Measurements, a benchmark, screenshots, an upstream reference. Decisions in this project are backed by numbers where possible (`CONTRIBUTING.md`).
+  - type: input
+    id: reqs
+    attributes:
+      label: Related requirement IDs / documents
+      placeholder: R81, docs/DESKTOP-TECH-EVAL-2026-09.md
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - desktop (shell/)
+        - kernel (kernel/)
+        - models / manifests
+        - build (engines, image, flashing)
+        - tests
+        - docs
+        - infra (CI, rig)
+        - other
