@@ -66,7 +66,7 @@ dream the video. Press Enter and it exists.
 - **18+.** kAIrOS runs uncensored local models with no content filter, by design. It is not
   for minors, and nothing in this repository is meant to be. The one hard line is in
   [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
-- **No licence yet** — see the bottom of this page.
+- **Licence:** [PolyForm Noncommercial 1.0.0](LICENSE): free for any non-commercial use — see the bottom of this page.
 
 ## The stack (deliberately slim)
 
@@ -134,6 +134,15 @@ LLM replace Krea 2, the Kroma LoRA and stock Gemma; with a rollback), and
 **`kairos-hwtest-4070-v7.5-1-media.img`** — 80.5 GB, the same system with the video and music
 add-ons pre-installed, for media of **128 GB or more**. See
 [docs/how-to/BUILDING.md](docs/how-to/BUILDING.md) §4.
+
+**Public images (R87, 2026-10-16).** Shareable images switch on a build-time profile (`/etc/kairos/profile` =
+`public`, written by `scripts/public-image-prep.sh`). Muse has no redistribution grant, so a public image never carries it:
+its default picture model is **Z-Image-Turbo** (Apache-2.0) with Muse's prompt rules, and the user can add Muse at first
+start or in ⚙ Models & licences **with their own civitai API key** (stored root-only, sent to civitai only). A **minimal**
+image bakes only the LLM and fetches the rest at first boot (resumable, sha256-checked, waits while offline; every
+feature says "downloading …" until its model is there). The prep script removes every private bit (WiFi, SSH keys,
+logs, histories, machine-id, …) and has a `--verify` mode. Without the profile file — the owner's images — nothing
+changes. Details: [docs/PUBLIC-IMAGES-2026-10-16.md](docs/PUBLIC-IMAGES-2026-10-16.md).
 
 > The tables follow `manifests/tier-*.json` as of 2026-10-14; the manifests are the truth.
 > Generating the tier table from them is a seed issue.
@@ -263,8 +272,14 @@ Private reporting through GitHub's vulnerability reporting; scope and out-of-sco
 
 ## Licence
 
-**No licence has been chosen yet.** Until the owner decides, the code is published for
-reading, building and testing; it may not be redistributed or reused beyond what copyright
-law allows. The model weights, the engines and the encyclopedia have their own licences
-(the manifests and `docs/MODEL-REFRESH-2026-09.md` name them). The licence decision is a
-seed issue.
+kAIrOS's own code is licensed under the **[PolyForm Noncommercial License 1.0.0](LICENSE)**:
+you may use, change and share it for any non-commercial purpose (personal use, study,
+research, hobby projects, non-profits); commercial use needs the author's permission. Keep
+the `Required Notice` line when you share it. The model weights, the engines, the
+dictionaries and the encyclopedia are separate works under their own licences (below).
+
+**Model licences.** Every model kAIrOS ships or downloads has a folder with its licence text and an attribution / notice
+file in `/usr/share/doc/kairos/model-licences/` (the repository's `iso/config/includes.chroot/…`), listed on the desktop
+under About kAIrOS → Licences (`GET /api/licences`). The FreeDict GPL/AGPL dictionaries' source tarballs are fetched by
+the image build (`scripts/fetch-licence-sources.sh`). Muse by Stable Yogi is never distributed by kAIrOS: a user
+downloads it from civitai with their own account (R87).

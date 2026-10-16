@@ -73,14 +73,6 @@
   ],
   "issues": [
     {
-      "title": "Choose a licence for the repository",
-      "labels": [
-        "decision",
-        "documentation"
-      ],
-      "body": "No licence has been chosen yet; without one, outside developers cannot legally reuse or redistribute the code (the README says so).\n\nThe project stance so far: free, non-commercial, 18+ appliance; model weights have their own licences (see `docs/MODEL-REFRESH-2026-09.md` and the manifests). The code licence is the owner's decision — this issue only tracks it.\n\nThings to decide:\n- the code licence (e.g. a permissive OSI licence, or a non-commercial one if that matches the stance; note that NC licences are not OSI-approved)\n- whether the generated-app prompts and docs (`docs/API.md`, `docs/wiki/`, `kernel/prompts.py`) fall under the same licence\n- a `LICENSE` file at the repo root and a line in `README.md`\n\nUntil decided, contributions are accepted under the assumption that the contributor agrees to the licence chosen later (`CONTRIBUTING.md`)."
-    },
-    {
       "title": "CI: run the mock-engine test suite on every pull request",
       "labels": [
         "infra",
@@ -236,14 +228,6 @@
         "good first issue"
       ],
       "body": "The README's stack and model-tier tables are hand-written and drifted in October 2026 (Krea 2 Turbo → Muse, stock Gemma 4 → the heretic edition, the music engine row said \"build pending\" long after acestep.cpp was built). They were brought in line with `manifests/tier-*.json` on 2026-10-14.\n\nProposal: generate the tier table from the manifests (section names, quantisation, add-on flags) with a small script, and add a unit test that fails when the README table and the manifests disagree, so it cannot drift again."
-    },
-    {
-      "title": "Image model redistribution: the baked Muse file is an early-access download",
-      "labels": [
-        "models",
-        "decision"
-      ],
-      "body": "The default image model since 2026-10-10 (`image/museByStableYogi_v35Q4Extended.gguf`, civitai) is an early-access release that needs a civitai login to download, so `scripts/download-models.py` cannot fetch it anonymously, and whether the file may be redistributed inside the appliance image is an open question for the owner.\n\nNeeded: (1) the owner's decision on redistribution, (2) a documented manual download step or an alternative public file for people who build their own image, (3) a note in the model licence audit (`docs/MODEL-REFRESH-2026-09.md` or a successor)."
     },
     {
       "title": "Language benchmark: finish the remaining runs (stopped at 14/40)",
