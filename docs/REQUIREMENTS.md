@@ -1579,3 +1579,44 @@ numbers are listed by title only — each gets its real entry when it is built (
   is): ONLY when the request asks for adult content — keep the requested name/brand and theme, as explicit as asked,
   never toned down or renamed; fictional adults aged 25+ (said so), never minors, never real identifiable people; a
   request that does not ask for adult content stays non-sexual. The wallpaper writer and the vision prompt get none.
+
+## Public images (owner, 2026-10-16)
+- **R87 — shareable public images: the public profile, first-boot downloads, Muse with the user's own civitai key, model licences**: owner
+  (2026-10-16): two shareable disk images of v7.5-2 — a FULL one and a MINIMAL one — with every private bit removed (WiFi, the
+  rig's SSH key, …); *"Muse and the Gemma LLM go into the minimal image only if their licences allow it; whatever isn't OK
+  downloads at first boot."* The licence research (build-v7.5-2/LICENCES-PUBLIC.md, 2026-10-16): the heretic Gemma 4 is
+  Apache-2.0 (ships in both, with the licence + an attribution note); Muse has no redistribution grant outside civitai and
+  civitai serves it only to a logged-in account (never baked, never mirrored); everything else redistributes with its
+  notices. Integrator decisions: the public default picture model is Z-Image-Turbo (the `image_classic` set, Apache-2.0,
+  anonymous URLs); stock Krea 2 is not used (its licence demands content filters); the owner's private images keep Muse —
+  public behaviour switches on a build-time profile. (a) **Profile** (`kernel/public.py`, `manifests/profile-public.json`):
+  `/etc/kairos/profile` = `public` (written by the prep script; `KAIROS_PROFILE` overrides) applies the overlay; no file =
+  private = the tier manifest object untouched. Public, Muse absent: `image` / `image_safe` = the tier's `image_classic`
+  files with Muse's prompt-rule families (krea-neutral / krea), `image_muse` = Muse as a download that needs the user's key
+  (alias `muse`), `vision` reads its own `vision_encoder` entry (the tier's `image.text_encoder`), the Wikipedia ZIM is a file
+  entry; Muse on disk → the tier's own sections, as on the owner's images. (b) **First-boot downloads** (the essentials:
+  the LLM, the picture set, translation fast, the dictionaries, the vision encoder, the ZIM): aria2c one file at a time,
+  resumable (control files), sha256-checked (a mismatch is fetched twice, then stops the item), waiting while offline (a TCP
+  probe before each retry), the user's pause survives a restart, never blocking; every feature whose file is missing
+  answers "… is downloading (n %) / is waiting for the network / needs a download" (the picture routes 503, the sd floor,
+  vision, translation, dictionaries, search's `knowledge_note`, the LLM start) — `GET/POST /api/downloads`, the menubar ⬇
+  chip. (c) **Muse with the user's civitai key**: `POST /api/muse/key` stores it 0600 in a 0700 dir
+  (`/var/lib/kairos/secrets`), never echoed; `POST /api/muse/download {accept_licence: true}` after the licence summary
+  (credit Stable Yogi, the civitai permissions, the Krea 2 licence + AUP); the key goes only to the configured URL's own
+  origin (`Authorization: Bearer` or `?token=`), never to the CDN civitai redirects to, never into a log, a response or an
+  error; Range resume, size + sha256; then Muse is the default. The key is entered only in the OS's own panel
+  (`shell/models.js` — the first-start dialog, the ⬇ chip, About → Models & downloads, apps via `vibe.system.models()`;
+  the Settings app gets a button), never in a generated app. (d) **Licences**: `/usr/share/doc/kairos/model-licences/<model>/`
+  (LICENSE + ATTRIBUTION / NOTICE for 13 model families, README.txt, index.json) in the overlay; `GET /api/licences` + the
+  panel's Licences view (About → Licences); the FreeDict source tarballs (36 004 656 B) are fetched + sha512-checked by the
+  image build (`scripts/fetch-licence-sources.sh`). (e) **Prep script** `scripts/public-image-prep.sh ROOT [--verify]`:
+  removes WiFi/NM state, authorized_keys, host keys (a first-boot unit makes new ones), machine-id, random seeds, logs, the
+  ESP's KAIROS-LOGS, histories, caches, the browser profile, rig leftovers, build stamps, the kAIrOS state, the civitai key,
+  Muse; disables sshd; sets the profile; the verify mode fails on anything private left (and the operator's own strings from
+  `iso/secrets/private-patterns.txt`). Doc `docs/PUBLIC-IMAGES-2026-10-16.md`; tests `tests/test_public_profile.py`.
+  **Status note (2026-10-16):** built; 12 tests in `tests/test_public_profile.py` (the private kernel unchanged, Z-Image
+  resolution + menubar, the missing-model sentences, aria2c from a mock with pause / offline / Range resume / sha256, ✨ on a
+  Z-Image picture, the civitai-key flow against a mock civitai + CDN that never leaks the key, the Licences view + the panel
+  in Chromium, the prep script on planted trees, the source fetcher); the prep script also on a read-only extract of the
+  real v7.5-2 image (56 findings → PASS); the real weights on the CPU engines PASS; the RTX 4070 check is open (the card was
+  off the PCI bus).

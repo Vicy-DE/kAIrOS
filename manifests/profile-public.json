@@ -1,0 +1,123 @@
+{
+ "profile": "public",
+ "comment": "[R87, docs/PUBLIC-IMAGES-2026-10-16.md] The overlay the kernel applies on top of the tier manifest when the image's build-time profile is public (/etc/kairos/profile = public, written by scripts/public-image-prep.sh; KAIROS_PROFILE overrides). The owner's private images have no profile file and never read this file. Muse (the tier's `image`) has no redistribution grant outside civitai and civitai serves it only to a logged-in account (LICENCES-PUBLIC §3): a public image never carries it. Until the user adds it with their OWN civitai API key, `image` and `image_safe` are the tier's `image_classic` files (Z-Image-Turbo, Apache-2.0, anonymous Hugging Face URLs) with Muse's prompt-rule families; once Muse is installed the tier's own `image` / `image_safe` sections apply unchanged, as on the owner's images. `essentials` = the baked files a public image may leave out (the minimal image): they download at first boot (aria2c, resumable, sha256-checked).",
+ "image_default": {
+  "from": "image_classic",
+  "expander": "krea-neutral",
+  "expander_parallel": 2,
+  "comment": "[R87] the public default while Muse is not installed: the tier's `image_classic` files and tuned arguments (Z-Image-Turbo — 26.6 s per 1024² picture on the RTX 4070, docs/INTEGRATION-2026-09-28.md) with the default's prompt rules (krea-neutral: people as requested, every person an adult 25+ whenever nudity or sex is involved; krea-18plus on an explicit adult request). `classic` stays the same model without prompt expansion."
+ },
+ "image_safe": {
+  "from": "image_classic",
+  "name": "{short} SFW (the same model as the default, SFW prompt rules)",
+  "expander": "krea",
+  "expander_parallel": 2,
+  "comment": "[R87] the public SFW path while Muse is not installed: the default's files through the SFW expander (Krea's rule 8, 'assume clothing covers…'), as `image_safe` is Muse + that expander on the owner's images."
+ },
+ "muse": {
+  "section": "image",
+  "key": "muse",
+  "match_url": "https://civitai.com/api/download/models/3258948",
+  "auth": {
+   "type": "civitai",
+   "part": "diffusion",
+   "url": "https://civitai.com/api/download/models/3258948",
+   "mode": "header",
+   "modes": [
+    "header",
+    "query"
+   ],
+   "signup": "https://civitai.com",
+   "key_help": "civitai.com → your avatar → Account settings → API Keys → Add API key"
+  },
+  "licence_dir": "krea-2-muse",
+  "licence_summary": [
+   "Muse by Stable Yogi (civitai model 2741166, version 3258948 'v3.5 Q4 Extended') is a fine-tune of Krea 2 by the civitai user Stable_Yogi. Credit: Stable Yogi.",
+   "It is not part of kAIrOS: you download it yourself from civitai, with your own free civitai account and API key, under civitai's Terms of Service and the creator's permissions.",
+   "The creator's civitai permissions: credit required; no commercial use beyond what civitai's 'RentCivit' allows (do not sell the pictures or the model); no sharing of merges or derivatives; no different licence on derivatives.",
+   "The Krea 2 Community License Agreement and Krea's Acceptable Use Policy (https://www.krea.ai/krea-2-use-policy) apply to Krea 2 and every derivative, and you are bound by them. Krea 2 is licensed under the Krea 2 Community License Agreement. For more information, visit https://krea.ai/krea-2-licensing.",
+   "Never use it for content involving minors or for intimate content of real people."
+  ]
+ },
+ "sections": {
+  "vision_encoder": {
+   "from": "image.text_encoder",
+   "name": "Qwen3-VL-4B-Instruct — the vision encoder",
+   "addon": true,
+   "comment": "[R87] the vision add-on's weights as their own entry: the tier's `image.text_encoder` (Muse's text encoder — Q4_K_M on the 8 GB tier, Q8_0 above), copied here because in the public profile `image` may be Z-Image, whose text encoder is a text-only Qwen3-4B; `vision` points here. The same file, the same path — never a second copy. Fetched by the essentials (it is baked on the owner's images); its sha256 comes from `sha256` below (the 8 GB tier's file: the Hugging Face API's = the v7.5-2 image's)."
+  },
+  "knowledge_zim": {
+   "name": "Wikipedia English (all articles, intro text, no pictures, ZIM 2026-06)",
+   "addon": true,
+   "store": "knowledge",
+   "comment": "[R87] the offline Wikipedia the owner's images bake (knowledge.zim_pattern) as a concrete file for the first-boot download; sha256 = kiwix's .sha256 = the v7.5 images' copy.",
+   "file": "wikipedia_en_all_mini_2026-06.zim",
+   "url": "https://download.kiwix.org/zim/wikipedia/wikipedia_en_all_mini_2026-06.zim",
+   "size_gb": 12.53,
+   "size_bytes": 12531679311,
+   "sha256": "1d0f8178709481c831272d95f95dccc030e9193e38e732b86b1938ae2606226e"
+  }
+ },
+ "patch": {
+  "vision": {
+   "weights": {
+    "shared_with": "vision_encoder"
+   }
+  }
+ },
+ "sha256": {
+  "image/Qwen3VL-4B-Instruct-Q4_K_M.gguf": "66358cb18bb6b3b1b6675aa412c7a88ef01d228f481184d13668e5201c730a0a",
+  "image/qwen_image_vae.safetensors": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f"
+ },
+ "essentials": [
+  {
+   "key": "llm",
+   "label": "the language model",
+   "feature": "apps, web pages, games and answers",
+   "paths": [
+    "llm"
+   ]
+  },
+  {
+   "key": "image",
+   "label": "the picture model",
+   "feature": "pictures",
+   "paths": [
+    "image_classic"
+   ],
+   "skip_with_muse": true
+  },
+  {
+   "key": "translation",
+   "label": "the translation model",
+   "feature": "translation",
+   "paths": [
+    "translation.fast"
+   ]
+  },
+  {
+   "key": "dictionaries",
+   "label": "the dictionaries",
+   "feature": "dictionary look-ups",
+   "paths": [
+    "dictionaries"
+   ]
+  },
+  {
+   "key": "vision_encoder",
+   "label": "the vision encoder",
+   "feature": "looking at pictures",
+   "paths": [
+    "vision_encoder"
+   ]
+  },
+  {
+   "key": "knowledge",
+   "label": "the offline Wikipedia",
+   "feature": "offline search",
+   "paths": [
+    "knowledge_zim"
+   ]
+  }
+ ]
+}

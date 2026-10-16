@@ -110,7 +110,8 @@ function applyGateVerdict(win, b) {
   return true;
 }
 
-async function pollJob(jobId) {
+async function pollJob(jobId, why) {
+  if (!jobId) throw new Error(why || "no job was started");   // [R87] a 503 (no engine, a model still downloading)
   for (;;) {
     const r = await fetch(`/api/job/${jobId}`).then((r) => r.json());
     if (r.status === "done") return r.result;
@@ -166,7 +167,7 @@ async function handleBridge(d) {
     toast("🖼️ imagining: " + String(args[0]).slice(0, 50) + "…");
     const r = await fetch("/api/image", { method: "POST", headers: apiHeaders(),
       body: JSON.stringify({ prompt: args[0], width: args[1], height: args[2] }) }).then((r) => r.json());
-    return await pollJob(r.job);
+    return await pollJob(r.job, r.error);   // [R87] no job: the kernel's own sentence ("… is downloading (n %)")
   }
   if (method === "images") {
     // [D3] parity with shell.js: one model load for the whole list (kernel /api/images)
@@ -281,6 +282,9 @@ async function handleBridge(d) {
   }
   if (method === "setup") {
     return await fetch("/api/setup").then((r) => r.json());
+  }
+  if (method === "panel") {          // [R87] vibe.system.models(): the panel is the desktop's own (shell/models.js)
+    throw new Error("the Models & licences panel is part of the kAIrOS desktop — open it there (About kAIrOS → Models & downloads)");
   }
   if (method === "upgrade") {
     // [D9] a multi-GB download + brain switch: the host page asks first (as shell.js)

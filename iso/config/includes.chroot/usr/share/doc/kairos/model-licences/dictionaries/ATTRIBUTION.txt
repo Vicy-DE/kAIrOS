@@ -1,0 +1,17 @@
+The dictionaries (/opt/vibeos/models/dict/) — BEOLINGUS de-en + 37 FreeDict pairs
+
+* BEOLINGUS / Ding de-en 1.9 (beolingus-de-en.txt.gz): (c) Frank Richter, TU Chemnitz — GNU GPL version 2 or later
+  (GPL-2.0.txt). The plain-text file is its own source form. https://dict.tu-chemnitz.de
+* FreeDict deu-eng and eng-deu 1.9-fd1 (built from the Ding data): GNU GPL version 3 AND GNU AGPL version 3
+  (GPL-3.0.txt, AGPL-3.0.txt) — the archives' bundled COPYING file is the GPL-2 text; the dictd header names
+  GPLv3 + AGPLv3. Source: see SOURCE.txt. https://freedict.org
+* FreeDict deu-ita 0.2.1, ita-deu 0.2.1, eng-fra 0.1.6, fra-eng 0.4.1, spa-eng 0.3.1: GNU GPL version 2 or later
+  (GPL-2.0.txt). Source: see SOURCE.txt.
+* FreeDict spa-deu 0.1: GPL-2+ or GFDL-1.2+ or CC BY-SA 1.0 at the recipient's choice; kAIrOS uses CC BY-SA 1.0
+  (attribution: the FreeDict project). Source: see SOURCE.txt.
+* The 25 FreeDict *-2025.11.23 pairs: WikDict by Karl Bartel, from Wiktionary via DBnary — CC BY-SA 3.0 Unported
+  (CC-BY-SA-3.0.txt; each archive also carries its COPYING). https://www.wikdict.com
+* FreeDict jpn-deu 0.2.0, jpn-eng 0.1, jpn-fra 0.1, jpn-rus 0.1: JMdict (c) James William Breen and the Electronic
+  Dictionary Research and Development Group (EDRDG) — CC BY-SA 3.0 per the FreeDict packages (EDRDG now states
+  CC BY-SA 4.0). This product uses the JMdict dictionary files, used in conformance with the Group's licence:
+  https://www.edrdg.org/edrdg/licence.html

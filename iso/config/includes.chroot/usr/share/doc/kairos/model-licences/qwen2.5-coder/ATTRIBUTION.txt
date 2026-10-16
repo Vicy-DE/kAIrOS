@@ -1,0 +1,5 @@
+Qwen2.5-Coder-7B-Instruct (Q4_K_M GGUF) — the `fast` coder add-on (downloaded on request)
+
+File:  /opt/vibeos/models/llm/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf
+Qwen2.5-Coder (c) Alibaba Cloud (Qwen Team), Apache License 2.0 (LICENSE): https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct
+GGUF by unsloth (Apache-2.0), unmodified: https://huggingface.co/unsloth/Qwen2.5-Coder-7B-Instruct-GGUF

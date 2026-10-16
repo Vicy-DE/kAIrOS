@@ -1,0 +1,12 @@
+Qwen3-VL-4B-Instruct and Qwen3-VL-8B-Instruct (official Qwen GGUFs) — the vision encoder, the prompt
+expander's encoder, Muse's text encoder, and the picture editor's encoder
+
+Files (under /opt/vibeos/models/image/):
+  Qwen3VL-4B-Instruct-Q4_K_M.gguf        sha256 66358cb18bb6b3b1b6675aa412c7a88ef01d228f481184d13668e5201c730a0a
+  mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf   (the vision add-on's projector)
+  Qwen3VL-8B-Instruct-Q4_K_M.gguf        sha256 67d1659bfe71b89d50b45a4ad1a9e5b997e5bb16ce5da66a6a6167abd569e9e2
+  mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf   sha256 c6ba85508d82f42590e6eb77d5340369ab6fecf107a7561d809523d8aa5f3bfd
+
+Qwen3-VL (c) Alibaba Cloud (Qwen Team), Apache License 2.0 (LICENSE in this folder):
+  https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF and https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF
+kAIrOS redistributes these files unmodified.

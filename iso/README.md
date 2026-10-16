@@ -104,3 +104,13 @@ sudo bash iso/verify-img-qemu.sh      # plain virtio boot
   reboots.
 - If `nvidia-smi` fails: the DKMS module may not match the booted kernel — `dkms
   autoinstall`, or disable Secure Boot (unsigned NVIDIA kmod).
+
+## Public images (R87)
+
+A shareable image is the same system with the **public profile** and every private bit removed — see
+[docs/PUBLIC-IMAGES-2026-10-16.md](../docs/PUBLIC-IMAGES-2026-10-16.md) §7. On the mounted image root:
+`bash scripts/fetch-licence-sources.sh --root ROOT` (full image: the FreeDict sources, 36 MB) and
+`bash scripts/public-image-prep.sh ROOT --esp ESP` (removes WiFi, SSH keys, logs, histories, machine-id, the
+kAIrOS state, Muse; disables sshd; writes `/etc/kairos/profile`; ends with its own `--verify`, which must PASS). The
+operator's own strings for the verify go into `iso/secrets/private-patterns.txt` (gitignored). The licence texts are in
+`config/includes.chroot/usr/share/doc/kairos/model-licences/`.

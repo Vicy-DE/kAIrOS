@@ -75,6 +75,7 @@ supersedes it, that is noted below. Dates are in the file names (`<TOPIC>-<YYYY-
 | [SD-RUN-2026-10-13.md](SD-RUN-2026-10-13.md) | the owner's first microSD run: late `/genimg` pictures arrive by themselves, the 18+ rule in the text generators, optional debug firmware no longer WARNs; R79's drop policy on slow media reasoned |
 | [DOCK-BROWSER-2026-10-15.md](DOCK-BROWSER-2026-10-15.md) | R81: the data-driven dock (user apps, 1.33 = minimized, a glow = shown; Files/Notes/News off) · R83: the built-in browser + addresses from the search · R84: ✨ improve a website, its versions and the revert |
 | [GAMES-IN-WINDOWS-2026-10-15.md](GAMES-IN-WINDOWS-2026-10-15.md) | R82: a game runs in a desktop window frame (the kernel glues its X window over the frame, follows drags, lowers + freezes it under menus/toasts/windows with its screenshot in the frame); launch = run, ✨ = evolve, versions + the way back; the real-X e2e test |
+| [PUBLIC-IMAGES-2026-10-16.md](PUBLIC-IMAGES-2026-10-16.md) | R87: the public images — the build-time profile (Z-Image-Turbo default, Muse only with the user's own civitai key), first-boot downloads (resumable, sha256, offline-safe), model licences + the Licences view, `scripts/public-image-prep.sh` (+ `--verify`), what the image build must do |
 | [PICTURE-EDIT-2026-10-15.md](PICTURE-EDIT-2026-10-15.md) | R85: ✨ improve a picture — Muse creates, Qwen-Image-2.1-Turbo edits (the A/B vs Qwen-Image-Edit-2511), the version chain + revert, the picture viewer / Imagine / wallpaper ✨, the GPU check |
 
 ### Engines

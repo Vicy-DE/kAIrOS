@@ -1,0 +1,15 @@
+Gemma 4 26B-A4B-it ultra-uncensored heretic (i1-IQ4_XS GGUF) — the kAIrOS language model
+
+File:     /opt/vibeos/models/llm/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf
+sha256:   e2f223775fa6e4e2129b7d7802fa7326b8da3fe261e8834baf65b722f9df3742
+Licence:  Apache License 2.0 (LICENSE in this folder) — the "Gemma 4 license",
+          https://ai.google.dev/gemma/docs/gemma_4_license (= https://ai.google.dev/gemma/apache_2)
+
+Gemma 4 26B-A4B-it (c) Google DeepMind, Apache-2.0: https://huggingface.co/google/gemma-4-26B-A4B-it
+Modified by llmfan46: "a decensored version of google/gemma-4-26B-A4B-it, made using Heretic v1.2.0 with the
+  Arbitrary-Rank Ablation (ARA) method" — https://huggingface.co/llmfan46/gemma-4-26B-A4B-it-ultra-uncensored-heretic
+Converted and quantised (imatrix i1-IQ4_XS GGUF) by mradermacher:
+  https://huggingface.co/mradermacher/gemma-4-26B-A4B-it-ultra-uncensored-heretic-i1-GGUF
+
+kAIrOS redistributes this file unmodified. The upstream repositories ship no NOTICE file.
+"Gemma" is a trademark of Google; the name is used only to describe the origin of the model.

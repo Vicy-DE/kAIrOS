@@ -1,0 +1,11 @@
+The offline Wikipedia (/opt/vibeos/knowledge/wikipedia_en_all_mini_2026-06.zim)
+
+Text from the English Wikipedia (https://en.wikipedia.org), (c) Wikipedia contributors, licensed under the
+Creative Commons Attribution-ShareAlike 4.0 licence (CC-BY-SA-4.0.txt) and the GNU Free Documentation License
+(/usr/share/common-licenses/GFDL-1.3). Each article's authors are listed in its history at
+https://en.wikipedia.org/wiki/<title>?action=history.
+ZIM file wikipedia_en_all_mini_2026-06 by Kiwix / openZIM (https://download.kiwix.org/zim/wikipedia/),
+sha256 1d0f8178709481c831272d95f95dccc030e9193e38e732b86b1938ae2606226e, unmodified. Media embedded in
+articles carry their own licences.
+The Wiktionary add-ons (wiktionary_<lang>_all_nopic ZIMs, downloaded on request) are Wiktionary text,
+(c) Wiktionary contributors, under the same CC BY-SA licence + GFDL.

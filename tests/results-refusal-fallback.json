@@ -1,5 +1,5 @@
 {
- "at": "2026-10-15 13:28:52",
+ "at": "2026-10-16 20:47:48",
  "tests": {
   "refusal_detector_real_refusals": {
    "reqs": [
@@ -41,7 +41,7 @@
     "R86"
    ],
    "status": "pass",
-   "detail": "8MB plain 7 ms; 8MB nfkc 88 ms; 1MB mixed 13 ms; 50k words 10 ms; 50k \u00e9 4 ms; 50k jp 5 ms; 50k combining 5 ms; 50k 1a 4 ms; parts/dict/bytes judged as text"
+   "detail": "8MB plain 8 ms; 8MB nfkc 87 ms; 1MB mixed 13 ms; 50k words 10 ms; 50k \u00e9 4 ms; 50k jp 5 ms; 50k combining 5 ms; 50k 1a 4 ms; parts/dict/bytes judged as text"
   },
   "refusal_r4b_block_lists": {
    "reqs": [
