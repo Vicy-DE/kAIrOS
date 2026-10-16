@@ -1,0 +1,18 @@
+Muse by Stable Yogi (v3.5 Q4 Extended) — NOT part of kAIrOS
+
+kAIrOS does not distribute this model. On a public kAIrOS image the user may download it with their own civitai
+account and API key (⚙ Models & licences → Muse); the file then comes from civitai, under civitai's Terms of
+Service and the creator's permissions, to that user alone.
+
+Model:    Muse By Stable Yogi Krea2, version "v3.5 Q4 Extended" — civitai model 2741166, version 3258948
+          https://civitai.com/models/2741166?modelVersionId=3258948
+File:     /opt/vibeos/models/image/museByStableYogi_v35Q4Extended.gguf
+          sha256 db3eceab8049b5ba7dbebeff297145698c5498d618db15b88fd1c7e0bfa4e6c5
+Creator:  Stable_Yogi — credit: Stable Yogi. A fine-tune of Krea 2 (a derivative modified by Stable_Yogi).
+Creator's civitai permissions: credit required; no commercial use beyond civitai's "RentCivit" (do not sell the
+          model or the pictures); no sharing of merges / derivatives; no different licence on derivatives.
+
+Krea 2 is licensed under the Krea 2 Community License Agreement. For more information, visit https://krea.ai/krea-2-licensing.
+
+The Krea 2 Community License Agreement and Krea's Acceptable Use Policy (https://www.krea.ai/krea-2-use-policy)
+apply to Krea 2 and every derivative; whoever downloads or uses it is bound by them.

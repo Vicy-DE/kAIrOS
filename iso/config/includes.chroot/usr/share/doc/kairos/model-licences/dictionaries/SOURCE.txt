@@ -1,0 +1,19 @@
+Corresponding source of the GPL / AGPL dictionaries
+
+The FreeDict .dictd.tar.xz archives are built from FreeDict's TEI sources. The source tarballs ship with the
+public kAIrOS images in /usr/share/doc/kairos/sources/freedict/ (fetched and sha512-checked by the image build:
+scripts/fetch-licence-sources.sh), and are always available from FreeDict:
+
+  freedict-deu-eng-1.9-fd1.src.tar.xz   18 183 480 B  https://download.freedict.org/dictionaries/deu-eng/1.9-fd1/
+  freedict-eng-deu-1.9-fd1.src.tar.xz   16 742 600 B  https://download.freedict.org/dictionaries/eng-deu/1.9-fd1/
+  freedict-deu-ita-0.2.1.src.tar.xz        101 700 B  https://download.freedict.org/dictionaries/deu-ita/0.2.1/
+  freedict-ita-deu-0.2.1.src.tar.xz        100 400 B  https://download.freedict.org/dictionaries/ita-deu/0.2.1/
+  freedict-eng-fra-0.1.6.src.tar.xz        212 948 B  https://download.freedict.org/dictionaries/eng-fra/0.1.6/
+  freedict-fra-eng-0.4.1.src.tar.xz        214 980 B  https://download.freedict.org/dictionaries/fra-eng/0.4.1/
+  freedict-spa-eng-0.3.1.src.tar.xz        121 624 B  https://download.freedict.org/dictionaries/spa-eng/0.3.1/
+  freedict-spa-deu-0.1.src.tar.xz          326 924 B  https://download.freedict.org/dictionaries/spa-deu/0.1/
+
+The deu-eng / eng-deu source form is the Ding dictionary (BEOLINGUS, GPL-2+, in /opt/vibeos/models/dict/ as
+beolingus-de-en.txt.gz) plus the ding2tei-haskell converter (AGPL-3+):
+https://github.com/freedict/tools/tree/master/importers/ding2tei
+The WikDict and JMdict pairs (CC BY-SA) carry no source obligation.

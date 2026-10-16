@@ -48,6 +48,7 @@ import hw
 import jscheck
 import jsfix
 import prompts
+import public       # [R87] the public-image profile, first-boot downloads, Muse with the user's key, the licences
 import refusal      # [R86] refusal detection + the narrow minors block (docs/REFUSAL-FALLBACK-2026-10-09.md)
 import wm
 from knowledge import Knowledge
@@ -185,6 +186,13 @@ class EngineMissingError(RuntimeError):
     def __init__(self, binary: str, message: str):
         super().__init__(message)
         self.binary = binary
+
+
+class ModelMissingError(EngineMissingError):
+    """[R87] public profile: a model file the image left out is still downloading (or needs a download) — the
+    engine-missing paths answer it the same way (a clean 503 with the sentence), never a traceback"""
+    def __init__(self, message: str):
+        super().__init__("model", message)
 
 
 def engine_missing(binary: str):
@@ -576,6 +584,11 @@ def ensure_cache_space(what: str = "generation"):
         raise RuntimeError(disk_full_message())
 
 MANIFEST = json.loads(MANIFEST_PATH.read_text())
+# [R87] the build-time profile (docs/PUBLIC-IMAGES-2026-10-16.md): "private" — no /etc/kairos/profile, the owner's
+# images — returns this very object untouched; "public" applies manifests/profile-public.json (Z-Image-Turbo is the
+# default picture model while Muse is not installed; Muse downloads with the user's own civitai key)
+PROFILE = public.Profile(MANIFESTS_DIR, MODELS_DIR, KNOWLEDGE_DIR)
+MANIFEST = PROFILE.apply(MANIFEST)
 
 
 KB = Knowledge(VIBEOS_DIR)
@@ -785,6 +798,8 @@ TRANSLATION_QUALITY = ("fast", "quality")
 # section once (aliases attached).
 IMAGE_MODEL_KEYS = {"default": "image", "safe": "image_safe", "classic": "image_classic",
                     "qwen": "image_qwen", "uncensored": "image", "chroma": "image_chroma"}
+if PROFILE.public:                  # [R87] Muse as the civitai-key download (section image_muse) while it is not installed
+    IMAGE_MODEL_KEYS["muse"] = "image_muse"
 # settings alias -> manifest section for the coder LLM choice (llm_fast is an add-on). [R86] "uncensored" =
 # a tier's `llm_uncensored` add-on section (the refusal ladder's last rung) as the PRIMARY LLM; not downloaded
 # → the default serves, like `fast`. Its download key is the section name (vibe.models.download
@@ -2249,6 +2264,9 @@ class ModelManager:
                   f"({LOG_DIR / 'llama-server.log'}):\n{engine_log_tail('llama-server.log', 1500)}", flush=True)
         require_engine("llama-server")                 # [2026-10-14] a clean 503, never a FileNotFoundError
         engine_check_or_raise("llama-server")          # the manifest's serve_args vs the installed build
+        note = ESS.note([{"file": spec["file"]}])      # [R87] public: the model is still downloading
+        if note:
+            raise ModelMissingError(note)
         await self.stop_llama()
         model_path = MODELS_DIR / spec["file"]
         cmd = [str(engine_path("llama-server")), "-m", str(model_path),
@@ -2671,6 +2689,10 @@ class ModelManager:
 
     async def _sd_batch_render(self, kind: str, jobs: list) -> list:
         """sd_batch's body: the session / per-picture rendering of jobs that passed the guard"""
+        note = ESS.note(section_files(self.manifest.get(kind) or {}))   # [R87] public: its model is still downloading
+        if note:
+            return [{"ok": False, "path": None, "error": note, "seed": None, "engine": None, "missing": True}
+                    for _ in jobs]
         ensure_cache_space(kind)
         base = sd_backend_args(self.sd_image_args(kind))
         default_w, default_h = self._flag_value(base, "-W", "512"), self._flag_value(base, "-H", "512")
@@ -3138,35 +3160,40 @@ async def download_entries(entries: list, state: dict):
     updates state['current'] as it goes. Shared by tier upgrade + add-on models."""
     for e in entries:
         dest = entry_dest(e)
-        if dest.exists() and not dest.with_name(dest.name + ".aria2").exists():
-            continue
-        state["current"] = e["file"]
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        # aria2's warnings/errors (DNS, TLS, HTTP 4xx, disk full) -> LOG_DIR/downloads.log,
-        # and their tail into the error the user sees and the journal keeps
-        log = open_engine_log("downloads.log", f"aria2c {e['file']} <- {e['url']}")
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "aria2c", "-x8", "-s8", "--continue=true", "--console-log-level=warn",
-                "--summary-interval=0", "--file-allocation=none",
-                "-d", str(dest.parent), "-o", dest.name, e["url"],
-                stdout=log or asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.STDOUT if log else asyncio.subprocess.DEVNULL)
-        finally:
-            if log:
-                log.close()
-        if await proc.wait() != 0:
-            raise RuntimeError(f"download failed: {e['file']} (aria2c exit {proc.returncode}):\n"
-                               f"{engine_log_tail('downloads.log', 800)}")
-        # entries that carry the Hugging Face LFS sha256 (the 2026-09-28 manifests do) are
-        # verified — a truncated or swapped GGUF must never be loaded as a model; the FreeDict
-        # archives publish sha512 (the dictionaries add-on carries both) [R71 P3]
-        for algo in ("sha256", "sha512"):
-            if e.get(algo):
-                have = await asyncio.to_thread(file_digest, dest, algo)
-                if have != e[algo].lower():
-                    dest.unlink(missing_ok=True)
-                    raise RuntimeError(f"download corrupt: {e['file']} {algo} {have[:12]}… != {e[algo][:12]}…")
+        async with public.file_lock(dest):        # [R87] one download per file (the first-boot downloads, Muse)
+            await _download_entry(e, dest, state)
+
+
+async def _download_entry(e: dict, dest: Path, state: dict):
+    if dest.exists() and not dest.with_name(dest.name + ".aria2").exists():
+        return
+    state["current"] = e["file"]
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    # aria2's warnings/errors (DNS, TLS, HTTP 4xx, disk full) -> LOG_DIR/downloads.log,
+    # and their tail into the error the user sees and the journal keeps
+    log = open_engine_log("downloads.log", f"aria2c {e['file']} <- {e['url']}")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "aria2c", "-x8", "-s8", "--continue=true", "--console-log-level=warn",
+            "--summary-interval=0", "--file-allocation=none",
+            "-d", str(dest.parent), "-o", dest.name, e["url"],
+            stdout=log or asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.STDOUT if log else asyncio.subprocess.DEVNULL)
+    finally:
+        if log:
+            log.close()
+    if await proc.wait() != 0:
+        raise RuntimeError(f"download failed: {e['file']} (aria2c exit {proc.returncode}):\n"
+                           f"{engine_log_tail('downloads.log', 800)}")
+    # entries that carry the Hugging Face LFS sha256 (the 2026-09-28 manifests do) are
+    # verified — a truncated or swapped GGUF must never be loaded as a model; the FreeDict
+    # archives publish sha512 (the dictionaries add-on carries both) [R71 P3]
+    for algo in ("sha256", "sha512"):
+        if e.get(algo):
+            have = await asyncio.to_thread(file_digest, dest, algo)
+            if have != e[algo].lower():
+                dest.unlink(missing_ok=True)
+                raise RuntimeError(f"download corrupt: {e['file']} {algo} {have[:12]}… != {e[algo][:12]}…")
 
 
 def file_digest(path: Path, algo: str = "sha256") -> str:
@@ -3183,6 +3210,28 @@ def file_sha256(path: Path) -> str:
 
 # add-on image models (not baked into the small shipped image — downloaded on demand)
 MODEL_DL = {}  # key -> {"status": downloading|done|error, "current", "error"}
+
+
+async def _essential_arrived(key: str, e: dict):
+    """[R87] a first-boot download finished one file: the dictionaries get their indexes once complete, a ZIM is
+    handed to kiwix-serve (it lists its archives at start)"""
+    if key == "dictionaries" and section_present(MANIFEST.get("dictionaries") or {}):
+        await asyncio.to_thread(DICT.build_all, lambda m: print(m, flush=True))
+    elif e.get("store") == "knowledge":
+        await KB.restart_kiwix()
+
+
+async def _muse_arrived():
+    """[R87] the user's Muse download is complete: the tier's own `image` / `image_safe` apply from now on"""
+    if PROFILE.refresh(MANIFEST):
+        print(f"[kernel] picture model: {MANIFEST['image']['name']} (Muse installed)", flush=True)
+
+
+# [R87] public profile: the first-boot downloads of the baked files the image left out, and Muse with the user's key
+ESS = public.Essentials(PROFILE, lambda: MANIFEST, LOG_DIR, CACHE_DIR / "downloads-state.json",
+                        disk_free=disk_free_bytes, on_item=_essential_arrived)
+MUSE = public.Muse(PROFILE, lambda: MANIFEST, LOG_DIR, CACHE_DIR / "muse-state.json",
+                   disk_free=disk_free_bytes, on_installed=_muse_arrived)
 
 
 async def run_model_download(key: str, section_key: str):
@@ -3204,14 +3253,14 @@ async def run_model_download(key: str, section_key: str):
 
 
 async def run_upgrade(tier: str):
-    manifest = load_tier_manifest(tier)
+    manifest = PROFILE.apply(load_tier_manifest(tier), remember=False)    # [R87] public: never the civitai file
     state = UPGRADE["active"] = {"tier": tier, "status": "downloading", "current": "", "error": None}
     try:
         await download_entries(manifest_files(manifest), state)
         # all files in place -> switch the OS brain
         state["status"] = "switching"
         ACTIVE_TIER_FILE.write_text(tier)
-        new_manifest = load_tier_manifest(tier)
+        new_manifest = PROFILE.apply(load_tier_manifest(tier))           # [R87] private: unchanged
         MANIFEST.clear()
         MANIFEST.update(new_manifest)  # MM.manifest is the same object
         async with MM.gpu_lock:
@@ -3289,7 +3338,7 @@ async def h_setup(request):
     tiers = []
     for t in TIER_ORDER:
         try:
-            m = load_tier_manifest(t)
+            m = PROFILE.apply(load_tier_manifest(t), remember=False)     # [R87] private: unchanged
         except Exception:
             continue
         got, total = tier_progress(m)
@@ -3307,6 +3356,9 @@ async def h_setup(request):
         "current_tier": MANIFEST.get("tier"),
         "recommended_tier": recommended_tier(vram),
         "tiers": tiers, "upgrade": UPGRADE["active"],
+        # [R87] the build-time profile; public: the first-boot downloads + the optional Muse (the first-start dialog)
+        "profile": PROFILE.name,
+        **({"downloads": ESS.snapshot(), "muse": MUSE.status()} if PROFILE.public else {}),
     })
 
 
@@ -3490,6 +3542,8 @@ async def h_status(request):
         "image_model": image_model_status(),                                # [R76] setting -> model + LoRA
         "image_sessions": "sd-server" if MM.sd_server_path() else "sd-cli",   # docs/INTEGRATION-2026-09-28.md §4
         "image_edit": image_edit_status(),                                  # [R85] the ✨ picture editor
+        "profile": PROFILE.name,                                            # [R87] private | public
+        **({"downloads": downloads_summary()} if PROFILE.public else {}),
         "loaded": MM.llama_model_key,
         "gpu": MM.gpu_status(),              # [R80] what is resident on the GPU now — the menubar shows it
         "last_fallback": REFUSALS["last"],   # [R86] {at, from, to, kind, reason, prompt} of the last refusal fallback
@@ -3922,6 +3976,9 @@ async def h_wallpaper(request):
     (kernel/sessionlog.py); a random selection of it STAYS, the rest GOES;
     the LLM weaves the survivors into one scene; the image model renders it.
     A fresh session falls back to the classic wallpaper themes."""
+    missing = model_missing_response(resolve_image_kind({}))   # [R87] public: the picture model is still downloading
+    if missing is not None:                     # an aiohttp Response is a MutableMapping: empty = falsy
+        return missing
     texts, seen = [], set()
     for _, t in sessionlog.session_events():
         t = t.strip()
@@ -4006,6 +4063,9 @@ async def h_search(request):
     result = await KB.search(query, int(body.get("limit", 4)), native=knowledge_native(body["query"]))
     if query != body["query"]:
         result["query"] = query
+    note = ESS.note(section_files(MANIFEST.get("knowledge_zim") or {}))     # [R87] public: the offline Wikipedia
+    if note:
+        result["knowledge_note"] = note
     return web.json_response(await localize_results(result))   # … the answers go back in the user's language
 
 
@@ -5560,6 +5620,25 @@ def resolve_image_kind(body: dict) -> str:
     return kind
 
 
+def model_missing_response(kind: str):
+    """[R87] public profile: the 503 a picture route answers while its model is a first-boot download not done yet
+    (the sentence says downloading n % / waiting for the network / needs a download) — None otherwise"""
+    note = ESS.note(section_files(MANIFEST.get(kind) or {}))
+    if not note:
+        return None
+    return web.json_response({"error": note, "missing": True, "downloading": ESS.running(), "panel": "models"},
+                             status=ENGINE_MISSING_STATUS)
+
+
+def downloads_summary() -> dict:
+    """[R87] /api/status `downloads`: the first-boot downloads in one line for the menubar"""
+    snap = ESS.snapshot()
+    cur = next((i for i in snap["items"] if snap["current"] and i["key"] == snap["current"]["key"]), None)
+    return {"state": snap["state"], "pct": snap["pct"], "missing_bytes": snap["missing_bytes"],
+            "complete": snap["complete"], "current": cur and cur["label"], "reason": snap["reason"],
+            "muse": MUSE.status()["state"]}
+
+
 def image_model_status() -> dict:
     """[R76] /api/status `image_model`: the user's setting, the section that renders with it
     (an add-on not downloaded yet -> the default), its name and the LoRA applied (None = stock)."""
@@ -5652,6 +5731,9 @@ async def h_image(request):
         return engine_missing_response("sd-cli", why)
     sessionlog.note_event("image", prompt)
     kind = resolve_image_kind(body)
+    missing = model_missing_response(kind)      # [R87] public: the picture model is still downloading
+    if missing is not None:                     # an aiohttp Response is a MutableMapping: empty = falsy
+        return missing
     jid = new_job(kind)
 
     async def run():
@@ -5713,6 +5795,9 @@ async def h_images(request):
     if why:
         return engine_missing_response("sd-cli", why)
     kind = resolve_image_kind(body)
+    missing = model_missing_response(kind)      # [R87]
+    if missing is not None:                     # an aiohttp Response is a MutableMapping: empty = falsy
+        return missing
     w = h = None
     dims = image_dims(body.get("width"), body.get("height"))
     if dims:
@@ -6068,8 +6153,8 @@ async def h_models(request):
             listed[key]["aliases"].append(alias)
             continue
         addon = bool(spec.get("addon"))
-        present = section_present(spec) if addon else \
-            (MODELS_DIR / spec["diffusion"]["file"]).exists()
+        present = section_present(spec) if addon or PROFILE.public else \
+            (MODELS_DIR / spec["diffusion"]["file"]).exists()          # [R87] public: every file (a download in flight)
         dl = MODEL_DL.get(alias)
         size = round(sum(e.get("size_gb", 0) for e in section_files(spec)), 1)
         lora = spec.get("lora") if isinstance(spec.get("lora"), dict) else None
@@ -6088,6 +6173,11 @@ async def h_models(request):
                           "present": MM.sd_lora(key) is not None} if lora else None,
                  "aliases": [],                         # other image_model keys naming this model
                  "files": [e["file"] for e in section_files(spec)]}
+        if PROFILE.public:                              # [R87] Muse = the user's civitai download; the essentials' notes
+            entry["auth"] = (spec.get("auth") or {}).get("type")
+            entry["note"] = ESS.note(section_files(spec)) if not addon else None
+            if entry["auth"]:
+                entry["needs_key"] = not MUSE.key_set()
         listed[key] = entry
         models.append(entry)
     # media add-ons (video/music/vision) — downloadable, not baked into the small image
@@ -6137,6 +6227,8 @@ async def h_models(request):
     llm_choice = MM.llm_choice(s)
     return web.json_response({
         "models": models, "extras": extras,
+        "profile": PROFILE.name,                                         # [R87] private | public
+        **({"downloads": ESS.snapshot(), "muse": MUSE.status()} if PROFILE.public else {}),
         # the coder LLM: default (the tier's brain) or the fast add-on [docs/FIXES-2026-09-28.md A2]
         "llm": MM.llm_options(),
         "llm_setting": {"setting": llm_choice["setting"], "effective": llm_choice["effective"],
@@ -6219,6 +6311,18 @@ async def h_model_download(request):
     if key == "uncensored" and (body.get("kind") or body.get("list")) == "llm":
         key = "llm_uncensored"           # [R86 r2, N1] the LLM list's entry (vibe.models().llm[].key), not the baked image alias
     section_key = addon_section_key(key)
+    if PROFILE.public and section_key == "image_muse":
+        # [R87] Muse is never fetched without the user's own civitai key and their OK to its licence summary
+        return web.json_response({"error": "Muse needs your own free civitai account: add your civitai API key and "
+                                           "accept Muse's licence in ⚙ Models & licences (vibe.system.models())",
+                                  "auth": "civitai", "needs_key": not MUSE.key_set(), "panel": "models"}, status=409)
+    if PROFILE.public and key in IMAGE_MODEL_KEYS and section_key in MANIFEST \
+            and not MANIFEST[section_key].get("addon") and not section_present(MANIFEST[section_key]):
+        note = ESS.note(section_files(MANIFEST[section_key]))
+        if note:                         # [R87] the public default is a first-boot download, not an add-on
+            ESS.start()                  # (never overrides the user's pause)
+            return web.json_response({"ok": True, "essential": True, "downloading": ESS.running(),
+                                      "state": ESS.snapshot()["state"], "note": note})
     if key in IMAGE_MODEL_KEYS and section_key in MANIFEST and not MANIFEST[section_key].get("addon") \
             and section_present(MANIFEST[section_key]):
         # [R76] a baked image model ("uncensored" used to be the Kroma v0.2 add-on, now = the default):
@@ -6315,7 +6419,8 @@ def vision_unavailable_reason():
     except (KeyError, TypeError):
         return "the vision section's shared weights are not in this manifest"
     if not weights.exists():
-        return f"the vision model's weights are missing ({weights.name} — the image model's text encoder)"
+        return ESS.note([{"file": vision_llm_spec()["file"]}]) or \
+            f"the vision model's weights are missing ({weights.name} — the image model's text encoder)"
     if spec.get("addon") and not section_present(spec):
         return ("the vision add-on (the mmproj projector) isn't installed — "
                 "download it in Settings (vibe.models.download('vision'))")
@@ -6584,8 +6689,8 @@ def translation_unavailable_reason(check_setting: bool = True):
     if not isinstance(MANIFEST.get("translation"), dict) or not translation_llm_spec("fast"):
         return "this tier has no translation model"
     if not translation_mode_present("fast") and not translation_mode_present("quality"):
-        return ("the translation add-on isn't installed — download it in Settings "
-                "(vibe.models.download('translation'))")
+        return ESS.note([MANIFEST["translation"]["fast"]]) or (     # [R87] public: the first-boot download
+            "the translation add-on isn't installed — download it in Settings (vibe.models.download('translation'))")
     return None
 
 
@@ -7022,7 +7127,8 @@ async def h_dict(request):
     try:
         res = await asyncio.to_thread(DICT.lookup, word, frm, to, limit)
     except dictionary.DictError as e:
-        return web.json_response({"error": str(e)}, status=e.status)
+        note = ESS.note(section_files(MANIFEST.get("dictionaries") or {}))   # [R87] public: still downloading
+        return web.json_response({"error": note or str(e), **({"missing": True} if note else {})}, status=e.status)
     return web.json_response(res)
 
 
@@ -8024,6 +8130,90 @@ async def h_wiki(request):
     return web.Response(text=page["text"], content_type="text/markdown")
 
 
+# ------------------------------------------------ [R87] public images (docs/PUBLIC-IMAGES-2026-10-16.md)
+async def _json_body(request) -> dict:
+    """the request's JSON object, {} when there is none — never an exception that would print the body"""
+    try:
+        body = await request.json()
+    except Exception:
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
+async def h_downloads(request):
+    """GET /api/downloads: the first-boot downloads of a public image (state, the item being fetched, per item
+    done/total bytes and status present|downloading|verifying|waiting|queued|paused|error|missing|skipped). The private
+    profile has none: complete, no items."""
+    if not PROFILE.public:
+        return web.json_response({"profile": PROFILE.name, "state": "done", "complete": True, "paused": False,
+                                  "items": [], "done_bytes": 0, "total_bytes": 0, "missing_bytes": 0, "pct": 100})
+    return web.json_response(ESS.snapshot())
+
+
+async def h_downloads_ctl(request):
+    """POST /api/downloads {"action": "start" | "resume" | "retry" | "pause"} (guarded): start / resume (also clears
+    a stopped item's error) or pause the first-boot downloads; the user's pause survives a restart."""
+    if not PROFILE.public:
+        return web.json_response({"error": "this image has no first-boot downloads (private profile)"}, status=409)
+    action = (await _json_body(request)).get("action")
+    if action in ("start", "resume", "retry"):
+        ESS.resume()
+    elif action == "pause":
+        await ESS.pause()
+    else:
+        return web.json_response({"error": 'action must be "start", "resume", "retry" or "pause"'}, status=400)
+    return web.json_response(ESS.snapshot())
+
+
+async def h_muse(request):
+    """GET /api/muse: the optional Muse download — installed, key_set (never the key), state, progress, the licence
+    summary to show before the download"""
+    return web.json_response(MUSE.status())
+
+
+async def h_muse_key(request):
+    """POST /api/muse/key {"key": "<civitai API key>"} stores it root-only (0600); {"key": null} / {"remove": true}
+    removes it. Guarded (loopback or token, never a sandboxed app). The answer never contains the key."""
+    if not PROFILE.public:
+        return web.json_response({"error": "Muse is managed by this image's own build (private profile)"}, status=409)
+    body = await _json_body(request)
+    if body.get("remove") or body.get("key") is None:
+        MUSE.remove_key()
+        print("[kernel] civitai API key removed", flush=True)
+        return web.json_response({"ok": True, "key_set": False})
+    try:
+        MUSE.store_key(body.get("key"))
+    except ValueError as e:
+        return web.json_response({"error": str(e), "key_set": MUSE.key_set()}, status=400)
+    print("[kernel] civitai API key stored (root-only)", flush=True)
+    return web.json_response({"ok": True, "key_set": True})
+
+
+async def h_muse_download(request):
+    """POST /api/muse/download {"accept_licence": true, "auth_mode"?: "header" | "query"} starts / resumes Muse's
+    download with the stored key; {"action": "pause"} pauses it. 409 without a key or without the licence OK."""
+    body = await _json_body(request)
+    if body.get("action") == "pause":
+        await MUSE.pause()
+        return web.json_response(MUSE.status())
+    code, out = MUSE.start(bool(body.get("accept_licence")), body.get("auth_mode"))
+    return web.json_response(out, status=code)
+
+
+async def h_licences(request):
+    """GET /api/licences: every model of the licence index (/usr/share/doc/kairos/model-licences/index.json) with its
+    licence, attribution, texts and `installed`, plus installed files the index does not name"""
+    return web.json_response(public.licences(MANIFEST, PROFILE))
+
+
+async def h_licence_text(request):
+    """GET /api/licences/{id}/{name}: one licence text the index names (text/plain); 404 otherwise"""
+    t = public.licence_text(request.match_info["id"], request.match_info["name"])
+    if not t:
+        return web.json_response({"error": "no such licence text"}, status=404)
+    return web.Response(text=t[0], content_type=t[1], charset="utf-8")
+
+
 async def h_settings_get(request):
     return web.json_response(load_settings())
 
@@ -8233,8 +8423,33 @@ def add_routes(app):
     app.router.add_post("/api/image/improve", h_image_improve)
     app.router.add_get("/api/image/versions", h_image_versions)
     app.router.add_post("/api/image/version", h_image_version)
+    # [R87] public images: the first-boot downloads, Muse with the user's civitai key (guarded: they fill the disk and
+    # store a secret), the licences (open, read-only)
+    app.router.add_get("/api/downloads", h_downloads)
+    app.router.add_post("/api/downloads", guarded(h_downloads_ctl))
+    app.router.add_get("/api/muse", h_muse)
+    app.router.add_post("/api/muse/key", guarded(h_muse_key))
+    app.router.add_post("/api/muse/download", guarded(h_muse_download))
+    app.router.add_get("/api/licences", h_licences)
+    app.router.add_get("/api/licences/{id}/{name}", h_licence_text)
     app.router.add_static("/files", FILES_DIR)
     app.router.add_static("/shell", SHELL_DIR)
+
+
+def start_public():
+    """[R87] public profile, at startup: say which picture model serves, start the first-boot downloads of what the
+    image left out (unless the user paused them, or KAIROS_ESSENTIALS_AUTOSTART=0), continue an interrupted Muse
+    download the user had started. The private profile: nothing."""
+    if not PROFILE.public:
+        return
+    snap = ESS.snapshot()
+    todo = "complete" if snap["complete"] else f"{snap['missing_bytes'] / 1e9:.1f} GB to fetch"
+    muse = "installed" if MUSE.installed() else "not installed — the user can add it with a civitai key"
+    print(f"[kernel] profile public: picture model {MANIFEST['image']['name']} (Muse {muse}); "
+          f"first-boot downloads: {todo}{' (paused by the user)' if ESS.paused else ''}", flush=True)
+    if os.environ.get("KAIROS_ESSENTIALS_AUTOSTART", "1") != "0":
+        ESS.start()
+    MUSE.resume_on_boot()
 
 
 def main():
@@ -8259,7 +8474,8 @@ def main():
         # nothing here may raise: an on_startup exception ends the kernel, and
         # Restart=on-failure would retry it into `failed` with no desktop [R63]
         for name, step in (("kiwix", KB.start_kiwix),
-                           ("boottime", lambda: boottime.init(VIBEOS_DIR))):
+                           ("boottime", lambda: boottime.init(VIBEOS_DIR)),
+                           ("downloads", start_public)):                  # [R87] public: first-boot downloads
             try:
                 r = step()
                 if asyncio.iscoroutine(r):
@@ -8313,6 +8529,12 @@ def main():
             await asyncio.wait_for(TR.stop(grace=3), 5)                # the fast MT server [R71]
         except Exception:
             pass
+        for dl in (ESS, MUSE):         # [R87] aria2c writes its control file on SIGTERM: the next boot resumes
+            if dl.proc and dl.proc.returncode is None:
+                try:
+                    dl.proc.terminate()
+                except Exception:
+                    pass
         print(f"[kernel] shutdown: {n_streams} stream(s) ended ({len(pending)} cancelled), "
               f"games {games}, {time.monotonic() - t0:.2f} s", flush=True)
     app.on_shutdown.append(shutdown)

@@ -366,6 +366,7 @@ const BRIDGE_SRC = `
     system: {
       setup: () => call("setup"),
       upgrade: (tier) => call("upgrade", tier),
+      models: (section) => call("panel", section || "downloads"),   // [R87] the OS's Models & licences panel
     },
     hw: {
       get: () => call("hw", { device: "all" }).then(hwResult),
@@ -791,8 +792,8 @@ function injectBridge(html, seed) {
   return bridge + html;
 }
 
-async function pollJob(jobId) {
-  if (!jobId) throw new Error("no job was started");     // [2026-10-14] e.g. a 503: the engine is not installed
+async function pollJob(jobId, why) {
+  if (!jobId) throw new Error(why || "no job was started");     // [2026-10-14] e.g. a 503: the engine is not installed
   for (;;) {
     const r = await fetch(`/api/job/${jobId}`).then((r) => r.json());
     if (r.status === "done") return r.result;
@@ -814,7 +815,7 @@ async function handleBridge(win, d) {
     toast("🖼️ imagining: " + String(args[0]).slice(0, 50) + "…");
     const r = await fetch("/api/image", { method: "POST", headers: apiHeaders(),
       body: JSON.stringify({ prompt: args[0], width: args[1], height: args[2] }) }).then((r) => r.json());
-    return await pollJob(r.job);
+    return await pollJob(r.job, r.error);   // [R87] no job: the kernel's own sentence ("… is downloading (n %)")
   }
   if (method === "images") {
     // one model load for the whole list (kernel /api/images → sd-server session)
@@ -937,6 +938,11 @@ async function handleBridge(win, d) {
   }
   if (method === "setup") {
     return await getSetup();
+  }
+  if (method === "panel") {          // [R87] vibe.system.models(section): the OS's own panel (the key never enters an app)
+    if (typeof kairosModels === "undefined") throw new Error("the Models & licences panel is not available");
+    kairosModels.open(["downloads", "muse", "licences"].includes(args[0]) ? args[0] : "downloads");
+    return true;
   }
   if (method === "upgrade") {
     // [D9] a tier upgrade is a multi-GB download and a brain switch: the shell asks first
@@ -2529,7 +2535,7 @@ async function showAbout() {
       <div class="sm-about-logo">❖ kAIrOS</div>
       <div class="sm-about-sub">the operating system that dreams its own software — free, local, yours</div>
       <dl class="sm-about-facts"></dl>
-      <div class="ui-prompt-btns"><button class="ui-prompt-ok">Close</button></div>
+      <div class="ui-prompt-btns"><button class="ui-prompt-cancel sm-about-models" type="button">Models &amp; downloads</button><button class="ui-prompt-cancel sm-about-lic" type="button">Licences</button><button class="ui-prompt-ok">Close</button></div>
     </div>`;
   const dl = ov.querySelector(".sm-about-facts");
   for (const [k, v] of [["model tier", s.tier], ["brain", s.llm], ["pictures", s.image],
@@ -2544,6 +2550,9 @@ async function showAbout() {
   const onKey = (e) => { if (e.key === "Escape" || e.key === "Enter") { e.preventDefault(); done(); } };
   addEventListener("keydown", onKey, true);
   ov.querySelector(".ui-prompt-ok").onclick = done;
+  // [R87] About → Licences / Models & downloads: the OS's panel (shell/models.js)
+  ov.querySelector(".sm-about-lic").onclick = () => { done(); if (typeof kairosModels !== "undefined") kairosModels.open("licences"); };
+  ov.querySelector(".sm-about-models").onclick = () => { done(); if (typeof kairosModels !== "undefined") kairosModels.open("downloads"); };
   ov.onclick = (e) => { if (e.target === ov) done(); };
   setTimeout(() => ov.querySelector(".ui-prompt-ok").focus(), 30);
 }
@@ -2559,6 +2568,7 @@ async function pollStatus() {
     $("#mb-tier").title = g ? `on the GPU: ${g.full_name || g.name} (${g.kind})` : "nothing loaded on the GPU";
     $("#mb-state").textContent = s.state + (s.online ? " · ◉ web" : s.knowledge ? " · ◎ offline kb" : " · ◌ no kb");
     $("#mb-dot").classList.toggle("busy", s.state !== "idle");
+    if (typeof kairosModels !== "undefined") kairosModels.status(s);   // [R87] the ⬇ chip of a public image
   } catch { $("#mb-state").textContent = "kernel offline"; }
 }
 setInterval(pollStatus, 4000);
@@ -2575,6 +2585,8 @@ async function checkSetup() {
     watchUpgrade();
     return;
   }
+  // [R87] a public image's first start: its first-boot downloads + the optional Muse (shell/models.js)
+  if (s.first_boot && s.profile === "public" && typeof kairosModels !== "undefined" && kairosModels.firstStart(s)) return;
   const rec = tierInfo(s, s.recommended_tier);
   if (!s.first_boot || !rec || s.recommended_tier === s.current_tier || rec.present) {
     if (s.first_boot) fetch("/api/setup/done", { method: "POST", headers: apiHeaders() });

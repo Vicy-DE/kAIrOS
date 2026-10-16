@@ -190,6 +190,12 @@ python3 "$REPO/tests/test_games_windows.py" || RC=1
 echo "== running tests/test_picture_edit.py =="
 python3 "$REPO/tests/test_picture_edit.py" || RC=1
 
+# the public images [R87]: the build-time profile (private = untouched, public = Z-Image default), the first-boot downloads
+# (aria2c against a local mock: pause, offline, Range resume, sha256), Muse with the user's civitai key (mock civitai + CDN:
+# the key reaches civitai's origin only), the licences + the panel (Chromium; skips without), the image prep script
+echo "== running tests/test_public_profile.py =="
+python3 "$REPO/tests/test_public_profile.py" || RC=1
+
 if [ -z "${KAIROS_TEST_ONLY:-}" ]; then          # a subset run (iterating on a fix) never rewrites the progress page
     echo "== regenerating docs/PROGRESS.md =="
     python3 "$REPO/scripts/update-progress.py"

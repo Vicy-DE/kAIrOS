@@ -1,0 +1,7 @@
+Chroma1-HD (Q4_K_S GGUF) + T5-XXL encoder — the `chroma` picture add-on (downloaded on request)
+
+Files: /opt/vibeos/models/image/Chroma1-HD-Q4_K_S.gguf, t5-v1_1-xxl-encoder-Q4_K_M.gguf, ae.safetensors
+Chroma1-HD (c) lodestones, Apache License 2.0 (LICENSE): https://huggingface.co/lodestones/Chroma1-HD
+GGUF by silveroxides (Apache-2.0): https://huggingface.co/silveroxides/Chroma1-HD-GGUF
+T5 v1.1 XXL encoder (c) Google, Apache-2.0 — GGUF by city96: https://huggingface.co/city96/t5-v1_1-xxl-encoder-gguf
+VAE ae.safetensors: see ../z-image-turbo/ATTRIBUTION.txt

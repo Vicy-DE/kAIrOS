@@ -1,0 +1,8 @@
+Wan2.2-TI2V-5B + its VAE, and the umt5-xxl text encoder — the video model
+
+Files (under /opt/vibeos/models/video/): Wan2.2-TI2V-5B-Q4_K_M.gguf, Wan2.2_VAE.safetensors, umt5-xxl-encoder-Q4_K_M.gguf
+Wan2.2 (c) Wan-AI (Alibaba), Apache License 2.0 (LICENSE.txt, from https://github.com/Wan-Video/Wan2.2):
+  https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B — GGUF and VAE by QuantStack, unmodified:
+  https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF
+umt5-xxl (c) Google, Apache-2.0: https://huggingface.co/google/umt5-xxl — encoder GGUF by city96, unmodified:
+  https://huggingface.co/city96/umt5-xxl-encoder-gguf

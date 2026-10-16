@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # dev/docker/run-js-checks.sh — the shell's JavaScript checks, in the node:24-alpine image (no node needed
 # on the host, none in the kernel-test image either):
-#   1. node --check on shell/shell.js, shell/browser.js, shell/games.js, shell/pictures.js and shell/bench/host.js (syntax)
+#   1. node --check on shell/shell.js, shell/browser.js, shell/games.js, shell/pictures.js, shell/models.js and shell/bench/host.js (syntax)
 #   2. the app bridge: the BRIDGE_SRC template literal in shell.js is parsed with new Function — a syntax
 #      error there breaks EVERY generated app, and node --check on the file does not see inside the literal
 #   3. tests/bridge-test.js (the bridge's unit tests: storage shims, vibe.* aliases, unknown-member guard, …)
@@ -15,6 +15,7 @@ run node --check /w/shell/bench/host.js && echo "shell/bench/host.js OK"
 run node --check /w/shell/browser.js && echo "shell/browser.js OK"          # [R83] the built-in browser
 run node --check /w/shell/games.js && echo "shell/games.js OK"              # [R82] games in windows
 run node --check /w/shell/pictures.js && echo "shell/pictures.js OK"        # [R85] ✨ improve a picture
+run node --check /w/shell/models.js && echo "shell/models.js OK"            # [R87] Models, downloads & licences
 echo "== BRIDGE_SRC parses =="
 run node -e '
 const fs = require("fs");

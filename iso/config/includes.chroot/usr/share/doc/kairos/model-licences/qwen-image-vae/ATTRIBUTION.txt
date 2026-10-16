@@ -1,0 +1,7 @@
+Qwen-Image VAE — part of Muse's file set (and the qwen add-on)
+
+File:     /opt/vibeos/models/image/qwen_image_vae.safetensors
+sha256:   a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f
+Qwen-Image (c) 2024 Alibaba Cloud, Apache License 2.0 (LICENSE in this folder, from
+  https://huggingface.co/Qwen/Qwen-Image): repacked by Comfy-Org, unmodified:
+  https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI

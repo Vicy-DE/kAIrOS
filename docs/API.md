@@ -380,6 +380,7 @@ The OS ships with starter (8gb-tier) models and can upgrade its own brain.
 |---|---|
 | `vibe.system.setup()` | `{vram_mb, current_tier, recommended_tier, tiers:[{tier, llm, total_gb, have_gb, present}], upgrade}` |
 | `vibe.system.upgrade(tier)` | download that tier's models in the background and switch to them when done |
+| `vibe.system.models(section?)` | open the OS's own **Models & licences** panel (`downloads`, `muse`, `licences`): first-boot downloads, the optional Muse key, every model's licence — never ask for an API key inside an app [R87] |
 
 ## Persistence & UI
 
@@ -552,3 +553,24 @@ viewer (`shell/pictures.js`: the quick viewer, a click in the Imagine gallery, t
 v0 is the original (copied into the chain), v1… the edits; up to 16 versions per picture are kept (v0 and the current
 always). The chain lives in the media cache (`/files/images/versions/<root>/`), which evicts a whole chain at a time,
 never one version of it. These routes are open like the generation routes (R66): they write only the media cache.
+
+## Public images — first-boot downloads, Muse, licences (the shell's panel; apps use `vibe.system.models()`) [R87]
+
+A public image (`/etc/kairos/profile` = `public`, docs/PUBLIC-IMAGES-2026-10-16.md) uses Z-Image-Turbo as its picture
+model until the user adds Muse with their own civitai API key, and fetches the files it leaves out at first boot. The
+desktop's panel (`shell/models.js`) uses:
+
+| route | what |
+|---|---|
+| `GET /api/downloads` | `{profile, state: idle\|downloading\|waiting\|paused\|error\|done, paused, complete, current: {key, file}, reason, done_bytes, total_bytes, missing_bytes, pct, items: [{key, label, feature, status: present\|downloading\|verifying\|waiting\|queued\|paused\|error\|missing\|skipped, done_bytes, total_bytes, pct, missing, error}]}`; the private profile: complete, no items |
+| `POST /api/downloads` `{action: start\|resume\|retry\|pause}` | guarded (R66); the user's pause survives a restart; 409 on a private image |
+| `GET /api/muse` | `{available, installed, key_set, state, error, reason, pct, done_bytes, total_bytes, missing_bytes, started, name, auth_mode, auth_modes, host, licence_summary, accepted}` — never the key |
+| `POST /api/muse/key` `{key}` / `{remove: true}` | guarded; stores the user's civitai key root-only (0600) / removes it; the answer is `{ok, key_set}` only |
+| `POST /api/muse/download` `{accept_licence: true, auth_mode?: header\|query}` / `{action: "pause"}` | guarded; 409 `needs_key` / `needs_licence`; the key goes only to the configured civitai URL's origin |
+| `GET /api/licences` | `{dir, models: [{id, name, licence, attribution, files, installed, texts, links}], other}` — every model folder of `/usr/share/doc/kairos/model-licences/` |
+| `GET /api/licences/<id>/<file>` | one licence text the index names (text/plain); 404 otherwise |
+
+While a file is still missing, the routes that need it answer a sentence instead of failing: `/api/image`, `/api/images`,
+`/api/wallpaper` → 503 `{error: "the picture model is downloading (37 %) — pictures work when it is done", missing: true}`;
+`vibe.models.download("default")` → `{essential: true, note}`; `vibe.models.download("muse")` → 409 `{auth: "civitai"}`.
+

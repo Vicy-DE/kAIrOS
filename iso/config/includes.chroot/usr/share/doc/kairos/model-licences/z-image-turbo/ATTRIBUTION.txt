@@ -1,0 +1,19 @@
+Z-Image-Turbo (Q4_0 GGUF) + its text encoder and VAE — the picture model of the public kAIrOS images
+(and the `classic` add-on of every image)
+
+Files (under /opt/vibeos/models/image/):
+  z_image_turbo-Q4_0.gguf                sha256 2bc57986874c84f7ec6d02d9d7070a53b0029954a0e38a6e1342eb91095572f5
+  Qwen3-4B-Instruct-2507-Q4_K_M.gguf     sha256 3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597
+  ae.safetensors                         sha256 afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38
+  (larger tiers: z_image_turbo-Q8_0.gguf from the same repository)
+
+Z-Image-Turbo (c) Tongyi-MAI (Alibaba), Apache License 2.0 (LICENSE in this folder, from
+  https://github.com/Tongyi-MAI/Z-Image): https://huggingface.co/Tongyi-MAI/Z-Image-Turbo
+  GGUF conversion by leejet (Apache-2.0): https://huggingface.co/leejet/Z-Image-Turbo-GGUF
+Text encoder: Qwen3-4B-Instruct-2507 (c) 2024 Alibaba Cloud, Apache-2.0 (LICENSE-Qwen3-4B-Instruct-2507):
+  https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507 — GGUF by unsloth (Apache-2.0):
+  https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF
+VAE: ae.safetensors from Comfy-Org's repack of Z-Image-Turbo (Apache-2.0):
+  https://huggingface.co/Comfy-Org/z_image_turbo
+
+kAIrOS redistributes these files unmodified. None of the upstream repositories ships a NOTICE file.

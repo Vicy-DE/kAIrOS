@@ -1,0 +1,9 @@
+ACE-Step 1.5 turbo — the music model
+
+Files (under /opt/vibeos/models/music/): acestep-v15-turbo-Q8_0.gguf, acestep-5Hz-lm-1.7B-Q8_0.gguf,
+  vae-BF16.gguf, Qwen3-Embedding-0.6B-Q8_0.gguf
+ACE-Step 1.5 (c) 2026 ACEStep (ACE Studio + StepFun), MIT License (LICENSE in this folder):
+  https://github.com/ace-step/ACE-Step-1.5 — GGUFs by Serveurperso, unmodified:
+  https://huggingface.co/Serveurperso/ACE-Step-1.5-GGUF
+The 5 Hz language model is pre-trained from Qwen3-1.7B, and the text encoder is Qwen3-Embedding-0.6B:
+  both (c) 2024 Alibaba Cloud, Apache-2.0 (LICENSE-Qwen3, from https://huggingface.co/Qwen/Qwen3-1.7B).

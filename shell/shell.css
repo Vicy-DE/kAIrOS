@@ -469,3 +469,37 @@ html.screen-secondary #setup { display: none !important; }
 .pv-bar .br-versions { flex: 1; min-width: 0; border-bottom: 0; background: transparent; }
 .picture-win.improving .win-improve { opacity: 1; text-shadow: 0 0 10px var(--accent); animation: pulse 1s infinite; }
 #mb-wallpaper-improve { padding-left: 6px; padding-right: 6px; }
+
+/* ---------- [R87] Models, downloads & licences (shell/models.js) ---------- */
+.km { position: absolute; inset: 0; overflow: auto; padding: 14px 18px 24px; color: var(--text); font-size: 13px; user-select: text; }
+.km-sec { margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid var(--glass-border); }
+.km-h { margin: 4px 0 8px; font-size: 15px; color: var(--accent2); }
+.km-p { margin: 4px 0 8px; line-height: 1.5; color: var(--text-dim); }
+.km-lead { color: var(--text); font-weight: 600; }
+.km-dim { opacity: .75; }
+.km-row { display: flex; gap: 10px; align-items: baseline; margin: 6px 0 3px; }
+.km-name { font-weight: 600; }
+.km-sub { color: var(--text-dim); font-size: 12px; }
+.km-st { margin-left: auto; color: var(--text-dim); font-size: 12px; white-space: nowrap; }
+.km-bar { height: 6px; border-radius: 999px; background: var(--glass); overflow: hidden; margin: 2px 0 6px; }
+.km-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .4s; }
+.km-note { font-size: 12px; margin: 2px 0 6px; }
+.km-err { color: #ff8c8c; }
+.km-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.km-actions button, .km-keyrow button { padding: 7px 14px; border-radius: 10px; border: 0; cursor: pointer; }
+.km-keyrow { display: flex; gap: 8px; margin: 6px 0 10px; }
+.km-key { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--glass-border);
+  background: rgba(0, 0, 0, .35); color: var(--text); font-family: monospace; }
+.km-licence { background: var(--glass); border-radius: 10px; padding: 8px 12px; margin: 6px 0; }
+.km-ul { margin: 4px 0 2px 18px; padding: 0; line-height: 1.45; color: var(--text-dim); }
+.km-small { font-size: 12px; text-align: left; max-height: 150px; overflow: auto; }
+.km-acceptlab { font-size: 12px; color: var(--text-dim); }
+.km-mode { padding: 6px; border-radius: 8px; background: rgba(0, 0, 0, .35); color: var(--text); border: 1px solid var(--glass-border); }
+.km-lic { padding: 6px 0; border-top: 1px dashed var(--glass-border); }
+.km-attr { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+.km-links { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.km-link { padding: 3px 9px; border-radius: 8px; border: 1px solid var(--glass-border); background: var(--glass); color: var(--accent2); cursor: pointer; font-size: 11px; }
+.km-gap { margin-top: 12px; }
+.km-text { white-space: pre-wrap; font-size: 11px; line-height: 1.4; background: rgba(0, 0, 0, .35); border-radius: 10px; padding: 10px; max-height: 360px; overflow: auto; }
+.km-first { margin-top: 14px; text-align: left; }
+.km-first .km-key { width: 100%; box-sizing: border-box; margin: 6px 0; }

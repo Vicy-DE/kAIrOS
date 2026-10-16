@@ -1,0 +1,248 @@
+{
+ "comment": "[R87] the licence index behind the desktop's Licences view (GET /api/licences): one entry per model folder here; `files` (+ `prefixes`: every file whose path starts with one) = the model files under /opt/vibeos/models (a .zim under /opt/vibeos/knowledge) that belong to it — an entry is shown as installed when one of them is on disk. docs/PUBLIC-IMAGES-2026-10-16.md.",
+ "models": [
+  {
+   "id": "gemma-4-heretic",
+   "name": "Gemma 4 26B-A4B-it ultra-uncensored heretic (i1-IQ4_XS)",
+   "licence": "Apache-2.0",
+   "attribution": "Gemma 4 26B-A4B-it © Google DeepMind (Apache-2.0); decensored by llmfan46 (Heretic v1.2.0, ARA); i1-IQ4_XS GGUF by mradermacher; redistributed unmodified.",
+   "files": [
+    "llm/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf"
+   ],
+   "texts": [
+    "LICENSE",
+    "ATTRIBUTION.txt"
+   ],
+   "links": {
+    "model": "https://huggingface.co/mradermacher/gemma-4-26B-A4B-it-ultra-uncensored-heretic-i1-GGUF",
+    "licence": "https://ai.google.dev/gemma/docs/gemma_4_license"
+   }
+  },
+  {
+   "id": "z-image-turbo",
+   "name": "Z-Image-Turbo (+ Qwen3-4B-Instruct-2507 text encoder, VAE)",
+   "licence": "Apache-2.0",
+   "attribution": "Z-Image-Turbo © Tongyi-MAI (Alibaba), GGUF by leejet; Qwen3-4B-Instruct-2507 © Alibaba Cloud, GGUF by unsloth; VAE from Comfy-Org/z_image_turbo — all Apache-2.0, unmodified.",
+   "files": [
+    "image/z_image_turbo-Q4_0.gguf",
+    "image/z_image_turbo-Q8_0.gguf",
+    "image/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+    "image/ae.safetensors"
+   ],
+   "texts": [
+    "LICENSE",
+    "LICENSE-Qwen3-4B-Instruct-2507",
+    "ATTRIBUTION.txt"
+   ],
+   "links": {
+    "model": "https://huggingface.co/Tongyi-MAI/Z-Image-Turbo"
+   }
+  },
+  {
+   "id": "krea-2-muse",
+   "name": "Muse by Stable Yogi (v3.5 Q4 Extended, a Krea 2 fine-tune)",
+   "licence": "civitai permissions of the creator + Krea 2 Community License Agreement",
+   "attribution": "Credit: Stable Yogi (civitai model 2741166). Not distributed by kAIrOS: the user's own civitai download. Krea 2 is licensed under the Krea 2 Community License Agreement. For more information, visit https://krea.ai/krea-2-licensing.",
+   "files": [
+    "image/museByStableYogi_v35Q4Extended.gguf"
+   ],
+   "texts": [
+    "NOTICE.txt"
+   ],
+   "links": {
+    "model": "https://civitai.com/models/2741166?modelVersionId=3258948",
+    "licence": "https://krea.ai/krea-2-licensing",
+    "policy": "https://www.krea.ai/krea-2-use-policy"
+   }
+  },
+  {
+   "id": "qwen3-vl",
+   "name": "Qwen3-VL-4B / 8B-Instruct (vision, expander and editor encoders)",
+   "licence": "Apache-2.0",
+   "attribution": "Qwen3-VL © Alibaba Cloud (Qwen Team); official Qwen GGUFs, unmodified.",
+   "files": [
+    "image/Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+    "image/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf",
+    "image/Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+    "image/mmproj-Qwen3VL-8B-Instruct-Q8_0.gguf",
+    "image/Qwen3VL-8B-Instruct-Q8_0.gguf"
+   ],
+   "texts": [
+    "LICENSE",
+    "ATTRIBUTION.txt"
+   ],
+   "links": {
+    "model": "https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF"
+   }
+  },
+  {
+   "id": "qwen-image-vae",
+   "name": "Qwen-Image VAE",
+   "licence": "Apache-2.0",
+   "attribution": "Qwen-Image © 2024 Alibaba Cloud; repacked by Comfy-Org, unmodified.",
+   "files": [
+    "image/qwen_image_vae.safetensors"
+   ],
+   "texts": [
+    "LICENSE",
+    "ATTRIBUTION.txt"
+   ],
+   "links": {
+    "model": "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI"
+   }
+  },
+  {
+   "id": "qwen-image-2.1",
+   "name": "Qwen-Image-2.1 Turbo edit (the ✨ picture editor) and Qwen-Image-2.1",
+   "licence": "Qwen Research License (research or evaluation purposes only)",
+   "attribution": "Qwen is licensed under the Qwen RESEARCH LICENSE AGREEMENT, Copyright (c) 2026 Hangzhou Tongyi Laboratory Technology Co., Ltd. All Rights Reserved.",
+   "files": [
+    "image/qwen_image_2.1_turbo_Q4_K_M.gguf",
+    "image/qwen_image_2.1_vae_bf16.safetensors",
+    "image/qwen_image_2.1-Q8_0.gguf"
+   ],
+   "texts": [
+    "LICENSE.txt",
+    "NOTICE.txt"
+   ],
+   "links": {
+    "model": "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo"
+   }
+  },
+  {
+   "id": "index-translate",
+   "name": "Index-Translate 2B / 9B (translation)",
+   "licence": "Apache-2.0",
+   "attribution": "Index-Translate © Bilibili IndexTeam, built on Qwen3.5 (© 2026 Alibaba Cloud); official GGUFs, unmodified.",
+   "files": [
+    "translation/Index-Translate-2B.Q4_K_M.gguf",
+    "translation/Index-Translate-9B.Q4_K_M.gguf"
+   ],
+   "texts": [
+    "LICENSE",
+    "LICENSE-Qwen3.5-2B",
+    "ATTRIBUTION.txt"
+   ],
+   "links": {
+    "model": "https://huggingface.co/IndexTeam/Index-Translate-2B-GGUF"
+   }
+  },
+  {
+   "id": "wan-2.2",
+   "name": "Wan2.2-TI2V-5B + VAE, umt5-xxl encoder (video)",
+   "licence": "Apache-2.0",
+   "attribution": "Wan2.2 © Wan-AI, GGUF/VAE by QuantStack; umt5-xxl © Google, GGUF by city96; unmodified.",
+   "files": [
+    "video/Wan2.2-TI2V-5B-Q4_K_M.gguf",
+    "video/Wan2.2_VAE.safetensors",
+    "video/umt5-xxl-encoder-Q4_K_M.gguf"
+   ],
+   "texts": [
+    "LICENSE.txt",
+    "ATTRIBUTION.txt"
+   ],
+   "links": {
+    "model": "https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B"
+   }
+  },
+  {
+   "id": "ace-step-1.5",
+   "name": "ACE-Step 1.5 turbo (music)",
+   "licence": "MIT (+ Qwen3 parts, Apache-2.0)",
+   "attribution": "ACE-Step 1.5 © 2026 ACEStep (ACE Studio + StepFun), GGUFs by Serveurperso; the 5 Hz LM is pre-trained from Qwen3-1.7B and the text encoder is Qwen3-Embedding-0.6B (© 2024 Alibaba Cloud, Apache-2.0).",
+   "files": [
+    "music/acestep-v15-turbo-Q8_0.gguf",
+    "music/acestep-5Hz-lm-1.7B-Q8_0.gguf",
+    "music/vae-BF16.gguf",
+    "music/Qwen3-Embedding-0.6B-Q8_0.gguf"
+   ],
+   "texts": [
+    "LICENSE",
+    "LICENSE-Qwen3",
+    "ATTRIBUTION.txt"
+   ],
+   "links": {
+    "model": "https://github.com/ace-step/ACE-Step-1.5"
+   }
+  },
+  {
+   "id": "dictionaries",
+   "name": "Dictionaries: BEOLINGUS de-en + FreeDict (WikDict, JMdict)",
+   "licence": "GPL-2+, GPL-3 + AGPL-3, CC BY-SA 3.0",
+   "attribution": "BEOLINGUS/Ding © Frank Richter, TU Chemnitz; FreeDict; WikDict (Karl Bartel; Wiktionary via DBnary); JMdict © James William Breen and the EDRDG. Source of the GPL/AGPL archives: SOURCE.txt.",
+   "files": [
+    "dict/beolingus-de-en.txt.gz",
+    "dict/freedict-deu-eng-1.9-fd1.dictd.tar.xz",
+    "dict/freedict-eng-deu-1.9-fd1.dictd.tar.xz"
+   ],
+   "texts": [
+    "ATTRIBUTION.txt",
+    "SOURCE.txt",
+    "GPL-2.0.txt",
+    "GPL-3.0.txt",
+    "AGPL-3.0.txt",
+    "CC-BY-SA-3.0.txt"
+   ],
+   "links": {
+    "source": "https://freedict.org",
+    "jmdict": "https://www.edrdg.org/edrdg/licence.html"
+   },
+   "prefixes": [
+    "dict/"
+   ]
+  },
+  {
+   "id": "wikipedia",
+   "name": "Wikipedia English (offline, ZIM) and the Wiktionary add-ons",
+   "licence": "CC BY-SA 4.0 + GFDL",
+   "attribution": "Text from the English Wikipedia, © Wikipedia contributors (each article's history lists its authors); ZIM by Kiwix/openZIM, unmodified.",
+   "files": [
+    "wikipedia_en_all_mini_2026-06.zim"
+   ],
+   "texts": [
+    "CC-BY-SA-4.0.txt",
+    "ATTRIBUTION.txt"
+   ],
+   "links": {
+    "source": "https://download.kiwix.org/zim/wikipedia/"
+   },
+   "prefixes": [
+    "wikipedia_",
+    "wiktionary_"
+   ]
+  },
+  {
+   "id": "qwen2.5-coder",
+   "name": "Qwen2.5-Coder-7B-Instruct (the fast coder add-on)",
+   "licence": "Apache-2.0",
+   "attribution": "Qwen2.5-Coder © Alibaba Cloud (Qwen Team); GGUF by unsloth, unmodified.",
+   "files": [
+    "llm/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf"
+   ],
+   "texts": [
+    "LICENSE",
+    "ATTRIBUTION.txt"
+   ],
+   "links": {
+    "model": "https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct"
+   }
+  },
+  {
+   "id": "chroma1-hd",
+   "name": "Chroma1-HD + T5-XXL (the chroma picture add-on)",
+   "licence": "Apache-2.0",
+   "attribution": "Chroma1-HD © lodestones, GGUF by silveroxides; T5 v1.1 XXL © Google, GGUF by city96; unmodified.",
+   "files": [
+    "image/Chroma1-HD-Q4_K_S.gguf",
+    "image/t5-v1_1-xxl-encoder-Q4_K_M.gguf"
+   ],
+   "texts": [
+    "LICENSE",
+    "ATTRIBUTION.txt"
+   ],
+   "links": {
+    "model": "https://huggingface.co/lodestones/Chroma1-HD"
+   }
+  }
+ ]
+}

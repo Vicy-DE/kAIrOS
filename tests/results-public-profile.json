@@ -1,0 +1,105 @@
+{
+ "at": "2026-10-16 20:50:00",
+ "tests": {
+  "pp_static_overlay_and_wiring": {
+   "reqs": [
+    "R87",
+    "R47",
+    "R3"
+   ],
+   "status": "pass",
+   "detail": "overlay byte-stable; 180 essential entries anonymous over 4 tiers (8gb all sha256-pinned; larger tiers unpinned: 2); Muse only via civitai; shell + bridge + routes wired"
+  },
+  "pp_profile_unit_real_manifests": {
+   "reqs": [
+    "R87",
+    "R76",
+    "R70"
+   ],
+   "status": "pass",
+   "detail": "4 tiers: private = same object; public = Z-Image + krea-neutral/krea, image_muse (civitai), vision_encoder, ZIM; Muse on disk = tier's own; profile_name"
+  },
+  "pp_private_kernel_unchanged": {
+   "reqs": [
+    "R87",
+    "R76"
+   ],
+   "status": "pass",
+   "detail": "private: MANIFEST == tier JSON, Muse default, no muse alias, no downloads; key/download routes 409"
+  },
+  "pp_public_resolution_and_menubar": {
+   "reqs": [
+    "R87",
+    "R76",
+    "R80"
+   ],
+   "status": "pass",
+   "detail": "image -> Z-Image (default/uncensored/adult/muse), safe -> Z-Image SFW; menubar 'Z-Image-Turbo'; models: default + safe + muse(civitai)"
+  },
+  "pp_missing_models_say_so": {
+   "reqs": [
+    "R87",
+    "R47",
+    "R70",
+    "R71"
+   ],
+   "status": "pass",
+   "detail": "image/images/wallpaper 503 with the sentence, sd floor, vision, search note, download default/muse"
+  },
+  "pp_essentials_download_pause_offline_resume_sha256": {
+   "reqs": [
+    "R87",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "pause (control file, 'paused') -> resume (Range) -> offline (waiting) -> back (Range) -> wrong sha refused x2 -> retry -> complete; Z-Image renders"
+  },
+  "pp_picture_improve_on_zimage": {
+   "reqs": [
+    "R87",
+    "R85"
+   ],
+   "status": "pass",
+   "detail": "Z-Image picture -> \u2728 improve -> v1 by the Qwen editor (the source as -r)"
+  },
+  "pp_licences_view_api": {
+   "reqs": [
+    "R87"
+   ],
+   "status": "pass",
+   "detail": "13 entries, texts on disk, README complete, Krea line, 67 files covered; API + 6 traversal 404"
+  },
+  "pp_panel_e2e_licences_chip_firststart_key": {
+   "reqs": [
+    "R87",
+    "R81"
+   ],
+   "status": "pass",
+   "detail": "first-start dialog (Muse prompt) -> Not now; \u2b07 chip -> panel rows; About -> Licences -> LICENSE text; key cleared + stored + removed"
+  },
+  "pp_muse_civitai_key_flow_never_leaks": {
+   "reqs": [
+    "R87",
+    "R76",
+    "R66"
+   ],
+   "status": "pass",
+   "detail": "no key 409, bad 400, wrong 401 (no echo), 0600/0700, licence 409, query ?token -> civitai only, pause/Range resume, sha ok, Muse default; key in no log/response/file"
+  },
+  "pp_prep_verify_planted_then_clean_idempotent": {
+   "reqs": [
+    "R87",
+    "R66"
+   ],
+   "status": "pass",
+   "detail": "verify: 51 FAIL lines incl. 37 categories + repo text WARN; prepare -> PASS, kept files; 2nd run 0 changes; unfixable stays FAIL"
+  },
+  "pp_fetch_licence_sources_mock": {
+   "reqs": [
+    "R87"
+   ],
+   "status": "pass",
+   "detail": "fetch + sha512, idempotent, --check, repair, bad sha refused, 8 real tarballs = 36 004 656 B"
+  }
+ }
+}

@@ -261,6 +261,8 @@ def main():
     results = {**results, **load_results(RESULTS.with_name("results-games-windows.json"))[1]}
     # and ✨ improve a picture [R85] (tests/test_picture_edit.py -> results-picture-edit.json)
     results = {**results, **load_results(RESULTS.with_name("results-picture-edit.json"))[1]}
+    # and the public images [R87] (tests/test_public_profile.py -> results-public-profile.json)
+    results = {**results, **load_results(RESULTS.with_name("results-public-profile.json"))[1]}
     ids, titles, notes = parse_requirements(REQ_DOC.read_text(encoding="utf-8"))
     lines, c = render(ids, titles, notes, results, ran_at)
     OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
