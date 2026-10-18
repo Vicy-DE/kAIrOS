@@ -321,6 +321,54 @@ _POLICY_SENTENCE = re.compile(
     r"|(?:I|we) (?:must|have to|will) (?:refrain|decline|refuse)|(?:sexually )?explicit (?:content|material|imagery|images?) (?:is|are) not"
     r"|(?:unable|not able) to (?:fulfil|fulfill|comply|generate|create|produce|assist)|inappropriate content"
     r"|meine richtlinien|verst(?:ö|oe)(?:ß|ss)t gegen|kann nicht erfüllt werden)\b", re.IGNORECASE)
+# [R88 fix round 4, 2026-10-18] a refusal that OFFERS SOMETHING ELSE is a refusal. "I can't write sexually explicit content, even
+# with fictional adult characters.\n\nWhat I can offer instead: - A romantic short story …" (Ornith-1.5-9B, the fast-models
+# benchmark's A5) passed as "a limitation followed by help": the pivot ". What I can" made it partial help, the refusal reached
+# the user and no ladder rung ran — on an 18+ OS a watered-down answer. An OFFER is a first-person proposal of something other
+# than what was asked ("What I can offer instead", "Instead, I can", "I'd be happy to … instead", "If you'd like, I can …",
+# "Here's a tamer / non-explicit version", "… fades to black"; DE "Stattdessen kann ich", "Was ich anbieten kann", "Ich kann
+# dir aber … anbieten"). It turns partial help into a refusal ONLY when the refusal sentence itself refused content (_offered):
+# the sentence speaks the content-policy vocabulary (_POLICY: "sexually explicit content"), or it is bare ("I can't write
+# that.") and the offer is a watered-down version (_SOFT or _POLICY inside it: "a romantic story that fades to black", "a
+# non-explicit version"). A limitation followed by real help keeps passing: "I can't browse the web, but here is what I know:
+# …", "I can't do that from here. Instead, I can walk you through it: open Settings …" (bare, but nothing watered down).
+OFFER_WINDOW = 400     # chars after the refusal sentence in which the offer is looked for
+_I_CAN = r"I (?:can|could)(?!['’]t|\s+not\b)"
+_NOT_OF = r"(?!\s+of\b)"                       # "… instead of …" is a preposition, no offer
+_OFFER_I = (r"\bwhat I (?:can|could) (?:offer|do|write|suggest|provide|create|give you)\b"
+            r"|\binstead,?\s+I(?:'d| would| can| could| will|'ll|'m happy| am happy)\b|\bI (?:can|could) instead\b"
+            r"|\b" + _I_CAN + r" (?:offer|suggest)\b|\b" + _I_CAN + r"\b[^.!?\n]{0,120}?\binstead\b" + _NOT_OF
+            + r"|\bI(?:'d| would)(?: be)? (?:happy|glad|more than happy) to\b[^.!?\n]{0,160}?\binstead\b" + _NOT_OF
+            + r"|\bif you(?:'d| would)? (?:like|prefer|want)(?: to| me to)?,? " + _I_CAN + r"\b"
+            r"|\b(?:alternatively|as an alternative),? " + _I_CAN + r"\b"
+            r"|\bstattdessen (?:kann|könnte|würde|biete|schreibe|erstelle) ich\b"
+            r"|\bich (?:kann|könnte|würde) (?:dir |ihnen |euch )?(?:aber |gerne |gern )?stattdessen\b"
+            r"|\bwas ich (?:dir |ihnen |euch )?(?:stattdessen |aber |gerne |gern )?(?:anbieten|tun|machen|schreiben) kann\b"
+            r"|\bich (?:kann|könnte) (?:dir|ihnen|euch)\b[^.!?\n]{0,120}?\banbieten\b|\bich biete (?:dir|ihnen|euch)\b"
+            r"|\b(?:als alternative|alternativ) (?:kann|könnte|biete|würde) ich\b"
+            r"|\bwenn du (?:magst|möchtest|willst|lust hast),? (?:kann|könnte) ich\b")
+# a watered-down version: a softening word up to two words before a version noun ("a tamer version", "a romantic short
+# story", "eine entschärfte Fassung"); the STRONG words alone also mark a prompt's sanitised rewrite
+_SOFT_STRONG = (r"tamer|toned[\s-]down|watered[\s-]down|non[\s-]?explicit|less explicit|sfw|safe[\s-]for[\s-]work|pg(?:-13)?"
+                r"|family[\s-]friendly|censored|saniti[sz]\w+|non[\s-]?sexual|non[\s-]?nude|clothed|fade[\s-]to[\s-]black"
+                r"|entschärft\w*|zahmer\w*|jugendfrei\w*|nicht[\s-]explizit\w*|weniger explizit\w*")
+_SOFT_MILD = (r"tasteful|romantic|sensual|suggestive|implied|closed[\s-]door|softer|romantisch\w*|sinnlich\w*|angedeutet\w*"
+              r"|dezent\w*|harmloser\w*")
+_VERSION = (r"versions?|takes?|alternatives?|variants?|rewrites?|story|stories|scenes?|descriptions?|prompts?|depictions?"
+            r"|fassung\w*|variante\w*|geschichte\w*|szene\w*")
+_SOFT_VERSION = (r"\b(?:" + _SOFT_STRONG + r"|" + _SOFT_MILD + r")(?:[\s,-]+[\w'-]+){0,2}?[\s-]+(?:" + _VERSION + r")\b")
+_FADE = r"\bfad(?:es?|ed|ing) to black\b|\bfade-to-black\b|\bbehind closed doors\b|\boff[\s-](?:page|screen)\b"
+_OFFER = re.compile(_OFFER_I + r"|\bhere (?:are|is) (?:some|a few|an?) (?:\w+ )?alternatives?\b"
+                    r"|\b(?:how|what) about\b[^.!?\n]{0,80}?\binstead\b" + _NOT_OF
+                    + r"|\b(?:here(?:'s| is| are)|hier (?:ist|sind))\b[^.!?\n:]{0,30}?" + _SOFT_VERSION
+                    + r"|\b(?:" + _VERSION + r")\s+instead\b" + _NOT_OF + r"|" + _FADE, re.IGNORECASE)
+_SOFT = re.compile(_SOFT_VERSION + r"|" + _FADE + r"|\bwithout (?:any |the )?(?:explicit|graphic)\b|\b(?:not|non|less)[\s-]graphic\b"
+                   r"|\bnicht (?:grafisch|explizit)\w*|\bohne (?:explizite|grafische)\w*", re.IGNORECASE)
+# for a PROMPT (recall first; an expansion never offers anything): the first-person offers and a sanitised rewrite — never
+# "fades to black" (a video's last shot) or "alternatives" (an expander may list prompt variants)
+_OFFER_PROMPT = re.compile(_OFFER_I + r"|\b(?:here(?:'s| is)|this is|hier ist)\b[^.!?\n:]{0,30}?\b(?:" + _SOFT_STRONG
+                           + r")(?:[\s,-]+[\w'-]+){0,2}?[\s-]+(?:" + _VERSION + r")\b|\b(?:" + _VERSION + r")\s+instead\b" + _NOT_OF,
+                           re.IGNORECASE)
 
 KINDS = ("html", "text", "prompt")
 
@@ -463,9 +511,26 @@ def _sentence(text: str, m) -> tuple:
     return text[m.end():stop], (text[stop + 1:].strip() if end else "")
 
 
+def _offered(text: str, m) -> bool:
+    """[R88 fix round 4] the refusal sentence refused CONTENT and an offer of something else follows within OFFER_WINDOW
+    chars: the sentence (with up to 200 chars before it) speaks the content-policy vocabulary, or it is bare and the offer
+    is a watered-down version (see _OFFER)"""
+    end = _SENTENCE_END.search(text, m.end())
+    stop = end.start() if end else len(text)
+    window = text[m.end():stop + OFFER_WINDOW]
+    if not _OFFER.search(window):
+        return False
+    if _POLICY.search(text[max(0, m.start() - 200):stop]):
+        return True
+    return bool(_BARE_TAIL.match(text[m.end():stop])) and bool(_SOFT.search(window) or _POLICY.search(window))
+
+
 def _partial_help(text: str, m, raw: str = None) -> bool:
     """after the refusal sentence a pivot ("…, but here is …", "…, so this app simulates it:") introduces
-    real content: PIVOT_CONTENT chars of it, or (html) the document itself — partial help, not a refusal [S1]"""
+    real content: PIVOT_CONTENT chars of it, or (html) the document itself — partial help, not a refusal [S1].
+    [R88 fix round 4] never when the content is an offer of something else after a content refusal (_offered)"""
+    if _offered(text, m):
+        return False
     end = _SENTENCE_END.search(text, m.end())
     stop = end.end() + 1 if end else len(text)
     window = text[m.end():min(len(text), stop + 160)]
@@ -559,6 +624,9 @@ def _prompt(t: str) -> tuple:
     m = _POLICY_SENTENCE.search(t)
     if m and not _sign_quoted(t, m.start(), m.end()):
         return True, f"policy: '{m.group(0)[:70]}'"
+    m = _OFFER_PROMPT.search(t)                    # [R88 fix round 4] "Here's a tamer version instead: …"
+    if m and not _sign_quoted(t, m.start(), m.end()):
+        return True, f"offer: '{m.group(0)[:70]}'"
     return False, ""
 
 
@@ -571,7 +639,14 @@ def _html(t: str) -> tuple:
         return False, ""                      # an empty page is validate_html's business, not a refusal
     tags = _count_tags(t)                     # [round 4b, S10] linear
     if tags > HTML_RICH and len(visible) > HTML_SHORT:
-        return False, ""                      # [round 4] a real page — structure AND substantial text — is never a refusal
+        # [round 4] a real page — structure AND substantial text — is never a refusal; [R88 fix round 4] unless its visible
+        # text OPENS with a content refusal that offers something else ("I can't create this website because it would
+        # contain sexually explicit content … What I can do instead: …" with a list of tame suggestions)
+        lead = _lead_end(visible)
+        hit = _find(visible, lead_end=lead)
+        if hit and hit[0].start() - lead <= START_HTML and _offered(visible, hit[0]):
+            return True, _reason(hit[1], hit[0]) + f" + an offer (visible {len(visible)} chars, {tags} tags)"
+        return False, ""
     hit, why = _judge(visible, START_HTML, raw=t)
     if not hit:
         return False, ""
@@ -627,19 +702,25 @@ def refusal_snippet(text: str, n: int = 160) -> str:
 #      "15 y.o.", "aged 15", "age: 15", "15 Jahre alt", "15-jährige", "fifteen-year-old"; never an age DIFFERENCE
 #      "10 years older" [R1]) — or an explicit under-18 WORD (underage, under 18 / eighteen, under the age of 18,
 #      younger than / below / not yet 18, under 16 (12–17), under-18s, unter 18 / 16, jünger als 18, nicht
-#      volljährig, minderjährig, preteen, prepubescent [S3]) TOGETHER WITH a sexual term (porn, nude/naked/nackt,
+#      volljährig, minderjährig, preteen, prepubescent [S3]; [R88 fix] an under-18 DECADE: "early teens", "mid teens" /
+#      "mid-teens", "early-teen", "early teenage years", "frühe(n) Teenagerjahre(n)", "im frühen Teenageralter", "Mitte /
+#      Anfang der Teenagerjahre" — never "the early teens" / "the mid-teens" (an era, a temperature) or a unit after it,
+#      and never the ambiguous ones that can mean 18–19: "teens", "in her teens", "late teens", "teen", "barely legal",
+#      "Ende der Teenagerjahre") TOGETHER WITH a sexual term (porn, nude/naked/nackt,
 #      sex and the German sex / nackt / erotik compounds — Sexvideo, Oralsex, Nacktvideo, Erotikfilm [R3] —, sexual,
 #      hentai, nsfw, erotic, lewd, genitals, …) anywhere in the same text;
 #   2. known illegal-content terms: csam, pthc, child porn(ography), kiddie porn, kinderporno(grafie) and jailbait
 #      fire on their own; loli/lolicon/shota/shotacon only together with a sexual term.
-# It never fires on: ages 18 and up; numbers that are measurements (16 GB, 15 cm, 1080p, 17 inch, 8 steps,
-# 12:30, 2 girls — no age unit; "under 18 dollars / degrees / Euro / Grad / %" [R2]); "minor/minors" in any
-# sense; negated disclaimers ("no minors", "nobody under 18", "never anyone who looks underage", "all characters
-# 18+", "keine Minderjährigen") and age-gate disclaimers ("if you are under 18, leave", "visitors under 18 are not
-# allowed", "für Minderjährige verboten" [S4]) — the kernel's own prompts contain such sentences and the expander
-# may echo them; "child / kid / teen / girl / boy / schoolgirl" and every other soft indicator (they are not
-# indicators here). Obfuscation (leet, homoglyphs, letter spacing,
-# split sentences) is deliberately out of scope. Known, accepted cost: a text that pairs an explicit under-18
+# It never fires on: ages 18 and up (compound number words included: [R88 fix] "twenty-two-year-old", "forty five years
+# old", "a hundred and two-year-old" are no "two-year-old" — a ones word right after a tens word or "hundred" is never
+# read; German compounds are one word, "zweiundzwanzigjährige", and never matched); numbers that are measurements
+# (16 GB, 15 cm, 1080p, 17 inch, 8 steps, 12:30, 2 girls — no age unit; "under 18 dollars / degrees / Euro / Grad / %"
+# [R2]); "minor/minors" in any sense; negated disclaimers ("no minors", "nobody under 18", "never anyone who looks
+# underage", "all characters 18+", "keine Minderjährigen") and age-gate disclaimers ("if you are under 18, leave",
+# "visitors under 18 are not allowed", "für Minderjährige verboten" [S4]) — the kernel's own prompts contain such
+# sentences and the expander may echo them; "child / kid / teen / girl / boy / schoolgirl" and every other soft
+# indicator (they are not indicators here). Obfuscation (leet, homoglyphs, letter spacing, split sentences) is
+# deliberately out of scope. Known, accepted cost: a text that pairs an explicit under-18
 # age with a sexual term is blocked even when its intent is protective ("my 14-year-old found porn, how do I
 # talk to him") — no context or intent rules rescue it; the message suggests rephrasing without the age.
 # Normalisation: NFKC + casefold + zero-width / combining marks stripped, and the length is capped AFTER
@@ -648,7 +729,9 @@ def refusal_snippet(text: str, n: int = 160) -> str:
 # entry (image, video, music — on the user's prompt before anything, the expander included), the final image /
 # video prompt right before sd renders it, once on a refused text request before any rung, and at the entry
 # when the primary LLM is uncensored (the manifest flag, or the llm_model setting). A hit: BLOCK_MESSAGE as a
-# 400, no model call, nothing cached, nothing rendered.
+# 400, no model call, nothing cached, nothing rendered. [R88 fix round 2] Where the caller KNOWS the request is adult
+# (minor_block(text, adult=True): an image job's `adult` flag at the sd floor and at render_images' entry, a video
+# job's), that flag counts as the sexual term — the under-18 age or word fires on its own, as in a picture edit.
 BLOCK_MESSAGE = ("kAIrOS does not create sexual content involving minors (an under-18 age or term together with a "
                  "sexual term) — if this is about adults, rephrase it without the age")
 RAW_MAX = 100_000            # chars of the raw request read before normalising (every prompt budget is far below)
@@ -658,7 +741,14 @@ _STRIP_CATS = frozenset({"Cf", "Mn", "Me", "Cc", "Co", "Cs"})      # format, com
 _AGE_NUM = r"(?<![\d:/])(?<!\d[.,])(?:1[0-7]|[1-9])(?![\d:/%])(?![.,]\d)"
 _AGE_UNIT = (r"(?:\s*-?\s*(?:years?|yrs?|jahre?|jahren)\s*-?\s*(?:old|alt(?:e[nrsm]?)?|of age|young)\b|\s*-?\s*(?:year|yr)\s*-?\s*olds?\b"
              r"|\s*(?:yo|y\.o\.|y\.o|y/o)\b|\s*-?\s*jährig\w*)")
-_AGE_WORDS = (r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen"
+# [R88 fix] a ones word is never the last part of a compound number: "twenty-two-year-old" (22) read "two-year-old"
+# (fixed-width lookbehinds — the text is normalised, so one space or one hyphen / dash joins the parts); "ten" to
+# "seventeen" form no compound ("twenty fifteen-year-olds" = 20 people aged 15 still fires)
+_NOT_COMPOUND = "".join(f"(?<!{w}{sep})" for w in ("twenty", "thirty", "forty", "fourty", "fifty", "sixty", "seventy", "eighty",
+                                                   "ninety", "hundred") for sep in ("-", " ", "‐", "–", "—")) \
+    + "(?<!hundred and )"
+_AGE_WORDS = (r"(?:" + _NOT_COMPOUND + r"(?:one|two|three|four|five|six|seven|eight|nine)"
+              r"|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen"
               r"|eins?|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn|elf|zwölf|zwoelf|dreizehn|vierzehn|fünfzehn|fuenfzehn"
               r"|sechzehn|siebzehn)")
 _UNDER_AGE = re.compile(
@@ -687,7 +777,18 @@ _COUNTS_DE = (r"fotos?|bilder|wörter|zeilen|seiten|schritte|kapitel|folgen|punk
               r"|zuschauer\w*|kunden|mitarbeiter\w*|tänzer\w*|plätze|tickets|karten|follower")
 _NOT_COUNT_EN = _NOT_MEASURE_EN + r"(?!\s*(?:" + _COUNTS_EN + r")\b)"
 _NOT_COUNT_DE = _NOT_MEASURE_DE + r"(?!\s*(?:" + _COUNTS_DE + r")\b)"
-_UNDER18_WORD = (r"(?:underage[ds]?|under[\s-]+age[ds]?|under[\s-]+(?:18|eighteen)" + _NOT_MEASURE_EN + r"s?"
+# [R88 fix, the integrator's decision 2026-10-17] the unambiguous under-18 DECADES: early / mid teens (13–16) — never late
+# teens, "in her teens" or "teen" (they can mean 18–19). The plural "teens" after "the" is an era or a number ("the early
+# teens" = 2013–15, "temperatures in the mid-teens") and a unit after it a measurement — both never read; the forms with
+# "teen-age" / "teenager" / "Teenagerjahre" / "Teenageralter" are always a person's age. German "früher" is skipped (it is
+# also the adverb "formerly": "früher Teenager-Star")
+_TEEN_EARLY = (r"(?<!\bthe )(?:early|mid)[\s-]?teens" + _NOT_MEASURE_EN
+               + r"|(?:early|mid)[\s-]?teen(?:age[ds]?|agers?)?"
+               + r"|fr(?:ü|ue)h(?:e|en|es|em)[\s-]+teen(?:ager|ie)[\s-]?(?:jahren?|alters?|zeit)"
+               + r"|fr(?:ü|ue)h(?:e|en)[\s-]+(?:teens|teenager(?:in|innen|n)?|teenies?)(?![\w-])"
+               + r"|(?:mitte|anfang)[\s-]+(?:(?:der|des|ihrer|seiner|ihres|seines|meiner|deiner|unserer|eurer)\s+)?"
+               + r"(?:teen(?:ager|ie)[\s-]?(?:jahren?|alters?|zeit)|teens)")
+_UNDER18_WORD = (r"(?:" + _TEEN_EARLY + r"|underage[ds]?|under[\s-]+age[ds]?|under[\s-]+(?:18|eighteen)" + _NOT_MEASURE_EN + r"s?"
                  + r"|under the age of (?:18|eighteen)|(?:younger than|below|not yet|not even) (?:18|eighteen)" + _NOT_MEASURE_EN
                  + r"|under[\s-]+1[2-7]" + _NOT_COUNT_EN + r"s?"
                  + r"|unter[\s-]+(?:18|achtzehn)" + _NOT_MEASURE_DE + r"|unter[\s-]+1[2-7]" + _NOT_COUNT_DE
@@ -698,16 +799,54 @@ _UNDER18 = re.compile(r"\b" + _UNDER18_WORD + r"\b")
 # under 18", "never anyone who looks underage", "not for minors or anyone under 18", "keine Minderjährigen"; [round 4b,
 # S5] the kernel's own limits line prompts.UNCENSORED_LIMITS and its echoes: "never write or depict sexual content
 # involving minors or anyone who looks underage", "no explicit content involving anyone under 18")
-_NEGATED = re.compile(
-    r"\b(?:no|nobody|no[\s-]one|none|never|not|without|non|niemand|niemals|nie|kein|keine|keinen|keiner|keinem|keines|nicht|ohne"
-    r"|don'?t|do not|doesn'?t|does not|avoid\w*|exclud\w*)"
-    r"(?:\s+(?:anyone|anybody|someone|somebody|one|person|persons|people|a|an|the|for|of|is|are|was|were|who|that|or|and|looks?"
+_NEG_HEAD = (r"\b(?:no|nobody|no[\s-]one|none|never|not|without|non|niemand|niemals|nie|kein|keine|keinen|keiner|keinem|keines"
+             r"|nicht|ohne|don'?t|do not|doesn'?t|does not|avoid\w*|exclud\w*"
+             r"|neither|weder)")                                  # [R88 fix round 3] "neither … nor", "weder … noch"
+# [R88 fix round 4] every word ONCE: "anybody" was listed twice (since 2026-10-15) and the duplicate alternative made the
+# bridge exponential on a run of it ("nude, no " + 22 × "anybody " took 7.6 s in minor_block, 20 in adult_ages 3.1 s)
+_NEG_WORDS = (
+    r"anyone|anybody|someone|somebody|one|person|persons|people|a|an|the|for|of|is|are|was|were|who|that|or|and|looks?"
     r"|appears?|seems?|be|to|minors?|children|kids|teens?|them|him|her|she|he|they|it|with|involving|depict\w*|show\w*|für|jemand"
+    r"|their|his|its|ihre[nrsm]?|seine[nrsm]?"                # [R88 fix] "nobody in their early teens", "niemand in seinen …"
     r"|writ\w*|sexual\w*|sexuell\w*|explicit|explizit\w*"
     r"|jemanden|eine[nrsm]?|ein|der|die|das|den|dem|wer|ist|sind|aussieht|aussehen|oder|und|mit|von|minderjährige[nrsm]?|kinder"
     r"|jugendliche[nrsm]?|personen|menschen|zutritt|zugang|eintritt|verkauf|abgabe|entry|access|admission|admittance|sale|sales"
-    r"|content|inhalte?|place|room|service|dienst|any|single|anybody|in|image|picture|photo|scene))*\s+" + _UNDER18_WORD + r"\b",
-    re.IGNORECASE)
+    r"|content|inhalte?|place|room|service|dienst|any|single|in|image|picture|photo|scene")
+# [R88 fix round 3, the integrator's decision 2026-10-17] the negation's scope carries across a COORDINATED LIST of under-18
+# words — an expander's disclaimer "nobody is underage or under 18" exempted only "underage" and blocked the adult picture:
+# "nobody under 18 or underage", "niemand ist minderjährig oder unter 18", "neither underage nor under 18", "weder
+# minderjährig noch unter 18", "no one underage, under 18 or pre-teen", "underage and/or under 18". A join is "or", "and",
+# "nor", ",", "/" (DE "oder", "und", "noch", ","), optionally followed by a closed list of words that start no statement
+# of their own ("… or anyone who looks underage", "… oder wer unter 18 ist"). The scope ends at everything else: a clause
+# break (". ; : ! ?" are no joins: "nobody is underage. she is under 18" reads the second), any other word ("…, she is
+# under 18" reads), an under-18 AGE (a number is never negated, in a list neither: "nobody underage or 15 years old"
+# reads the 15), and a list item a person noun follows within two words ("nobody under 18, underage girl": a positive
+# noun phrase, in a comma-separated prompt a tag of its own; the FIRST item keeps the old rule: "no underage models"
+# passes). A repeated negation ("no one underage, no one under 18") is two matches, as before.
+_NEG_JOIN = (r"(?:\s*[,/]\s*(?:(?:or|and|nor|oder|und|noch)\s+)?"
+             r"|\s+(?:or|and|nor|oder|und|noch)(?:\s*/\s*(?:or|and|oder|und))?\s+)")
+_NEG_FILL = (r"(?:(?:anyone|anybody|someone|somebody|who|that|looks?|appears?|seems?|is|are|be|jemand|jemanden|wer|ist|sind"
+             r"|aussieht|aussehen)\s+)*")
+_NEG_LIST_PERSON = (r"girls?|boys?|kids?|child|children|teens?|teenagers?|models?|woman|women|man|men|lady|ladies|guys?"
+                    r"|students?|schoolgirls?|schoolboys?|daughters?|sons?|sisters?|brothers?|babes?|cheerleaders?|gymnasts?"
+                    r"|actress(?:es)?|actors?|dancers?|blondes?|brunettes?|redheads?|brides?|wife|wives|girlfriends?|boyfriends?"
+                    r"|mädchen|jungen?|jungs|frau|frauen|mann|männer|kind|kinder|schülerin(?:nen)?|schüler|tochter|töchter"
+                    r"|sohn|söhne|teenager\w*|tänzerin\w*|freundin\w*|schwester\w*")
+_NEG_ITEM = (_NEG_JOIN + _NEG_FILL + _UNDER18_WORD
+             + r"\b(?!(?:[\s-]+[\w']+)?[\s-]+(?:" + _NEG_LIST_PERSON + r")\b)")
+# [R88 fix round 4] "neither … nor" / "weder … noch" lists of bridge words and under-18 words: "neither minors nor anyone
+# under 18", "neither minors, nor anyone under 18", "neither underage nor minors nor under 18", "weder Kinder noch
+# Jugendliche unter 18", "weder minderjährig noch Kinder noch unter 18". "nor" is a bridge word after any negation (it only
+# ever continues one), also after a comma; German "noch" only after "weder" ("ist sie nicht noch minderjährig?" is no
+# negation of "minderjährig"). After an under-18 word a "nor" / "noch" item may carry bridge words before its under-18
+# word ("… nor minors nor under 18"); round 3's person-noun rule holds for it ("nobody under 18 nor underage girls" reads).
+# The 25+ check's teen rewrite (_TEEN_NEGATED) keeps its bridge without "nor": "neither minors nor teen girls" in an adult
+# picture prompt is still rewritten — a teen word never reaches the image model
+_NEG_BRIDGE = r"(?:\s+(?:" + _NEG_WORDS + r"|nor\b)|\s*,\s*nor\b)"
+_NOR_ITEM = (r"(?:\s*,\s*|\s+)(?:nor|noch)\b(?:\s+(?:" + _NEG_WORDS + r"|nor\b|noch\b))*\s+" + _UNDER18_WORD
+             + r"\b(?!(?:[\s-]+[\w']+)?[\s-]+(?:" + _NEG_LIST_PERSON + r")\b)")
+_NEGATED = re.compile(r"(?:" + _NEG_HEAD + _NEG_BRIDGE + r"*|\bweder(?:" + _NEG_BRIDGE + r"|(?:\s+|\s*,\s*)noch\b)*)\s+"
+                      + _UNDER18_WORD + r"\b(?:" + _NEG_ITEM + r"|" + _NOR_ITEM + r")*", re.IGNORECASE)
 # [round 4b, S4] an age-gate disclaimer (the integrator: an adult site's age gate is a normal 18+ request) — a CLOSED
 # list of function / audience / venue words, like the negation bridge above, never an intent rule: the conditional
 # "if you are under 18 …" / "wenn du unter 18 bist", and the prohibitive forms where a PROHIBITION follows the word
@@ -762,10 +901,15 @@ def _norm(text) -> str:
     return " ".join(t[:BLOCK_MAX].split())
 
 
-def minor_block(text) -> tuple:
+def minor_block(text, adult: bool = False) -> tuple:
     """(True, reason) when `text` — a user's request, an image / video prompt, a page address, a list of
     content parts — pairs an explicit under-18 age or word with a sexual term, or names illegal content (see
-    the section comment); (False, "") otherwise. Pure, linear, milliseconds; no model call."""
+    the section comment); (False, "") otherwise. Pure, linear, milliseconds; no model call.
+    [R88 fix round 2, the integrator's decision 2026-10-17] `adult`: the caller knows the request is adult (an image
+    job's `adult` flag — the request's {"adult"} / {"uncensored"} flag or a sexual term in the request itself). The
+    flag then counts as the sexual term: the under-18 age or word fires on its own ("explicit photo, a woman in her
+    early teens", "… a 15-year-old …"), and loli / shota too; negated disclaimers, age gates, measurements and counts
+    stay exempt exactly as above. Accepted cost: "a 12-year-old scotch on the bar" in an ADULT picture is blocked."""
     t = _norm(text)
     if not t:
         return False, ""
@@ -773,15 +917,16 @@ def minor_block(text) -> tuple:
     if m:
         return True, f"'{m.group(0)}'"
     sex = _SEX.search(t)
-    if not sex:
+    if not sex and not adult:
         return False, ""
+    term = f"'{sex.group(0)}'" if sex else "the adult flag"
     m = _ILLEGAL_WITH_SEX.search(t)
     if m:
-        return True, f"'{m.group(0)}' + '{sex.group(0)}'"
+        return True, f"'{m.group(0)}' + {term}"
     tn = _GATED.sub(" ", _NEGATED.sub(" ", t))    # negated disclaimers and age gates are not indicators [S4]
     m = _UNDER_AGE.search(tn) or _UNDER18.search(tn)
     if m:
-        return True, f"age '{m.group(0).strip()}' + '{sex.group(0)}'"
+        return True, f"age '{m.group(0).strip()}' + {term}"
     return False, ""
 
 
@@ -799,3 +944,290 @@ def minor_age(text) -> tuple:
     tn = _GATED.sub(" ", _NEGATED.sub(" ", t))
     m = _UNDER_AGE.search(tn) or _UNDER18.search(tn)
     return (True, f"age '{m.group(0).strip()}' (a picture edit)") if m else (False, "")
+
+
+# ============================================================================= [R88] the 25+ check
+# The prompt writers' adult rule (prompts.ADULT_LIMITS, the expander's rule 8) asks for every person "aged 25 or older —
+# say so explicitly"; in one run a picture description still said "in their 20s". adult_ages() is the cheap,
+# deterministic post-check on the FINAL image prompt of an adult request (server: MM.sd_batch, right AFTER the minors
+# block): a stated age from 18 to 24 ("a 22-year-old", "aged 19", "21 years old", "twenty-two-year-old", "23yo") becomes
+# 30, a decade that reaches below 25 ("in her twenties", "in their early 20s", "in his mid-twenties", "in her late
+# teens") becomes "in her thirties", a bare one ("early twenties", "mid-20s", "late teens") "aged 30", and
+# "twenty-something" "thirty-something". Never touched: an age of 25 or more ("in her late twenties" = 27–29 stays), a
+# number that is no person's age (a 21-year-old whisky, a cask "aged 20 years in oak", the 1920s, "the early twenties",
+# "early-20s fashion", 20 candles, "18+"), a negated phrase ("no longer in her twenties"), a prompt that is not adult
+# (the caller decides: the request's adult flag, or a sexual term — sexual() — in the request or the final prompt), and
+# every age UNDER 18: those are the minors block's, which runs first on the same text — a text it refuses comes back
+# unchanged, and no rewrite here removes a token it reads (its numbers stop at 17, its words at "seventeen"; [R88 fix]
+# its under-18 decades "early teens" / "mid-teens" / "early teenage years" are never aged up, with or without a sexual
+# term — only the ranges that reach 18–19 are: "in her teens", "late teens", "mid- to late teens").
+# [R88 fix round 2, the integrator's decision 2026-10-17] the person words "teen", "teens", "teenage(d)", "teen-age",
+# "teenager(s)" and "barely legal" become adult wording, consistent with the rewrite to 30: "teen girl" -> "adult woman
+# aged 30" (girl(s) -> woman / women, boy(s) -> man / men; another person noun is kept: "teenage couple" -> "adult couple
+# aged 30"; one word may stand between: "teen blonde girl" -> "adult blonde woman aged 30"), the noun "a teen" -> "an adult
+# aged 30" ("teens" -> "adults aged 30") where the noun phrase ends (punctuation, a preposition, a verb), "barely legal"
+# alone -> "adult, aged 30", and every other use -> "adult(s)" ("teen porn" -> "adult porn", "teenage" -> "adult"); "aged
+# 30" is left out where an age follows already. Never: a title ([R88 fix round 3] only a capitalised "Teen" / "Teenage"
+# that starts one of the few real titles of _TEEN_TITLES, with no person noun within two words: "Teen Titans", "Teen
+# Vogue", "Teenage Mutant Ninja Turtles"; a lowercase teen word is never a title — "nude teen Latina" -> "nude adult
+# Latina", "teen Anna" -> "adult Anna" — and an unknown title is rewritten: cosmetic in an adult prompt, while a teen word
+# reaching the image model is not), a negated phrase ("no teens",
+# "nobody who looks like a teen" — the minors block's negation bridge + "like"), "pre-teen" / "early teens" / "mid-teens" /
+# "late teens" (the block's, or the decade rule's), a possessive decade the decade rule left ("no longer in her teens"),
+# and every text the block refuses: adult_ages() reads it with the adult flag (an under-18 age or word ALONE refuses it),
+# so a text the floor blocks always comes back unchanged. English only (the final prompt is English: the expander writes
+# it, the MT hop translates it); a bare number ("she is 22") is not read — too ambiguous to rewrite blind.
+ADULT_AGE_MIN = 25            # the system's floor for a person in adult content (prompts.ADULT_LIMITS)
+ADULT_AGE_TO = 30             # what a younger stated age becomes
+_YOUNG_NUM = r"(?:1[89]|2[0-4])"
+_YOUNG_WORD = r"(?:eighteen|nineteen|twenty(?:[\s-]?(?:one|two|three|four))?)"
+_AGE_PRON = r"(?:his|her|their|my|your|our)"
+_UNIT_YO = r"(?:\s*-\s*|\s+)(?:years?|yrs?)(?:\s*-\s*|\s+)olds?\b"
+# "an age range": aged 20-35, ages 18 to 22, 19–23 years old (the number pair is read only with "aged" or "years old")
+_AGE_RANGE = re.compile(r"(?<![\w.,])(?P<pre>(?:aged?|ages)\s+)?(?P<a>\d{2})\s*(?:-|–|to)\s*(?P<b>\d{2})(?!\w|[.,]\d)"
+                        r"(?P<post>" + _UNIT_YO + r")?", re.IGNORECASE)
+_AGE_YO = re.compile(r"(?<![\w.,-])(?P<n>" + _YOUNG_NUM + "|" + _YOUNG_WORD + r")(?P<rest>" + _UNIT_YO + r")"
+                     r"|(?<![\w.,-])(?P<n2>" + _YOUNG_NUM + r")(?P<rest2>\s*(?:yo|y\.o\.?|y/o))(?![\w])", re.IGNORECASE)
+_AGE_AGED = re.compile(r"\b(?P<pre>aged?|ages)(?P<sep>\s*[:=]?\s*)(?P<n>\d{2}|" + _YOUNG_WORD + r")(?!\w|[.,]\d)"
+                       r"(?!\s*(?:-|–|to)\s*\d)(?P<more>(?:\s*(?:,|and|or|&)\s*\d{2}(?!\w|[.,]\d))*)", re.IGNORECASE)
+_AGE_SOMETHING = re.compile(r"\b(?:20|twenty)[\s-]?(?P<s>somethings?)\b", re.IGNORECASE)
+_DECADE_PRON = re.compile(r"\bin\s+(?P<p>" + _AGE_PRON + r")\s+(?:(?P<q>early|mid|late)[\s-]*(?:to[\s-]+(?P<q2>mid|late)[\s-]*)?)?"
+                          r"(?P<d>20s|20's|'20s|twenties|teens|teenage years|teen years)\b", re.IGNORECASE)
+# [R88 fix] bare teens: only the late ones (17–19, a range that reaches 18–19); early / mid teens are the minors block's
+_DECADE_BARE = re.compile(r"(?<![\w'])(?P<q>early|mid)[\s-]*(?:to[\s-]+(?:mid|late)[\s-]*)?(?:20s|20's|twenties)\b"
+                          r"|(?<![\w'])(?:(?:early|mid)[\s-]*to[\s-]+)?late[\s-]*teens\b", re.IGNORECASE)
+_AGE_NEGATED = re.compile(r"\b(?:never|not|no longer|no more)\s+(?:(?:a|an|the)\s+)?[\"'“‘„]?$", re.IGNORECASE)
+_AGE_ERA = re.compile(r"\b(?:the|in the|of the|since the|from the)\s*$", re.IGNORECASE)
+_CLAUSE_END = re.compile(r"[.,;:!?()\[\]\n]")
+# the nouns that decide whose age a number is (the nearest one after it, else before it, in the same clause); neither
+# found = a person (an adult picture prompt's ages are people's)
+_AGE_THING = frozenset("""car cars vehicle vehicles truck van bike bicycle motorcycle motorbike boat ship yacht plane aircraft
+train house houses home building buildings barn church castle bridge tower ruin ruins tree trees oak vine vines forest
+garden whisky whiskey scotch bourbon rum cognac brandy wine wines port malt beer bottle bottles cask casks barrel barrels
+cheese dog dogs cat cats horse horses pony pet pets parrot turtle tortoise guitar piano violin camera photo photos
+photograph photographs picture pictures painting paintings film films movie movies record records album albums song
+songs book books letter letters map sofa couch chair table rug carpet furniture jacket coat dress shoes boots watch clock
+company business tradition recipe game games computer laptop phone tv television mansion villa hotel bar pub restaurant
+cabin cottage apartment flat mine tunnel wall poster sign era eras decade decades century fashion style styles music jazz
+decor design aesthetic architecture glamour flapper outfit outfits wardrobe clothing hairstyle hairstyles makeup trend
+trends bed beds mattress blanket pillow lamp desk door window floor tattoo scar""".split())
+_AGE_PERSON = frozenset("""woman women man men girl girls guy guys lady ladies gentleman gentlemen boy boys model models couple
+couples wife wives husband husbands girlfriend girlfriends boyfriend boyfriends student students blonde blondes brunette
+brunettes redhead redheads mother mothers mom moms mum mums milf milfs father fathers dad dads female females male males
+person persons people actress actresses actor actors dancer dancers nurse nurses teacher teachers secretary secretaries
+she he they her him them bride brides groom grooms partner partners lover lovers stranger strangers neighbor neighbors
+neighbour neighbours twins sister sisters brother brothers friend friends adult adults human humans pornstar pornstars
+stripper strippers escort escorts performer performers athlete athletes cowboy cowgirl""".split())
+
+
+# [R88 fix round 2] "teen" / "barely legal" -> adult wording (see the section comment)
+_TEEN_PHRASE = re.compile(r"(?<!\w)(?:(?P<bl>barely[\s-]+legal)(?:[\s-]+(?P<t1>teen-?age[ds]?|teen-?agers?|teens?))?"
+                          r"|(?P<t2>teen-?age[ds]?|teen-?agers?|teens?))(?!\w)", re.IGNORECASE)
+_TEEN_NOUNS = {"teen": "adult", "teens": "adults", "teenager": "adult", "teenagers": "adults"}   # (hyphen dropped)
+_TEEN_PERSON = (_AGE_PERSON - {"she", "he", "they", "her", "him", "them"}) | frozenset(
+    "cheerleader cheerleaders babe babes lesbian lesbians gymnast gymnasts daughter daughters".split())
+_TEEN_ADULT_NOUN = {"girl": "woman", "girls": "women", "boy": "man", "boys": "men"}
+_TEEN_FN = frozenset("""a an the and or with without in on at of for to by from is are was were who that as into onto near under
+over next beside behind wearing her his their its my your our this these those""".split())
+_TEEN_NEXT = re.compile(r"[\s-]+([A-Za-z][\w']*)(?:[\s-]+([A-Za-z][\w']*))?")
+_TEEN_NP_END = re.compile(r"\s*(?:[.,;:!?()\[\]\n\"]|$)|[\s-]+(?:on|in|at|with|without|and|or|by|from|under|near|next|beside"
+                          r"|behind|inside|outside|against|who|that|is|are|was|were|has|have|wearing|\w+ing)\b", re.IGNORECASE)
+_TEEN_PUNCT_END = re.compile(r"\s*(?:[.,;:!?()\[\]\n\"]|$)")
+_TEEN_AGE_FOLLOWS = re.compile(r"\s*,?\s*(?:aged?\s*\d|ages\s*\d|\d{2}(?!\d)|in\s+(?:his|her|their)\s+(?:thirties|forties|fifties"
+                               r"|sixties))", re.IGNORECASE)
+_TEEN_AGE_BEFORE = re.compile(r"(?:\b(?:\d{2}|thirty)[\s-]*(?:years?|yrs?)[\s-]*olds?|\b\d{2}\s*(?:yo|y\.o\.?)|\baged?\s*\d{2})"
+                              r"[\s,]*$", re.IGNORECASE)
+_TEEN_HEAD_KEEP = re.compile(r"\b(?:early|mid|pre)[\s-]*$", re.IGNORECASE)               # the minors block's forms
+_TEEN_HEAD_LATE = re.compile(r"\blate[\s-]*$", re.IGNORECASE)          # "late teens": the decade rule's; "late teen girl": ours
+_TEEN_HEAD_DECADE = re.compile(r"\b(?:his|her|their|my|your|our|its)\s+$", re.IGNORECASE)  # "(no longer in) her teens"
+_TEEN_NEGATED = re.compile(_NEG_HEAD + r"(?:\s+(?:" + _NEG_WORDS + r"|like))*\s*$", re.IGNORECASE)
+# [R88 fix round 3, the integrator's decision 2026-10-17] the ONLY titles a teen word may start, and only capitalised ("Teen" /
+# "Teenage" as written): the shows, films, magazine, awards, songs and the synth maker an adult picture may show on a
+# poster, a cover or a screen — Teen Titans, Teen Wolf, Teen Vogue, Teen Choice (Awards), (Smells Like) Teen Spirit, Teenage
+# Mutant Ninja (Hero) Turtles, Teenage Dream, Teenage Kicks, Teenage Engineering. Kept short on purpose: an unknown title
+# rewritten in an ADULT prompt is cosmetic ("Teen Beach Movie" -> "Adult Beach Movie"), a teen word that reaches the image
+# model is not. "Teen Mom" is no title here (a person noun)
+_TEEN_TITLES = {
+    "teen": re.compile(r"[\s-]+(?:titans|wolf|vogue|choice|spirit)\b", re.IGNORECASE),
+    "teenage": re.compile(r"[\s-]+(?:mutant[\s-]+(?:ninja|hero)[\s-]+turtles|dream|kicks|engineering)\b", re.IGNORECASE),
+}
+
+
+def _teen_rewrite(t: str, m) -> tuple:
+    """one "teen" / "barely legal" phrase of an adult prompt -> (new text, start, end of the span it replaces), or
+    (None, 0, 0) to keep it (one of the few titles, a negation, an under-18 or decade form)"""
+    clause = _CLAUSE_END.split(t[max(0, m.start() - 160):m.start()])[-1]
+    w = (m.group("t1") or m.group("t2") or "").lower().replace("-", "")
+    late = _TEEN_HEAD_LATE.search(clause)
+    if _TEEN_HEAD_KEEP.search(clause) or w == "teens" and (late or _TEEN_HEAD_DECADE.search(clause)) \
+            or _TEEN_NEGATED.search(clause[:late.start()] if late else clause):
+        return None, 0, 0
+    start = m.start() - (len(clause) - late.start() if late else 0)     # "a late teen girl" -> "an adult woman aged 30"
+    if late:
+        clause = clause[:late.start()]
+    nx = _TEEN_NEXT.match(t, m.end())
+    words = [g for g in (nx.groups() if nx else ()) if g]
+    base = [x.lower()[:-2] if x.lower().endswith("'s") else x.lower() for x in words]     # "girl's" -> girl
+    tw = m.group("t2") or ""                     # [R88 fix round 3] a title: capitalised + _TEEN_TITLES, no person noun next
+    title = _TEEN_TITLES.get(tw.lower())
+    if tw[:1].isupper() and title and title.match(t, m.end()) and not any(x in _TEEN_PERSON for x in base[:2]):
+        return None, 0, 0                        # "Teen Titans", "Teenage Mutant Ninja Turtles"; never "teen Latina"
+    adj = noun = None
+    if len(words) > 1 and base[1] in _TEEN_PERSON and base[0] not in _TEEN_FN and not base[0].endswith("ing") \
+            and not words[0].lower().endswith("'s"):
+        adj, noun, end = words[0], words[1], nx.end(2)                # "teen blonde girl", "teen Asian girls"
+    elif words and base[0] in _TEEN_PERSON:
+        noun, end = words[0], nx.end(1)                               # "teen girl"
+    else:
+        end = m.end()
+    near = bool(_TEEN_AGE_BEFORE.search(clause) or _TEEN_AGE_FOLLOWS.match(t, end))    # an age is stated already
+    if noun:                                     # "teen girl" -> "adult woman aged 30"
+        poss = noun.lower().endswith("'s")
+        nb = noun[:-2] if poss else noun
+        n = _TEEN_ADULT_NOUN.get(nb.lower(), nb)
+        n = (n[0].upper() + n[1:] if nb[0].isupper() else n) + ("'s" if poss else "")
+        if adj and adj.lower() in _TEEN_ADULT_NOUN:                    # "teen girl model" -> "adult woman model"
+            adj = _TEEN_ADULT_NOUN[adj.lower()]
+        new = "adult " + (adj + " " if adj else "") + n + ("" if near or poss else f" aged {ADULT_AGE_TO}")
+    elif w in _TEEN_NOUNS and _TEEN_NP_END.match(t, end):         # the noun: "a teen" -> "an adult aged 30"
+        new = _TEEN_NOUNS[w] + ("" if near else f" aged {ADULT_AGE_TO}")
+    elif not w and _TEEN_PUNCT_END.match(t, end):                  # "barely legal" alone -> "adult, aged 30"
+        new = "adult" + ("" if near else f", aged {ADULT_AGE_TO}")
+    else:                                        # an attribute or a noun before more words: "teen porn" -> "adult porn"
+        new = _TEEN_NOUNS.get(w, "adult")
+    return (new[0].upper() + new[1:] if t[start].isupper() else new), start, end
+
+
+def _teen_words(t: str, changes: list) -> str:
+    """the "teen" / "barely legal" rewrite of adult_ages over the whole prompt (a phrase may take the person noun after
+    it, so the scan is a loop, not re.sub); a/A before the new "adult" becomes an/An"""
+    out, pos, n0 = [], 0, len(changes)
+    for m in _TEEN_PHRASE.finditer(t):
+        if m.start() < pos:
+            continue
+        new, start, end = _teen_rewrite(t, m)
+        if new is None or start < pos:
+            continue
+        out += [t[pos:start], new]
+        changes.append((t[start:end], new))
+        pos = end
+    if len(changes) == n0:
+        return t
+    return re.sub(r"\b([Aa]) (?=[\"'“‘]?[Aa]dult\b)", lambda x: x.group(1) + "n ", "".join(out) + t[pos:])
+
+
+def sexual(text) -> bool:
+    """[R88] the request is adult: the minors block's own sexual-term list (EN + DE) finds a term in `text`"""
+    t = _norm(text)
+    return bool(t) and _SEX.search(t) is not None
+
+
+def _age_words(s: str) -> list:
+    return [w[:-2] if w.endswith("'s") else w for w in re.findall(r"[a-z]+(?:'[a-z]+)?", s.lower())]
+
+
+def _age_of_person(t: str, start: int, end: int) -> bool:
+    """is the age at t[start:end] a person's? the nearest decisive noun after it (≤ 3 words, same clause), else before it
+    (≤ 4 words, same clause); none = a person"""
+    for w in _age_words(_CLAUSE_END.split(t[end:end + 80], 1)[0])[:3]:
+        if w in _AGE_PERSON:
+            return True
+        if w in _AGE_THING:
+            return False
+    for w in reversed(_age_words(_CLAUSE_END.split(t[max(0, start - 80):start])[-1])[-4:]):
+        if w in _AGE_PERSON:
+            return True
+        if w in _AGE_THING:
+            return False
+    return True
+
+
+def _age_num(s: str) -> int:
+    s = s.lower().replace("-", " ").split()
+    words = {"eighteen": 18, "nineteen": 19, "twenty": 20, "one": 1, "two": 2, "three": 3, "four": 4}
+    return int(s[0]) if s[0].isdigit() else sum(words.get(w, 0) for w in s)
+
+
+def adult_ages(text) -> tuple:
+    """[R88] (text, changes): the 25+ check on an adult image prompt (see the section comment) — every stated person age
+    or decade below ADULT_AGE_MIN rewritten to ADULT_AGE_TO / "thirties", changes = [(old, new), …]; a text the minors
+    block refuses, or one without such an age, comes back unchanged with changes = []. Pure, regex-only."""
+    if not isinstance(text, str) or not text.strip() or minor_block(text, adult=True)[0]:
+        return text, []                          # [R88 fix round 2] read as the adult request it is: the age alone refuses
+    changes = []
+
+    def keep(t, m, era=False):  # a negated phrase ("not a 22-year-old") or, for a decade, an era ("the early twenties")
+        head = t[max(0, m.start() - 24):m.start()]
+        return bool(_AGE_NEGATED.search(head) or (era and _AGE_ERA.search(head)))
+
+    def rng(m):
+        if not (m.group("pre") or m.group("post")):
+            return m.group(0)
+        a, b = int(m.group("a")), int(m.group("b"))
+        if not 18 <= a < ADULT_AGE_MIN or keep(m.string, m) or not _age_of_person(m.string, m.start(), m.end()):
+            return m.group(0)
+        b = max(b, ADULT_AGE_TO)
+        new = (m.group("pre") or "") + (str(ADULT_AGE_TO) if b == ADULT_AGE_TO else f"{ADULT_AGE_TO}-{b}") + (m.group("post") or "")
+        changes.append((m.group(0), new))
+        return new
+
+    def num(m, n_key, rest_key):
+        n = m.group(n_key)
+        if keep(m.string, m) or not _age_of_person(m.string, m.start(), m.end()):
+            return m.group(0)
+        to = str(ADULT_AGE_TO) if n[0].isdigit() else "thirty"
+        new = to + m.group(rest_key)
+        changes.append((m.group(0), new))
+        return new
+
+    def yo(m):
+        return num(m, "n", "rest") if m.group("n") else num(m, "n2", "rest2")
+
+    def aged(m):                 # "aged 22", "age: 19", "aged 19 and 23" (a list: every number of it is read)
+        ns = [m.group("n")] + re.findall(r"\d{2}", m.group("more") or "")
+        vals = [_age_num(n) for n in ns]
+        if any(v < 18 for v in vals) or all(v >= ADULT_AGE_MIN for v in vals) or keep(m.string, m) \
+                or not _age_of_person(m.string, m.start(), m.end()):
+            return m.group(0)                    # an under-18 number is the minors block's, never rewritten here
+        to = lambda n: n if _age_num(n) >= ADULT_AGE_MIN else (str(ADULT_AGE_TO) if n[0].isdigit() else "thirty")
+        more = re.sub(r"\d{2}", lambda x: to(x.group(0)), m.group("more") or "")
+        new = m.group("pre") + m.group("sep") + to(m.group("n")) + more
+        changes.append((m.group(0), new))
+        return new
+
+    def something(m):
+        if keep(m.string, m) or not _age_of_person(m.string, m.start(), m.end()):
+            return m.group(0)
+        new = "thirty-" + m.group("s")
+        changes.append((m.group(0), new))
+        return new
+
+    def decade_pron(m):
+        top = (m.group("q2") or m.group("q") or "").lower()          # the range's upper end ("early to mid" -> mid)
+        if (m.group("q") or "").lower() == "late" and m.group("d").lower() in ("20s", "20's", "'20s", "twenties") \
+                or m.group("d").lower() in ("teens", "teenage years", "teen years") and top in ("early", "mid") \
+                or _AGE_NEGATED.search(m.string[max(0, m.start() - 24):m.start()]):
+            return m.group(0)                    # late twenties = 27-29: 25+ already; early / mid teens: under 18, never aged up
+        new = f"in {m.group('p')} thirties"
+        changes.append((m.group(0), new))
+        return new
+
+    def decade_bare(m):
+        if keep(m.string, m, era=True) or not _age_of_person(m.string, m.start(), m.end()) \
+                or re.search(r"\bin\s+" + _AGE_PRON + r"\s+$", m.string[max(0, m.start() - 12):m.start()], re.IGNORECASE):
+            return m.group(0)    # [R88 fix round 2] "in her <decade>" is decade_pron's: left there only when negated
+        new = "their thirties" if re.search(r"\bin\s+$", m.string[max(0, m.start() - 8):m.start()], re.IGNORECASE) \
+            else f"aged {ADULT_AGE_TO}"
+        changes.append((m.group(0), new))
+        return new
+
+    t = _AGE_RANGE.sub(rng, text)
+    t = _AGE_YO.sub(yo, t)
+    t = _AGE_AGED.sub(aged, t)
+    t = _AGE_SOMETHING.sub(something, t)
+    t = _DECADE_PRON.sub(decade_pron, t)
+    t = _DECADE_BARE.sub(decade_bare, t)
+    t = _teen_words(t, changes)                  # [R88 fix round 2] "teen" / "barely legal" (after the decades)
+    if not changes:
+        return text, []
+    return re.sub(r"\b([Aa])n (?=(?:30|thirty)\b)", r"\1 ", t), changes     # "an 18-year-old" -> "a 30-year-old"

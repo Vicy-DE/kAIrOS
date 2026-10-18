@@ -94,7 +94,16 @@ echo "== [3/6] stage kAIrOS OS (code) =="
 INC="$WORK/config/includes.chroot/opt/vibeos"
 mkdir -p "$INC/os" "$INC/bin" "$INC/lib" "$INC/models" "$INC/knowledge"
 # scripts/ carries splash/ (the boot screen painter + install.sh, run by hooks/0200) [R73/R63]
-rsync -a --delete "$REPO/kernel" "$REPO/shell" "$REPO/manifests" "$REPO/docs" "$REPO/scripts" "$INC/os/"
+# [R88] the runtime is exactly these five directories. $WORK persists between builds, and rsync --delete cleans only
+# inside the directories it copies: a tests/ (or bench/) an older build staged here stayed in every image after it
+# (v7.5-2 still carried June's 18 test files). Anything else in os/ is removed first; edit backups and bytecode never go.
+OS_RUNTIME="kernel shell manifests docs scripts"
+for e in "$INC/os"/* "$INC/os"/.[!.]*; do
+    [ -e "$e" ] || continue
+    case " $OS_RUNTIME " in *" $(basename "$e") "*) ;; *) echo "  removing stale $(basename "$e") from the staged os/"; rm -rf "$e" ;; esac
+done
+rsync -a --delete --delete-excluded --exclude __pycache__ --exclude '*.pyc' --exclude '*.bak' --exclude '*.bak-*' \
+    --exclude '*.bak[0-9]*' "$REPO/kernel" "$REPO/shell" "$REPO/manifests" "$REPO/docs" "$REPO/scripts" "$INC/os/"
 cp "$REPO/manifests/tier-8gb.json" "$INC/manifest.json"
 echo "8gb" > "$INC/active-tier"
 

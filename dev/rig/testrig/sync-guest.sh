@@ -38,8 +38,13 @@ SSH="$SSH root@127.0.0.1"
 log(){ printf '\033[1;36m[sync-guest]\033[0m %s\n' "$*"; }
 
 log "1/8 sync kernel/shell/manifests/scripts/docs -> guest /opt/vibeos/os"
-tar -C "$REPO" -czf - kernel shell manifests scripts docs \
+# [R88] the runtime is exactly these five directories (iso/build-iso.sh stages the same set): edit backups and bytecode
+# never go, and anything else in the guest's /opt/vibeos/os — the tests/ an older image carries — is removed
+OS_RUNTIME="kernel shell manifests scripts docs"
+tar -C "$REPO" --exclude=__pycache__ --exclude='*.pyc' --exclude='*.bak' --exclude='*.bak-*' --exclude='*.bak[0-9]*' \
+    -czf - $OS_RUNTIME \
   | $SSH 'tar -C /opt/vibeos/os -xzf - && echo synced'
+$SSH "cd /opt/vibeos/os && for e in *; do case \" $OS_RUNTIME \" in *\" \$e \"*) ;; *) rm -rf -- \"\$e\" && echo \"removed stale /opt/vibeos/os/\$e (not part of the runtime)\" ;; esac; done"
 
 log "1b/8 engines: stamped engine set -> guest /opt/vibeos/{bin,lib} (KAIROS_SYNC_ENGINES=0 keeps the image's)"
 # Manifests and engines are version-coupled (manifest "engines" <-> bin/ENGINES.json, kernel

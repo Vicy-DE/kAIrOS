@@ -110,13 +110,56 @@ function applyGateVerdict(win, b) {
   return true;
 }
 
-async function pollJob(jobId, why) {
+async function pollJobRecord(jobId, why) {      // the finished job's whole record (pollJob: its result)
   if (!jobId) throw new Error(why || "no job was started");   // [R87] a 503 (no engine, a model still downloading)
   for (;;) {
     const r = await fetch(`/api/job/${jobId}`).then((r) => r.json());
-    if (r.status === "done") return r.result;
+    if (r.status === "done") return r;
     if (r.status === "error") throw new Error(r.error);
+    if (!r.status && r.error) throw new Error(r.error);   // "unknown job" (the kernel restarted)
     await new Promise((res) => setTimeout(res, 1500));
+  }
+}
+async function pollJob(jobId, why) { return (await pollJobRecord(jobId, why)).result; }
+
+/* [R88] vibe.image.improve / vibe.image.versions — the same three functions as shell.js (see its comment there):
+   only pictures the OS painted, the desktop's route and rules, a /genimg/ picture still being painted waited for the
+   late-picture way (?_r=n, at once, then 2 s ×1.5 up to every 15 s, at most an hour), a final placeholder = an error */
+function appPictureUrl(p) {
+  let u = null;
+  try { u = new URL(String(p ?? ""), location.href); } catch (e) { /* not a URL */ }
+  if (!u || u.origin !== location.origin || !/^\/(?:files\/images\/|genimg\/)/.test(u.pathname))
+    throw new Error("vibe.image: only a picture the OS painted — a vibe.image() URL (/files/images/…), a /genimg/… URL " +
+                    "or the <img> showing one");
+  u.searchParams.delete("_r");
+  return u.pathname + u.search;
+}
+async function genimgPainted(pic, t0) {
+  for (let n = 1; Date.now() - t0 < 3600000; n++) {
+    if (n > 1) await new Promise((res) => setTimeout(res, Math.min(15000, 2000 * Math.pow(1.5, n - 2))));
+    const u = new URL(pic, location.href);
+    u.searchParams.set("_r", String(n));
+    const res = await fetch(u.pathname + u.search);
+    if ((res.headers.get("Content-Type") || "").startsWith("image/png")) return;           // painted
+    const w = +(((await res.text()).match(/width='(\d+)'/) || [])[1] || 0);
+    if (w % 2 === 0) throw new Error("this picture could not be painted (the render failed or was refused), so it cannot be improved");
+  }
+  throw new Error("the picture was still being painted after an hour");
+}
+async function appImprovePicture(picture, instruction) {
+  const pic = appPictureUrl(picture), note = String(instruction ?? "").trim().slice(0, 1000);
+  toast("✨ improving a picture" + (note ? ": " + note.slice(0, 50) : "") + "…");
+  const t0 = Date.now();
+  for (;;) {
+    const res = await fetch("/api/image/improve", { method: "POST", headers: apiHeaders(),
+      body: JSON.stringify({ picture: pic, instruction: note }) });
+    const r = await res.json().catch(() => ({ error: "the kernel answered " + res.status }));
+    if (res.status === 404 && pic.startsWith("/genimg/")) { await genimgPainted(pic, t0); continue; }
+    if (!r.job) throw new Error(r.error || "the picture could not be improved");
+    const j = await pollJobRecord(r.job);
+    toast("✦ picture improved to v" + j.version + " (" + Math.round((Date.now() - t0) / 1000) + " s)");
+    return { url: j.result, version: j.version, root: r.root, from: r.from_version, versions: j.versions || [],
+             model: j.model || r.model || null, ms: j.ms ?? null };
   }
 }
 
@@ -168,6 +211,12 @@ async function handleBridge(d) {
     const r = await fetch("/api/image", { method: "POST", headers: apiHeaders(),
       body: JSON.stringify({ prompt: args[0], width: args[1], height: args[2] }) }).then((r) => r.json());
     return await pollJob(r.job, r.error);   // [R87] no job: the kernel's own sentence ("… is downloading (n %)")
+  }
+  if (method === "imageImprove") return await appImprovePicture(args[0], args[1]);   // [R88] parity with shell.js
+  if (method === "imageVersions") {
+    const r = await fetch("/api/image/versions?picture=" + encodeURIComponent(appPictureUrl(args[0]))).then((r) => r.json());
+    if (r.error) throw new Error(r.error);
+    return r;
   }
   if (method === "images") {
     // [D3] parity with shell.js: one model load for the whole list (kernel /api/images)

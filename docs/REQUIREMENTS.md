@@ -1579,6 +1579,9 @@ numbers are listed by title only — each gets its real entry when it is built (
   is): ONLY when the request asks for adult content — keep the requested name/brand and theme, as explicit as asked,
   never toned down or renamed; fictional adults aged 25+ (said so), never minors, never real identifiable people; a
   request that does not ask for adult content stays non-sexual. The wallpaper writer and the vision prompt get none.
+  **R88 fix round 4 (2026-10-18, doc §11 "Fix round 4"):** the detector reads a refusal followed by an offer of something
+  else ("What I can offer instead: a romantic story that fades to black") as a refusal, so the ladder runs; the block
+  negates "neither … nor" / "weder … noch" lists ("neither minors nor anyone under 18"). Tests: R88's `r88_fix4_*`.
 
 ## Public images (owner, 2026-10-16)
 - **R87 — shareable public images: the public profile, first-boot downloads, Muse with the user's own civitai key, model licences**: owner
@@ -1620,3 +1623,104 @@ numbers are listed by title only — each gets its real entry when it is built (
   in Chromium, the prep script on planted trees, the source fetcher); the prep script also on a read-only extract of the
   real v7.5-2 image (56 findings → PASS); the real weights on the CPU engines PASS; the RTX 4070 check is open (the card was
   off the PCI bus).
+  - **Status note (2026-10-17): the public-image follow-ups** (build-v7.5-2's final notes; `docs/PUBLIC-IMAGES-2026-10-16.md`
+    addendum). (a) **The raw-byte scrub** is the prep script's own now: `public-image-prep.sh --scrub DISK [--verify]`
+    (`scripts/public-image-scrub.py`) on the UNMOUNTED disk zeroes the swapfile's pages but its header (rebuilt as mkswap
+    writes it: same UUID / label), every non-zero free ext4 block and every non-zero free FAT cluster, then a raw verify:
+    none of those left, and the raw bytes hold none of the private strings (the patterns file, `KAIROS_PRIVATE_PATTERNS`,
+    the build's WiFi SSID + PSK and SSH key bodies — never printed) outside regular files. (b) **The runtime is exactly
+    kernel/ shell/ manifests/ scripts/ docs/**: `iso/build-iso.sh` (its staging tree persists between builds) and
+    `dev/rig/testrig/sync-guest.sh` remove anything else (an older image's `tests/`) and never copy edit backups or
+    bytecode; the prep script removes it from a public image. (c) The first-boot download sentences agree in number
+    ("the dictionaries are queued … dictionary look-ups work when they arrive"). Tests: `pp_r88_raw_scrub_planted_image`
+    (a planted GPT image; needs e2fsprogs / dosfstools / mtools / sfdisk — skips in the suite image),
+    `pp_r88_runtime_ships_no_tests`, `pp_r88_download_sentences_grammar`.
+
+## Picture ✨ for apps (owner, 2026-10-17)
+- **R88 — picture ✨ for apps (`vibe.image.improve`) + the 25+ check on adult picture prompts**: owner (2026-10-17, the
+  session analysis): *"Picture ✨ for apps"* — generated apps could not use R85's picture editor. (a) **The app method**:
+  `vibe.image.improve(picture, instruction)` (alias `vibe.image.edit`) → the new version `{url, version, root, from,
+  versions, model, ms}`, which also reads as its URL (`img.src = await vibe.image.improve(img, "…")`);
+  `vibe.image.versions(picture)` → the chain. `picture` = a picture the OS painted (a `vibe.image()` / `vibe.images()`
+  URL, a `/genimg/…` URL, an earlier version, or the `<img>` showing one) — never a canvas, a `data:` URL or an upload.
+  The shell (`shell.js`, and `shell/bench/host.js` for the X-window app host) sends it to R85's `POST
+  /api/image/improve`, so the desktop's rules hold unchanged: R86's minors floor on the words as typed and on the final
+  prompt, the 18+ rules (the instruction verbatim), the editor add-on (409 + `download_key`), the R72 GPU hold through
+  `sd_batch`; the job is polled without a time limit, and a `/genimg/` picture still being painted is waited for the
+  late-picture way (`?_r=n` asks; a final placeholder = an error). Documented in the app builder's sheet
+  (`docs/api/media.md`, under the prompt budget) and `docs/API.md`; `vibe.image` is a guarded namespace (an invented
+  member is undefined). (b) **The 25+ check**: the prompt writers' adult rule asks for ages 25+ "say so explicitly", yet a
+  description said "in their 20s". `refusal.adult_ages()` runs in `MM.sd_batch` right AFTER the minors block on the final
+  prompt of an adult request (the `adult` flag, or a sexual term in the request or the final prompt): a person's stated
+  age 18–24 → 30, a decade reaching below 25 ("in their 20s", "early twenties", "late teens") → "in their thirties" /
+  "aged 30", "twenty-something" → "thirty-something"; never an age ≥ 25, a thing's age, an era, a negated phrase, a SFW
+  prompt or an under-18 age or decade (the block's: "early / mid teens" are never aged up). Tests:
+  `pe_r88_app_bridge_improve` (a test app in the real shell, headless Chromium), `tests/bridge-test.js` (the bridge
+  shape), `r88_adult_ages_table_and_invariants`, `r88_adult_ages_at_the_sd_floor`, `r88_fix_compound_ages_and_teen_decades`,
+  `r88_fix_teen_decades_at_the_sd_floor`, `r88_fix2_adult_flag_block`, `r88_fix2_teen_words_adult_wording`,
+  `r88_fix2_adult_flag_at_the_sd_floor`, `r88_fix3_negated_lists`, `r88_fix3_teen_title_rule`, `r88_fix3_at_the_sd_floor`,
+  `r88_fix4_refusal_offers`, `r88_fix4_offer_climbs_the_ladder`, `r88_fix4_nor_lists`, `r88_fix4_nor_lists_at_the_sd_floor`.
+  Doc: `docs/PICTURE-EDIT-2026-10-15.md` (addendum 2026-10-17),
+  `docs/REFUSAL-FALLBACK-2026-10-09.md` (the R88 fix round).
+  - **Status note (2026-10-17): implemented and mock-proven** — the app method through the real shell in headless Chromium
+    (improve → v1 shown by `img.src = v`, edit → v2, versions, the minors block rejecting with no job, a `data:` URL refused,
+    a late `/genimg/` picture waited for, a failed one an error) and the 25+ check through the real `sd_batch` (18 rewrites,
+    18 keeps, 108 R86 under-18 probes untouched).
+  - **Status note (2026-10-17): GPU-checked on the RTX 4070** — a test app in the real shell asked ✨ on a `/genimg/`
+    picture that was not painted yet: the bridge waited (the kernel's late-picture ask #9), v1 in 28.3 s (1024×576, the
+    editor's load included), `vibe.image.edit` → v2 in 18.7 s in the open session, versions v0–v2; an adult-flagged SFW
+    portrait "in her early twenties" was rendered as "in her thirties" (the kernel's 25+ line); VRAM peak 7124 MiB.
+  - **Status note (2026-10-17, fix round): two defects in R86's block fixed, mock-proven** — (1) a compound number word
+    was read as its last part ("a twenty-two-year-old woman, naked" fired as "two-year-old" + a term; every English
+    twenty-one … ninety-nine): a ones word right after a tens word / "hundred" is no longer an age, and German one-word
+    compounds stay unread (pinned); (2) "nude, in her early teens" passed the block and the 25+ check aged it up to "in
+    her thirties": the unambiguous under-18 decades (early / mid teens, early teenage years, frühe Teenagerjahre, Mitte
+    der Teenagerjahre …) are block indicators now (with a sexual term; alone in a picture edit) and are never aged up,
+    while the ambiguous ones (late teens, in her teens, teen, barely legal) never block. The reviewers' probes are
+    unchanged before → after (core fire 82/82, must-pass 134/134, no single verdict changed). Open: an adult-flagged
+    picture with an under-18 age or decade and no sexual term is neither blocked nor aged up; "teen" / "barely legal"
+    are not read by the 25+ check (see the doc). Both decided and built in fix round 2 (next note).
+  - **Status note (2026-10-17, fix round 2): the integrator's two decisions built, mock-proven** — (A) where the kernel
+    knows a request is adult, the adult flag counts as the sexual term (`refusal.minor_block(text, adult=True)`): an image
+    job's flag at `MM.sd_batch` (the request's `{adult}` / `{uncensored}`, or a sexual term in the request), the explicit
+    flag at `render_images`' entry (before the expander), a video job's flag at `MM.sd_job` (`h_video`: a sexual term in
+    the request; the video API has no flag) — "explicit photo, a woman in her early teens" or "… a 15-year-old …" is
+    blocked there without a listed term; negations, age gates, measurements, counts and the message are unchanged, SFW
+    jobs still need the term; accepted cost (pinned): "a 12-year-old scotch on the bar" blocks an ADULT picture. Paths
+    with no flag (icons, the forge's late pictures, a page's `<video data-gen-video>`, music, text) keep the term rule;
+    the picture editor reads the age alone as before. (B) the 25+ check turns "teen" / "teens" / "teenage" /
+    "teenager(s)" / "barely legal" in an adult final prompt into adult wording ("teen girl" → "adult woman aged 30", "a
+    teen" → "an adult aged 30", "teenage" → "adult", "barely legal" → "adult, aged 30"), reported in `aged_up`; never in a
+    SFW prompt, a title / name ("Teen Titans"), a negation, or a text the adult floor refuses; "late teens" / "in her
+    teens" keep their rewrite. Found on the way and fixed: a negated "no longer in her early twenties" was garbled to "…
+    in her aged 30". The reviewers' probes are unchanged before → after (core fire 82/82, must-pass 134/134, 0 item
+    differences). Open: a negation exempts only the first of two under-18 words ("no one is underage or under 18" — the
+    second is read, with a term as before, now also with the flag); the rewrite is English (German shares only
+    "Teenager"). The negation item and the title rule ("teen Anna", "teen Latina" were kept) are fixed in fix round 3.
+  - **Status note (2026-10-17, fix round 3): two precision gaps fixed, mock-proven** — (1) a negation's scope carries
+    across a coordinated list of under-18 words (joins or / and / nor / , / "/", German oder / und / noch / ,; a closed
+    filler list; new heads "neither" / "weder"): "nude woman, nobody is underage or under 18", "nackt, niemand ist
+    minderjährig oder unter 18" and "explicit, nobody under 18 or underage" pass with a term and with the adult flag. The
+    scope ends at a clause break, any other word (a positive statement: "nobody is underage, she is under 18" fires), a
+    number (never negated) and a list item a person noun follows ("nobody under 18, underage girl" fires); a list that
+    isn't negated still fires. (2) the 25+ check's teen title rule: a lowercase teen word is never a title ("nude teen
+    Latina" → "nude adult Latina"); a capitalised Teen / Teenage is one only in a short documented list (Teen Titans /
+    Wolf / Vogue / Choice / Spirit, Teenage Mutant Ninja Turtles / Dream / Kicks / Engineering); anything else is
+    rewritten (cosmetic in an adult prompt). The reviewers' probes are unchanged before → after (core fire 82/82,
+    must-pass 134/134, 0 item differences). Not changed (the R86 design): a bare number is no age, so "nobody is
+    underage. she is 15, nude" passes, while "… 15 years old …" fires. Accepted cost: a negated list with a shared person
+    noun ("nobody under 18 or underage girls, nude") still fires.
+  - **Status note (2026-10-18, fix round 4): two detector / block gaps fixed, mock-proven** — (1) a refusal of the
+    requested content followed by an OFFER of something else is a refusal (text, short pages, a rich page that opens
+    with it, prompts): Ornith-1.5-9B's "I can't write sexually explicit content … What I can offer instead: …" (the
+    fast-models benchmark, A5) had passed as a limitation followed by help, so no ladder rung ran. The offer (EN + DE:
+    "What I can offer instead", "Instead, I can", "I'd be happy to … instead", "Here's a tamer version", "fades to black",
+    "Stattdessen kann ich", "Was ich anbieten kann", "Ich kann dir aber … anbieten") counts only after a content refusal
+    (policy vocabulary in the sentence, or a bare sentence with a watered-down offer); a limitation followed by real help
+    still passes ("I can't browse the web, but here is what I know: …"). (2) "neither … nor" / "weder … noch" lists of
+    bridge words and under-18 words are negated ("nude woman, neither minors nor anyone under 18" passes; "noch" only
+    after "weder"); the 25+ check's teen rewrite is unchanged. Found on the way and fixed: a duplicate bridge word made
+    the negation regex exponential (22 × "anybody" took 7.6 s). The reviewers' probes before → after: block core fire
+    82/82, must-pass 134/134, 0 item differences; in the detector probes exactly two items moved, both a refusal plus an
+    offer (now detected); 0 false refusals on 166 real screen answers and 287 cached pages / apps / games.
+

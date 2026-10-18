@@ -322,6 +322,47 @@ test("vibe.image(): Array.map's (prompt, index, array) extras are dropped, real 
                                                      ["c", 768, 512], ["d", 1024, 576]]);
 });
 
+test("[R88] vibe.image.improve / .edit / .versions: posted to the host page, the new version reads as its URL, errors reach the app", async () => {
+  const warned = [];
+  const origWarn = console.warn;
+  console.warn = (m) => warned.push(String(m));
+  try {
+    const { window, posted, reply } = boot();
+    const v = window.vibe;
+    assert.strictEqual(typeof v.image, "function", "vibe.image() itself is unchanged");
+    assert.strictEqual(typeof v.image.improve, "function");
+    assert.strictEqual(v.image.edit, v.image.improve, "edit = the name the models reach for");
+    const p = v.image.improve("/files/images/a.png", "make it a snowy night");
+    v.image.improve({ currentSrc: "http://127.0.0.1:1337/genimg/a%20fox?w=512&h=512", src: "x" }, null);   // an <img>
+    v.image.improve({ url: "/files/images/versions/pabc0123456789ab/v1.png" });                          // a version
+    v.image.versions("/files/images/a.png");
+    assert.deepStrictEqual(posted.map((x) => [x.method, ...x.args]), [
+      ["imageImprove", "/files/images/a.png", "make it a snowy night"],
+      ["imageImprove", "http://127.0.0.1:1337/genimg/a%20fox?w=512&h=512", ""],
+      ["imageImprove", "/files/images/versions/pabc0123456789ab/v1.png", ""],
+      ["imageVersions", "/files/images/a.png"]]);
+    const rec = { url: "/files/images/versions/pabc0123456789ab/v1.png", version: 1, root: "pabc0123456789ab", from: 0,
+                  versions: [{ v: 0 }, { v: 1 }], model: "Qwen-Image-2.1 Turbo edit", ms: 66000 };
+    reply(posted[0].id, rec);
+    const r = await p;
+    assert.strictEqual(String(r), rec.url, "img.src = await vibe.image.improve(…) gets the URL");
+    assert.strictEqual("" + r, rec.url);
+    assert.strictEqual(`${r}`, rec.url);
+    assert.strictEqual(r.url, rec.url);
+    assert.strictEqual(r.version, 1);
+    assert.deepStrictEqual(Object.keys(r), ["url", "version", "root", "from", "versions", "model", "ms"], "toString stays hidden");
+    assert.strictEqual(JSON.stringify(r), JSON.stringify(rec));
+    reply(posted[3].id, { root: null, current: 0, url: "/files/images/a.png", versions: [{ v: 0, url: "/files/images/a.png" }] });
+    const q = v.image.improve("/files/images/b.png", "x");
+    reply(posted[4].id, undefined, "kAIrOS does not create sexual content involving minors");
+    await assert.rejects(q, /does not create/);
+    assert.strictEqual(typeof v.image.filter, "undefined", "an invented member is undefined");
+    assert(warned.some((w) => /vibe\.image\.filter is not part of the kAIrOS API — vibe\.image has: improve, edit, versions/.test(w)), warned);
+    ["c"].map(v.image);                                              // the guarded function still maps
+    assert.deepStrictEqual(posted[5].args, ["c", undefined, undefined]);
+  } finally { console.warn = origWarn; }
+});
+
 test("vibe.images(): a list or prompt+count, options normalised, sizes validated like vibe.image", () => {
   const { window, posted } = boot();
   window.vibe.images(["a", "b"]);

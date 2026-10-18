@@ -250,6 +250,8 @@ Both images:
 3. **The full image only:** `bash scripts/fetch-licence-sources.sh --root ROOT` (network; 36 004 656 B).
 4. `bash scripts/public-image-prep.sh ROOT --esp ESP`, with the owner's `iso/secrets/private-patterns.txt` in place.
    It must end with `VERIFY: PASS`.
+4b. **[2026-10-17] Unmount, (shrink,) then `bash scripts/public-image-prep.sh --scrub DISK`** on the unmounted disk — the
+   raw-byte scrub and its raw verify (§10). It must end with `RAW VERIFY: PASS`.
 5. Boot-test as usual, read-only on the flat image: the boot-log verdict, and `/api/status` → `profile: public`,
    `image: Z-Image-Turbo (Q4_0)`.
 
@@ -330,3 +332,82 @@ Muse in a public image: never.
 - **The Settings app is LLM-written.** Its new button depends on the generation. The panel is reachable without it
   (About, the chip, the first-start dialog).
 - **The repository itself still has no licence** (README §Licence).
+
+## 10. Addendum 2026-10-17: the raw-byte scrub, the runtime set, the download sentences (R88 follow-ups)
+
+The v7.5-2 public build (`build-v7.5-2/STATUS-PUBLIC-IMAGES.md`, steps K–L) scanned the flat images byte by byte after
+the prep script had said PASS and found the WiFi PSK and SSID in **`/swapfile`** (fallocated: unwritten extents over
+old swapped-out memory pages — the file reads as zeros, the disk does not), in **free ext4 blocks** (fstrim on the qcow2
+overlay drops only whole 64 KiB clusters) and in a **free ESP cluster** (a deleted boot log). The build's own
+`scrub.sh` + `rawscan.sh` fixed and proved it; the prep script now does both itself.
+
+```
+bash scripts/public-image-prep.sh --scrub DISK [--patterns FILE]           # the raw scrub, then the raw verify
+bash scripts/public-image-prep.sh --scrub DISK [--patterns FILE] --verify  # the raw verify alone, read-only
+```
+
+`DISK` is the **unmounted** disk: a flat image file, the build's hot-plugged `/dev/sdX`, a partition, or a bare file
+system. The work is `scripts/public-image-scrub.py` (next to the prep script; needs e2fsprogs). It refuses a mounted,
+swapped-on or loop-attached disk and an ext4 that is not clean (or whose journal needs a replay) — nothing is written then.
+
+**The scrub**, for every ext4 and FAT partition of the GPT (or the bare file system):
+
+- **the swapfile(s)** `/etc/fstab` names: every page but the header zeroed on the raw device (its data blocks from the
+  leaf extents, unwritten ones included — never debugfs `blocks`, which also lists the extent tree's own index block),
+  the header page rebuilt exactly as mkswap writes it — the same UUID, label and size; the file system's metadata is not
+  touched;
+- **every free ext4 block that is not zero** (debugfs `dump_unused`: the block bitmaps through libext2fs) is zeroed;
+- **every free FAT cluster that is not zero** (free in every FAT copy) is zeroed.
+
+Only non-zero blocks are written: a second scrub writes nothing, and a qcow2 overlay does not grow. e2fsck -fn must still
+be clean afterwards. The GPT and the gaps between partitions are never written.
+
+**The raw verify** (also the scrub's last step):
+
+1. **structure:** no swapfile page but its header, no free ext4 block and no free FAT cluster holds a non-zero byte;
+2. **needles:** the raw bytes of the whole disk are searched for the private strings (read in 64 MiB chunks; one hit
+   per needle per block or cluster, so a disk full of old pages stays cheap) — the patterns file
+   (`iso/secrets/private-patterns.txt` or `--patterns`), `KAIROS_PRIVATE_PATTERNS`, the build's WiFi SSID + PSK
+   (`iso/secrets/wifi.env` or `KAIROS_WIFI_ENV`) and the SSH key bodies (`iso/secrets/authorized_keys` or
+   `KAIROS_SSH_PUBKEY`). The needles sit in a 0600 temp file and are **never printed** — only their names
+   (`pattern 3`, `wifi-psk`, `ssh key 1`). Each hit is located: a free block, a swapfile, the ext4 journal, a metadata
+   block, a name in a directory, a free ESP cluster, FAT metadata or outside the partitions is a **FAIL**; a hit inside a
+   regular file is a **WARN** (the file verify judges files; shipped repo text is public on GitHub). Needles shorter
+   than 4 bytes are counted, not searched.
+
+`RAW VERIFY: PASS — 0 findings, N warning(s)` / `RAW VERIFY: FAIL — …`; exit 0 / 1 (2 = refused).
+
+**At scale** (a 3 GiB ext4 with 2 GiB of deleted residue: 1.6 GB in free blocks + a 512 MiB fallocated swapfile whose
+extent tree has an index block): the verify of the dirty image took 10.2 s (max RSS 384 MB) and FAILed 131 071 swap
+pages, 393 216 free blocks and the needle in 524 286 blocks; the scrub took 10.9 s (237 MB) and PASSed; a second scrub
+wrote nothing (5.8 s); e2fsck -fn clean, the swap UUID kept, 0 residue bytes left. Two first-draft designs failed at that
+scale and were replaced: `grep -abo` (a newline-free zero region is one "line": 3.9 GB RSS; GNU grep 3.12's `-z` gave
+wrong offsets on a sparse image) and debugfs `blocks` for the swapfile (it lists the extent tree's index block first).
+
+**The runtime set.** `/opt/vibeos/os` of v7.5-2 still held 18 test files from June 2026 (one, `mock-ace-cli`, not even
+in git): `iso/build-iso.sh` stages into a work tree that persists between builds, and `rsync --delete` cleans only inside
+the directories it copies; `sync-guest.sh` and the bundles never delete it either. Nothing at runtime reads `tests/`.
+The shipped OS code is now exactly `kernel/ shell/ manifests/ scripts/ docs/`: `iso/build-iso.sh` and
+`dev/rig/testrig/sync-guest.sh` remove anything else (and never copy `*.bak*` or `__pycache__`), and the prep script
+removes it from a public image (verify: FAIL while it is there).
+
+**The download sentences** agree in number now: "the dictionaries are queued for download (0.3 GB to go) — dictionary
+look-ups work when they arrive", "the offline Wikipedia is … — offline search works when it arrives", "translation
+works", "looking at pictures works" (`kernel/public.py` `missing_sentence()`; it was "the dictionaries is queued").
+
+**Tests** (`tests/test_public_profile.py`): `pp_r88_raw_scrub_planted_image` — a planted GPT disk image built without
+root (mke2fs -d, debugfs -w, mkfs.vfat -C + mtools, sfdisk on a file) with the build's residue: a swapfile whose
+unwritten extents lie over a deleted secret's blocks (debugfs `fallocate`), a deleted NetworkManager profile in a free
+ext4 block, a deleted boot log in free ESP clusters, the owner's string in shipped repo text. The verify FAILs each class
+and never prints a needle; the scrub zeroes exactly that (the swap header kept — blkid reads the same UUID and label;
+e2fsck -fn and fsck.vfat -n clean; kept files intact) and PASSes with the one repo-text WARN; a second scrub writes
+nothing; stray bytes in the swap header page are wiped; a needle in the GPT gap FAILs and is left alone; a bare ext4
+works; an unclean ext4 is refused untouched; the WiFi env + key needles are found by name. It needs e2fsprogs, dosfstools,
+mtools and sfdisk and skips without them (the suite's image has none — it ran on the host). `pp_r88_runtime_ships_no_tests`
+and `pp_r88_download_sentences_grammar` pin the other two; `pp_prep_verify_planted_then_clean_idempotent` now plants an
+`opt/vibeos/os/tests/`.
+
+**Not changed:** the build kit outside the repository (`build-v7.5-2/make-bundle.sh`, its `guest/*.sh`) and the live
+rig's `pod/testrig/sync-guest.sh` — the next build can call `--scrub` instead of `guest/scrub.sh` + `rawscan.sh`, and a
+bundle-built private image keeps its old `tests/` until something removes it (the prep script does for public images).
+

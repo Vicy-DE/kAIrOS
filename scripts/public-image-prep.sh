@@ -4,6 +4,8 @@
 #
 #   bash scripts/public-image-prep.sh ROOT [--esp ESP] [--patterns FILE]     prepare (then verify)
 #   bash scripts/public-image-prep.sh ROOT [--esp ESP] [--patterns FILE] --verify   read-only scan, exit 1 on a finding
+#   bash scripts/public-image-prep.sh --scrub DISK [--patterns FILE]          the raw-byte scrub (then the raw verify) [R88]
+#   bash scripts/public-image-prep.sh --scrub DISK [--patterns FILE] --verify the raw verify alone (read-only)
 #
 # ROOT = the image's root file system, mounted (never /). ESP = its EFI partition, mounted (default ROOT/boot/efi when
 # that directory exists). The build runs it as root against the mounted image; it changes nothing outside ROOT/ESP and
@@ -32,6 +34,17 @@
 #             --patterns FILE, default iso/secrets/private-patterns.txt (gitignored), and KAIROS_PRIVATE_PATTERNS
 #             (comma-separated). Hits inside /opt/vibeos/os (the shipped copy of the public git repository) are
 #             reported as WARN — the same text is public on GitHub; everywhere else they FAIL.
+#   runtime   [R88] /opt/vibeos/os holds only kernel/ shell/ manifests/ scripts/ docs/ (an older image's tests/ goes)
+#
+# The raw-byte scrub [R88] (--scrub DISK: run it AFTER the prepare, on the UNMOUNTED disk — a flat image, the build's
+# /dev/sdX, a partition): the bytes of what the prepare removed stay on the disk. The v7.5-2 public build found the WiFi
+# PSK in /swapfile (fallocated = unwritten extents over old swapped memory pages), in free ext4 blocks and in a free ESP
+# cluster after this script said PASS. --scrub zeroes, for every ext4 + FAT partition: the swapfile's pages but its
+# header (the header rebuilt as mkswap writes it: same UUID, label, size), every non-zero free ext4 block, every
+# non-zero free FAT cluster; then the raw verify: no such block, page or cluster left, and the raw bytes of the whole
+# disk hold none of the private strings outside regular files (the patterns file, KAIROS_PRIVATE_PATTERNS, the build's
+# iso/secrets/wifi.env SSID + PSK and iso/secrets/authorized_keys key bodies — never printed, named only). The work is
+# scripts/public-image-scrub.py (next to this script; needs e2fsprogs). Refuses a mounted disk or an unclean ext4.
 set -euo pipefail
 shopt -s nullglob dotglob lastpipe     # lastpipe: a pipeline's last stage counts findings in THIS shell
 
@@ -41,12 +54,13 @@ MUSE_SHA=db3eceab8049b5ba7dbebeff297145698c5498d618db15b88fd1c7e0bfa4e6c5
 FREEDICT_GPL="deu-eng-1.9-fd1 eng-deu-1.9-fd1 deu-ita-0.2.1 ita-deu-0.2.1 eng-fra-0.1.6 fra-eng-0.4.1 spa-eng-0.3.1 spa-deu-0.1"
 
 die() { echo "public-image-prep: $*" >&2; exit 2; }
-usage() { sed -n '2,37p' "$0"; exit 2; }
+usage() { sed -n '2,51p' "$0"; exit 2; }
 
-ROOT=""; ESP=""; MODE=prep; PATTERNS=""; FORCE_TREE=0
+ROOT=""; ESP=""; MODE=prep; PATTERNS=""; FORCE_TREE=0; SCRUB=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --verify) MODE=verify; shift ;;
+    --scrub) SCRUB=${2:?--scrub needs the unmounted disk / image}; shift 2 ;;
     --esp) ESP=${2:?--esp needs a directory}; shift 2 ;;
     --patterns) PATTERNS=${2:?--patterns needs a file}; shift 2 ;;
     --tree) FORCE_TREE=1; shift ;;          # a test tree without /etc/os-release (tests/test_public_profile.py)
@@ -55,6 +69,53 @@ while [ $# -gt 0 ]; do
     *) [ -z "$ROOT" ] || die "one ROOT only"; ROOT=$1; shift ;;
   esac
 done
+# ------------------------------------------------------------------------------------------------ the raw-byte scrub [R88]
+if [ -n "$SCRUB" ]; then
+  [ -z "$ROOT" ] || die "--scrub takes the unmounted DISK, no ROOT"
+  [ -e "$SCRUB" ] || die "$SCRUB does not exist"
+  [ -f "$HERE/public-image-scrub.py" ] || die "public-image-scrub.py is missing next to this script"
+  command -v python3 >/dev/null || die "python3 is needed for --scrub"
+  [ -n "$PATTERNS" ] || { [ -f "$HERE/../iso/secrets/private-patterns.txt" ] && PATTERNS="$HERE/../iso/secrets/private-patterns.txt"; } || true
+  NDIR=$(mktemp -d); chmod 700 "$NDIR"; trap 'rm -rf "$NDIR"' EXIT
+  : > "$NDIR/needles"; : > "$NDIR/names"; chmod 600 "$NDIR/needles"
+  SHORT=0
+  needle() {   # NAME VALUE — a needle shorter than 4 bytes would match everywhere: counted, not searched
+    [ -n "$2" ] || return 0
+    if [ "${#2}" -lt 4 ]; then SHORT=$((SHORT + 1)); return 0; fi
+    printf '%s\n' "$2" >> "$NDIR/needles"; printf '%s\n' "$1" >> "$NDIR/names"
+  }
+  i=0
+  if [ -n "$PATTERNS" ] && [ -f "$PATTERNS" ]; then
+    while IFS= read -r l || [ -n "$l" ]; do
+      case "$l" in ''|'#'*) continue ;; esac
+      [ -n "$(tr -d '[:space:]' <<<"$l")" ] || continue
+      i=$((i + 1)); needle "pattern $i" "$l"
+    done < "$PATTERNS"
+  fi
+  if [ -n "${KAIROS_PRIVATE_PATTERNS:-}" ]; then
+    while IFS= read -r l; do [ -n "$l" ] && { i=$((i + 1)); needle "pattern $i" "$l"; }; done < <(tr ',' '\n' <<<"$KAIROS_PRIVATE_PATTERNS")
+  fi
+  WIFI_ENV=${KAIROS_WIFI_ENV:-$HERE/../iso/secrets/wifi.env}
+  if [ -f "$WIFI_ENV" ]; then
+    for k in KAIROS_WIFI_SSID KAIROS_WIFI_PSK; do
+      v=$(sed -n "s/^[[:space:]]*$k=//p" "$WIFI_ENV" | tail -n1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/")
+      needle "$(tr 'A-Z_' 'a-z-' <<<"${k#KAIROS_}")" "$v"
+    done
+  fi
+  KEYS=${KAIROS_SSH_PUBKEY:-$HERE/../iso/secrets/authorized_keys}
+  if [ -f "$KEYS" ]; then
+    j=0
+    while read -r _t body _c; do
+      case "$body" in AAAA*) j=$((j + 1)); needle "ssh key $j" "${body:0:40}" ;; esac
+    done < "$KEYS"
+  fi
+  echo "raw needles: $(wc -l < "$NDIR/needles") (contents never printed)$([ "$SHORT" = 0 ] || echo "; $SHORT shorter than 4 bytes not searched")"
+  rc=0
+  python3 -I "$HERE/public-image-scrub.py" "$([ "$MODE" = verify ] && echo verify || echo scrub)" "$SCRUB" \
+    --needles "$NDIR/needles" --names "$NDIR/names" || rc=$?
+  exit "$rc"
+fi
+
 [ -n "$ROOT" ] || usage
 [ -d "$ROOT" ] || die "$ROOT is not a directory"
 ROOT=$(cd "$ROOT" && pwd -P)
@@ -182,6 +243,14 @@ if [ "${#BAKS[@]}" -gt 0 ]; then
   else rm -f -- "${BAKS[@]}"; fixed "${#BAKS[@]} edit backup(s) (*.bak*), e.g. $(rel "${BAKS[0]}")"; fi
 fi
 
+# [R88] the shipped OS code is exactly kernel/ shell/ manifests/ scripts/ docs/ (iso/build-iso.sh, sync-guest.sh): a tests/
+# or bench/ an older image carries (v7.5-2: 18 test files from June 2026, one not even in git) is dev material
+if [ -d "$ROOT/opt/vibeos/os" ]; then
+  for e in "$ROOT"/opt/vibeos/os/*; do
+    case "$(basename "$e")" in kernel|shell|manifests|scripts|docs) ;; *) rm_paths "not part of the runtime (dev / test files)" "$e" ;; esac
+  done
+fi
+
 # ------------------------------------------------------------------------------------------------ kAIrOS state
 rm_paths "kAIrOS cache (apps, pictures, settings, downloads state)" "$ROOT"/opt/vibeos/cache/*
 rm_paths "the /data partition (user files, settings, first-start flag)" "$ROOT"/opt/vibeos/fs/data/*
@@ -210,6 +279,7 @@ fi
 
 if [ "$MODE" = prep ]; then          # what follows cannot be fixed here — the verify pass below reports it
   echo "prepare: $CHANGES change(s) under $ROOT${ESP:+ and $ESP}"
+  echo "next: unmount, then the raw-byte scrub: $0 --scrub <the disk> [--patterns FILE] (what was removed stays in the raw bytes until then)"
   echo "== verify =="
   exec bash "$0" "$ROOT" ${ESP:+--esp "$ESP"} ${PATTERNS:+--patterns "$PATTERNS"} $([ "$FORCE_TREE" = 1 ] && echo --tree) --verify
 fi

@@ -1,5 +1,5 @@
 {
- "at": "2026-10-16 20:45:45",
+ "at": "2026-10-18 02:17:46",
  "tests": {
   "unit_forge_pyflakes_static_gate": {
    "reqs": [
@@ -25,7 +25,7 @@
     "R45"
    ],
    "status": "pass",
-   "detail": "stderr (new+old console form, 3 Uncaught), DOM report, line map, dedupe, console.error/JSON filters, BRIDGE_SRC (30825 chars)"
+   "detail": "stderr (new+old console form, 3 Uncaught), DOM report, line map, dedupe, console.error/JSON filters, BRIDGE_SRC (31999 chars)"
   },
   "unit_forge_playtest_catches_keypress_crash": {
    "reqs": [
@@ -34,7 +34,7 @@
     "R11"
    ],
    "status": "pass",
-   "detail": "RIGHT-key crash caught in 1.1 s (line 10, input t=1.00s KEYDOWN right); healthy passed (73 events, 7.8 s); no-window, after-QUIT crash caught; QUIT ignored = pass"
+   "detail": "RIGHT-key crash caught in 1.2 s (line 10, input t=1.00s KEYDOWN right); healthy passed (73 events, 7.1 s); no-window, after-QUIT crash caught; QUIT ignored = pass"
   },
   "unit_appcheck_runtime_chromium": {
    "reqs": [
@@ -88,7 +88,7 @@
     "R45"
    ],
    "status": "pass",
-   "detail": "fixed in round 3 of 4: delivered clean (gate clean, runtime clean (0.4 s, 8 actions, 1 vibe calls))"
+   "detail": "fixed in round 3 of 4: delivered clean (gate clean, runtime clean (0.6 s, 8 actions, 1 vibe calls))"
   },
   "http_forge_app_identical_repair_guard": {
    "reqs": [
@@ -115,7 +115,7 @@
     "R45"
    ],
    "status": "pass",
-   "detail": "click TypeError found headless, repaired in 1 round, delivered: gate clean, runtime clean (0.4 s, 8 actions, 1 vibe calls)"
+   "detail": "click TypeError found headless, repaired in 1 round, delivered: gate clean, runtime clean (0.6 s, 8 actions, 1 vibe calls)"
   }
  }
 }

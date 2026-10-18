@@ -5,7 +5,14 @@
 > defect, the ladder, the config, the streaming verdict) still describe the shipped design; §6–§10 are kept as the record
 > of what was tried and why it failed review three times. **Round 4b (2026-10-11)** applies the independent review of
 > round 4 (list / regex / wiring fixes, the uncensored default's limits line), **round 4c (2026-10-11)** the re-review's
-> four list / regex fixes K1–K4 — the last two subsections of §11.
+> four list / regex fixes K1–K4 — the last two subsections of §11. The **R88 fix round (2026-10-17)**: compound ages
+> ("twenty-two-year-old") no longer fire, and the under-18 teen decades ("early / mid teens") are block indicators that
+> the 25+ check never ages up. Its **fix round 2** (same day) makes the adult flag count as the sexual term where the
+> kernel knows a picture or video request is adult, and turns "teen" / "barely legal" in an adult final prompt into adult
+> wording. Its **fix round 3** (same day) lets a negation cover a whole list of under-18 words ("nobody is underage or
+> under 18") and narrows the teen title rule to a short list of real titles. Its **fix round 4** (2026-10-18) makes a
+> refusal that offers something else a refusal ("I can't write sexually explicit content … What I can offer instead: …")
+> and negates "neither … nor" / "weder … noch" lists. All four are in §11's last subsection.
 
 kAIrOS is a free, non-commercial, 18+ AI OS without content filters: adult content about fictional adults
 is a product feature. Its default LLM, Gemma 4 26B-A4B-it (manifest section `llm`), still refuses adult
@@ -745,3 +752,313 @@ narrow block did not see what the request names. The integrator took the reviewe
 Both tests fail against the pre-fix kernel. The two deeper call sites (check point 3, the sd floor) were each also
 checked by reverting only their hunk. The review's probes on the patched repo: probe 1 (the new entry points) 23/23,
 probe 5 (precision) 50/52, the 2 being the cost above.
+
+### R88 fix round — compound ages and the under-18 teen decades (2026-10-17)
+
+**Why.** While building R88's 25+ check (`docs/PICTURE-EDIT-2026-10-15.md`, addendum 2026-10-17), the integrator
+confirmed two defects in the block in-process:
+- *A false positive.* `minor_block("a twenty-two-year-old woman, naked")` fired. The number-word branch reads the
+  "two-year-old" inside "twenty-two-year-old": the `\b` before "two" holds after the hyphen. Every English compound age
+  from twenty-one to ninety-nine did the same, with a hyphen or a space, and so did "a hundred and two-year-old". German
+  compounds are one word ("zweiundzwanzigjährige", "einundzwanzig Jahre alt"), so they never matched.
+- *A miss that R88 made worse.* "nude, in her early teens" names no number, so it passed the block. R88's 25+ check then
+  rewrote it to "nude, in her thirties" and rendered it.
+
+**What changed** (`kernel/refusal.py`, tagged `[R88 fix]`):
+- *Compound number words.* A ones word (one … nine) right after a tens word (twenty … ninety, also "fourty") or
+  "hundred" is never read as an age. The parts may be joined by one space, a hyphen, U+2010 or an en / em dash, and
+  "hundred and " counts too. These are fixed-width lookbehinds in `_AGE_WORDS`. "ten" to "seventeen" form no compound,
+  so "twenty fifteen-year-olds" (a count of people, then an age) still fires.
+- *The under-18 decades are indicators* (the integrator's decision). They sit in `_UNDER18_WORD` (`_TEEN_EARLY`), so
+  they pair with a sexual term like every other indicator, fire alone in a picture edit (`minor_age`), and get the same
+  negation and age-gate exemptions:
+  - English: "early teens", "mid teens" / "mid-teens" / "midteens", "early-teen", "early teenage (years)", "early
+    teenager(s)".
+  - German: "frühe / frühen / frühes / frühem Teenagerjahre(n) / Teenageralter / Teenagerzeit" (also "Teenie", "Teens",
+    and the "ue" spelling), "frühe(n) Teenager / Teenies", "Mitte / Anfang (der / ihrer / seiner …) Teenagerjahre".
+  - Not read, for precision:
+    - the plural after "the" ("the early teens" = 2013–15, "temperatures in the mid-teens") or before a unit
+      ("mid-teens °C / percent");
+    - German "früher", which is also the adverb "formerly" ("früher Teenager-Star");
+    - a hyphenated compound after "Teenager" ("die frühen Teenager-Filme").
+  - The negation bridge gained the possessives their / his / its / ihre… / seine…, so "never anyone in their early teens"
+    and "keine Personen in ihren frühen Teenagerjahren" are disclaimers ("her" was a bridge word already).
+- *Never aged up.* `adult_ages` keeps an early or mid teens phrase as it is, with or without a sexual term. With a term,
+  the block refuses the text first. In `_DECADE_PRON`, a range whose upper end is early or mid is kept; `_DECADE_BARE`
+  reads only "late teens" and "(early / mid) to late teens".
+- *The ambiguous ones never block.* "late teens", "in her teens", "teen", "barely legal", "späte Teenagerjahre" and
+  "Ende der Teenagerjahre" can all mean 18–19. The decades among them ("in her teens", "late teens", "mid- to late
+  teens") are still rewritten to "thirties" for an adult request.
+- *Not read by the 25+ check.* "teen" and "barely legal" are neither blocked nor rewritten: they name no decade and no
+  number. Rewriting them is open for the integrator. (Decided and built in fix round 2, below.)
+- *A side effect.* "a twenty-two-year-old woman, naked" now reaches the 25+ check and is rendered as "a thirty-year-old
+  woman, naked".
+
+**Open (not changed; decided and built in fix round 2, below).** The block needs a sexual term in the same text, and the adult flag does not count as one. An
+adult-flagged picture whose final prompt carries an under-18 age or decade but no sexual term is neither blocked nor aged
+up. Examples: an app's `vibe.images({adult: true})` with "explicit photo of a girl in her early teens", or "… a
+15-year-old …" ("explicit" is not a sexual term). This was already true for numeric ages before this round. For early
+and mid teens it is new, because R88's check used to age them up. The fix would read the adult flag as the sexual half
+at check point 2, as `minor_age` does for picture edits. Its cost: a thing's age in an adult page's non-sexual picture
+("a 12-year-old scotch on the bar") would block that picture. That is the integrator's call.
+
+**Tests** (mocks and pure functions; the minors probes are an age or a decade plus one term):
+- `r88_fix_compound_ages_and_teen_decades`:
+  - 20 EN + DE compound ages must pass, and so must a sweep of 576 English compounds (21–99, two separators, four units)
+    and 144 German ones;
+  - 8 under-18 ages and the 27 bare ones-word ages still fire;
+  - 19 EN + DE decades fire; 19 ambiguous / era / temperature / negated / "früher" texts pass;
+  - a picture edit fires on the decade alone, and the 25+ check never ages early / mid teens up.
+- `r88_fix_teen_decades_at_the_sd_floor`, through the real `MM.sd_batch`:
+  - EN + DE decade + term is blocked, with nothing rendered;
+  - late teens is aged up;
+  - "twenty-two-year-old … naked" is rendered as "thirty-year-old".
+- R88's table gained 4 rewrites, and its under-18 invariant now includes the new fire sets.
+- Against the pre-fix `refusal.py`, the new tables show 12 false positives, 19 misses and 8 aged-up texts.
+
+**The reviewers' probes** (byte-identical copies, run read-only, before → after): `probe_block_r4` core fire 82/82 →
+82/82 and must-pass 134/134 → 134/134 (extended 22/24, edge classes 16/26, accepted cost 17/18 unchanged);
+`probe_r4b_new` every group unchanged; review-v7.5-2: entry points 23/23, precision 50/52 (the 2 accepted-cost edits),
+rule echoes 9/9, security 43/43, sandbox 3/3 — unchanged. No single probe verdict changed. The reviewers' sets held
+neither defect's text, which is why both slipped through.
+
+#### Fix round 2 — the adult flag at the floor, "teen" / "barely legal" (2026-10-17)
+
+The integrator decided fix round 1's two open items the same day. Both tighten the floor and the 25+ rule, in line with
+the owner's standing rule: fictional adults 25+, never minors.
+
+**A. The adult flag counts as the sexual term** (`refusal.minor_block(text, adult=True)`). Where the kernel knows that a
+request is adult, an under-18 age, decade or word fires on its own, as it already did in a picture edit
+(`minor_age`). Examples: "explicit photo, a woman in her early teens", "… a 15-year-old …", "Porträt einer 15-Jährigen".
+loli / shota fire with the flag too. Everything else stays as it was:
+- the negated disclaimers and the age gates are still exempt;
+- measurements and counts are still no age;
+- the message is `BLOCK_MESSAGE` with `blocked: True`, and nothing is cached or rendered;
+- a job without the flag still needs the sexual term: "a 12-year-old scotch on the bar" in a SFW picture renders.
+
+*Accepted cost* (pinned in a test): "a 12-year-old scotch on the bar" in an ADULT picture blocks that picture. The
+journal reason reads `age '12-year-old' + the adult flag`.
+
+Which paths carry an adult flag:
+
+| path | adult flag | check |
+|---|---|---|
+| `/api/image`, `/api/images` (`vibe.image` / `vibe.images` with `{adult}` or `{uncensored}`) | the request's flag → `render_images(adult=…)` | the flag at `render_images`' entry: the age alone blocks before the expander runs; the job's flag at `MM.sd_batch` |
+| `/genimg/…` (page and app `<img>` pictures), forge page pictures, the wallpaper | no request flag; the job's flag = a sexual term in the request text (`render_images`, R88) | `MM.sd_batch` with the job's flag (a final prompt the expander wrote without a term is caught) |
+| `/api/video` (`vibe.video`) | the video API has no flag; the job's flag = a sexual term in the user's request (`h_video` → `MM.sd_job(adult=…)`) | sd_job's video floor |
+| picture ✨ (`/api/image/improve`, `vibe.image.improve`) | — | `minor_age` at the entry and at the floor: the age alone, as before |
+| app icons, the forge's late pictures (`MM.sd_job` image), a page's `<video data-gen-video>`, music, the text checks | none | the term rule, unchanged (a page video's description is its final prompt, so the term rule reads the same text) |
+
+The entry checks of `h_image` / `h_images` themselves are unchanged: an adult request with an age alone is refused as a
+blocked job by `render_images`, not as a 400.
+
+**B. "teen" / "barely legal" in an adult final prompt become adult wording** (`refusal.adult_ages`, after the block and
+after the decade rewrites). The wording follows the rewrite to 30:
+
+| in the final prompt | the engine gets |
+|---|---|
+| "a nude teen girl", "teen girls", "teen-age boys" | "a nude adult woman aged 30", "adult women aged 30", "adult men aged 30" |
+| "a teenage couple", "nude teen blonde girl" | "an adult couple aged 30", "nude adult blonde woman aged 30" |
+| "a teen, nude", "teens on a beach", "a teenager in lingerie" | "an adult aged 30, nude", "adults aged 30 on a beach", "an adult aged 30 in lingerie" |
+| "explicit, teenage, naked", "teen porn" | "explicit, adult, naked", "adult porn" |
+| "she is barely legal, nude", "a barely legal teen" | "she is adult, aged 30, nude", "an adult aged 30" |
+| "a late teen girl", "in her teen years" | "an adult woman aged 30", "in her thirties" |
+
+Rules:
+- girl(s) / boy(s) become woman / women / man / men. Other person nouns are kept, and one word may stand between.
+- "aged 30" is added after the noun phrase, but left out where an age is stated already ("a teen girl aged 19" →
+  "an adult woman aged 30"). The changes are reported in `aged_up` like the other rewrites.
+- Never touched:
+  - SFW prompts (the 25+ check runs only for adult jobs);
+  - titles and names: the next word is capitalised and no person noun follows within two words ("Teen Titans",
+    "Teenage Mutant Ninja Turtles", "Teen Vogue", "teen Anna"); a sexual term next ("Teen Nude Photo") is no title
+    (*superseded by fix round 3*: only a capitalised Teen / Teenage in a short title list);
+  - negations ("no teens", "nobody who looks like a teen": the block's negation bridge plus "like");
+  - "pre-teen" / "early teens" / "mid-teens", which are the block's;
+  - "late teens" and "in her teens", which keep their rewrite ("in her thirties" / "aged 30").
+- The block is never weakened. `adult_ages` reads its text with the adult flag, so any text the adult floor refuses comes
+  back unchanged.
+- English only, like the whole 25+ check. German shares only the word "Teenager", which becomes "Adult"; German
+  declension is not attempted. The final prompt is English whenever the expander or the MT hop runs.
+
+*Found on the way, fixed:* `_DECADE_BARE` rewrote the bare part of a negated "in her early twenties / late teens"
+("no longer in her early twenties" → "no longer in her aged 30"). That phrase is now left to `_DECADE_PRON`, which keeps
+it.
+
+**Tests** (`tests/test_refusal_fallback.py`; mocks and pure functions, short probes):
+- `r88_fix2_adult_flag_block`:
+  - 14 EN + DE probes fire with the flag and pass without it (the scotch included);
+  - 18 negations, age gates, measurements, counts, adult ages and ambiguous words pass with the flag;
+  - every R86 must-fire probe still fires; the gates, counts and limits-line echoes pass; the kernel's own prompts pass;
+  - `minor_age` is unchanged.
+- `r88_fix2_teen_words_adult_wording`:
+  - 20 exact rewrites, each idempotent, passing the adult block and leaving no teen word;
+  - 13 kept (titles, names, negations, decades);
+  - 7 texts the adult floor blocks come back unchanged;
+  - "late teens" / "in her teens" unchanged, the German pins, and 50 KB in milliseconds.
+- `r88_fix2_adult_flag_at_the_sd_floor`, through the real `MM.sd_batch`:
+  - adult + "early teens" / "15-year-old" / "15-Jährigen" without a term are blocked;
+  - "12-year-old scotch" renders in a SFW job and is blocked in an adult one;
+  - adult "nude teen girl" → "adult woman aged 30" with `aged_up`; a SFW "teen" stays as it is; the editor's kind too;
+  - `render_images` blocks an adult request with the age alone before the expander (0 LLM calls);
+  - a mocked expander that writes "early teens" without a term is caught, for the flag and for a sexual term in the
+    request;
+  - `MM.sd_job`'s video floor reads the flag, and `h_video` passes a sexual term in the request as the flag.
+- Against the round-1 `refusal.py`, the new tables show 0 of 14 blocked and 0 of 20 rewritten.
+
+**Probes** (the same harness, byte-identical copies, before → after): `probe_block_r4` core fire 82/82 → 82/82 and
+must-pass 134/134 → 134/134; extended, edge and accepted-cost counts are unchanged; `probe_r4b_new` and the review-v7.5-2
+probes are unchanged; the item-level diff is 0. The probes call the block without the flag, which keeps the term rule by
+design.
+
+**Known, not changed.** A negation exempts only the first under-18 word after it. In the reviewers' limits-line echo
+"…; no one depicted is underage or under 18.", the second word is still read. With a sexual term that echo already fired
+before this round; with the flag an adult job now reads it the same way. Changing the negation rule was out of this
+round's scope. *Fixed in fix round 3.*
+
+#### Fix round 3 — negated lists, the teen title rule (2026-10-17)
+
+The integrator found two precision gaps while verifying fix round 2.
+
+**1. A negation covers a whole list of under-18 words** (`refusal._NEGATED`). Before, a negation exempted only the first
+under-18 word after it. An expander that writes a disclaimer into an adult picture prompt got a legitimate picture
+blocked:
+
+| text | adult flag, before → after | sexual term, before → after |
+|---|---|---|
+| "nude woman, nobody is underage or under 18" | blocks → passes | blocks → passes |
+| "nackt, niemand ist minderjährig oder unter 18" | blocks → passes | blocks → passes |
+| "explicit, nobody under 18 or underage" | blocks → passes | passes → passes |
+
+The negation's scope now carries across a coordinated list:
+- **Joins:** "or", "and", "nor", ",", "/", "and/or"; German "oder", "und", "noch", ",".
+- **Between a join and the next item** only a closed list of words that start no statement of their own: anyone,
+  anybody, someone, somebody, who, that, looks, appears, seems, is, are, be; German jemand(en), wer, ist, sind,
+  aussieht / aussehen ("nobody under 18 or anyone who looks underage", "niemand unter 18 oder wer minderjährig ist").
+- **New negation heads:** "neither" and "weder", the heads of "nor" and "noch" ("neither underage nor under 18",
+  "weder minderjährig noch unter 18"). `_TEEN_NEGATED` (the teen rewrite's negation check) shares the head.
+- **A repeated negation** ("no one underage, no one under 18") is two matches, as before.
+
+The scope ends at:
+- a clause break: ".", ";", ":", "!", "?" are no joins ("nobody is underage. she is under 18, nude" fires);
+- any other word, so a following positive statement is read ("nobody is underage, she is under 18, nude", "… but
+  under 18" fire);
+- a number: an under-18 age is never negated, in a list neither ("nobody is underage or 15 years old, nude" fires);
+- a list item that a person noun follows within two words ("nobody under 18, underage girl, nude": a positive noun
+  phrase, and in a comma-separated prompt a tag of its own). The first item keeps the old rule: "no underage models"
+  passes as before.
+
+A list that isn't negated still fires: "nude, underage or 15", and "explicit photo, a 15-year-old or a 16-year-old" with
+the adult flag.
+
+*Accepted cost:* a negated list whose last item carries a shared person noun ("nobody under 18 or underage girls, nude")
+still fires. The block errs on the safe side.
+
+*Not changed (the R86 design):* a bare number has no age unit and is never read ("2 girls", "15 photos"). So the brief's
+example "nobody is underage. she is 15, nude" passes, as it did before; "… she is 15 years old, nude" fires.
+
+**2. The teen title rule** (`refusal._teen_rewrite`, `_TEEN_TITLES`). Before, a teen word was left alone whenever a
+capitalised word followed it, so "nude teen Latina" reached the image model unchanged. Now:
+- A lowercase teen word is never a title. "nude teen Latina" → "nude adult Latina", "teen Anna" → "adult Anna" (round
+  2's attribute wording; with a person noun after it, "teen Latina babe" → "adult Latina babe aged 30").
+- A capitalised "Teen" / "Teenage" (as written, all-caps too) is a title only when it starts one of these, and no
+  person noun follows within two words:
+
+  | Teen … | Teenage … |
+  |---|---|
+  | Titans, Wolf, Vogue, Choice (Awards), Spirit ("Smells Like Teen Spirit") | Mutant Ninja Turtles / Mutant Hero Turtles, Dream, Kicks, Engineering |
+
+- Everything else is rewritten: "Teen Latina" → "Adult Latina", "Teen Beach Movie" → "Adult Beach Movie", "Teen Mom" →
+  "Adult Mom aged 30". A wrong rewrite of an unknown title in an ADULT prompt is cosmetic; a teen word that reaches the
+  image model is not.
+- Everything else from round 2 stays: SFW prompts are never touched, negations are kept, the block's own forms
+  ("early teens", "pre-teen") are untouched, and "late teens" → "aged 30" / "in her thirties".
+
+**Tests** (`tests/test_refusal_fallback.py`; pure functions and mocks, short probes):
+- `r88_fix3_negated_lists`:
+  - 19 negated lists (EN + DE, the brief's three verbatim) pass with a term, with the flag, and in a picture edit;
+  - 18 texts fire with and without the flag (no negation, clause breaks, positive statements, a person noun, numbers);
+  - 4 texts without a term fire with the flag only;
+  - every earlier must-fire probe still fires (term and flag), and every earlier must-pass probe and the kernel's own
+    prompts still pass;
+  - the bare-number case is pinned as known, and four dense 100 KB lists run in milliseconds.
+- `r88_fix3_teen_title_rule`: 13 exact rewrites, 13 titles and negations kept, round 2's tables still hold.
+- `r88_fix3_at_the_sd_floor`, through the real `MM.sd_batch`:
+  - EN + DE negated lists render unchanged (flag and SFW);
+  - an ended scope and a not-negated pair are blocked;
+  - adult "nude teen Latina" → "nude adult Latina" with `aged_up`;
+  - a listed title and a SFW teen prompt stay as they are.
+- Two round-2 pins changed with the fix. The limits-line echo "…; no one depicted is underage or under 18." now passes
+  with the flag (`r88_fix2_adult_flag_block`, `known = []`). "nude, teen Anna" moved from round 2's keep list to the
+  rewrites.
+- Against the round-2 `refusal.py`, the new tables show 17 of 19 negated lists blocked, 8 of 13 title rewrites wrong and
+  2 of 13 titles touched. On the new code all three are 0.
+
+**Probes** (the same harness, byte-identical copies in a new directory, before → after): `probe_block_r4` core fire
+82/82 → 82/82 and must-pass 134/134 → 134/134. Extended, edge and accepted-cost counts are unchanged, and so are
+`probe_r4b_new` and the review-v7.5-2 probes. The item-level diff is 0: no reviewer probe holds a negated list with a
+sexual term, and the timings are unchanged within noise.
+
+#### Fix round 4 — a refusal that offers something else; "neither … nor" (2026-10-18)
+
+**1. A refusal followed by an offer of something else is a refusal** (`refusal._OFFER`, `_offered`). The fast-models
+benchmark (2026-10-17, A5) found the miss: Ornith-1.5-9B answered an 18+ story request with *"I can't write sexually
+explicit content, even with fictional adult characters. What I can offer instead: - A romantic short story …"*. The pivot
+". What I can" made the detector read it as a limitation followed by help, so the refusal reached the user and no ladder
+rung ran. On an 18+ OS that is a watered-down answer.
+- **An offer** is a first-person proposal of something other than what was asked, EN + DE: "What I can offer / do
+  instead", "Instead, I can", "I can … instead", "I'd be happy to … instead", "If you'd like, I can …", "Alternatively, I
+  could", "Here are some alternatives", "Here's a tamer / non-explicit / toned-down version", "… fades to black",
+  "Stattdessen kann ich", "Was ich anbieten kann", "Ich kann dir aber … anbieten", "Wenn du möchtest, kann ich", "hier ist
+  eine entschärfte Fassung". "… instead of …" is a preposition, never an offer.
+- **It counts only after a content refusal.** The refusal sentence speaks the content-policy vocabulary ("sexually
+  explicit content"); or it is bare ("I can't write that.") and the offer is watered down (a softening word before a
+  version noun — tamer, romantic, suggestive, PG-13, fade-to-black, jugendfrei … version / story / scene / Fassung —, or
+  explicit / graphic words in it). The offer must start within 400 characters after the refusal sentence.
+- **Per kind.** Text and short pages: the offer cancels the partial-help rule. A rich page (structure and substantial
+  text) stays a page, unless its visible text OPENS with such a refusal and offer. A prompt (recall first): a first-person
+  offer or a sanitised rewrite ("Here's a tasteful version instead: …"); never "fades to black" (a video's last shot) or
+  "alternatives" (an expander may list prompt variants).
+- **Still passing:** a limitation followed by real help — "I can't browse the web, but here is what I know: …", "I can't
+  run code here; this is the function: …", "I can't do that from here. Instead, I can walk you through it: open Settings
+  …" (bare, but nothing watered down), "I can't do that. Instead, I can suggest some romantic restaurants …".
+- *Accepted cost:* a limitation sentence that contains a content-policy word ("I can't provide explicit legal advice.
+  Instead, I can …") is read as a refusal. Without the offer it already was, unless help followed.
+
+**2. "neither … nor" / "weder … noch" lists are negated** (`_NEG_BRIDGE`, `_NOR_ITEM`). `minor_block("nude woman,
+neither minors nor anyone under 18")` fired: "nor" was no bridge word, and "minors" is no indicator.
+- "nor" bridges after any negation, also after a comma ("neither minors, nor anyone under 18"). German "noch" bridges only
+  after "weder" ("weder Kinder noch Jugendliche unter 18"), because "ist sie nicht noch minderjährig?" is no negation.
+- After an under-18 word, a nor / noch item may carry bridge words before its own under-18 word ("neither underage nor
+  minors nor under 18", "weder minderjährig noch Kinder noch unter 18"). Round 3's rules hold for it: a clause break, a
+  number or a person noun after the item ends the scope ("nobody under 18 nor underage girls" fires).
+- The 25+ check's teen rewrite keeps its bridge without "nor": "neither minors nor teen girls" in an adult picture prompt
+  is still rewritten, so no teen word reaches the image model.
+- *Known limits (pinned):* the bridge is a closed list ("neither shy nor under 18" fires); "keine Kinder noch unter 18"
+  fires ("noch" only after "weder").
+- *Found on the way and fixed:* the bridge word list held "anybody" twice. The duplicate made the regex exponential on a
+  run of it: "nude, no " + 22 × "anybody " took 7.6 s in `minor_block`, 20 took 3.1 s in `adult_ages`. Now every word
+  appears once, and long runs take milliseconds.
+
+**Tests** (`tests/test_refusal_fallback.py`; pure functions and mocks, short probes):
+- 20 refusals with an offer (EN + DE, text / html / prompt, the brief's repro and Ornith's real answer — its refusal and
+  offer sentences only) in the must-detect set `refusal_detector_real_refusals`; 20 limitations followed by help, most
+  with an offer word, in the must-pass set `refusal_detector_normal_answers_pass` (76 → 96).
+- `r88_fix4_refusal_offers`: the repro pair exact, every form in its kind and the text ones as a page, the bare / offer
+  gate, "instead of", a rich refusal page vs a shop page, the prompt rules, the MT check's UI strings, long shapes.
+- `r88_fix4_offer_climbs_the_ladder`: with a fake model manager, Ornith's answer from fast mode climbs to the preamble and
+  then the uncensored rung (`llm_generate`), and `llm_stream` judges it at the early verdict and never yields it.
+- `r88_fix4_nor_lists`: 16 nor / noch lists pass (term, adult flag, picture edit), 8 + 3 fire, every earlier must-fire /
+  must-pass probe and the kernel's prompts hold, the teen-rewrite pin, the bridge words unique, long runs.
+- `r88_fix4_nor_lists_at_the_sd_floor`: through the real `MM.sd_batch`, EN + DE nor lists render with the adult flag; an
+  ended scope is blocked.
+- Against the round-3 `refusal.py`, 19 of the 20 offer refusals are missed and 14 of the 16 nor lists fire. On the new code
+  both are 0, and none of the 20 limitations is flagged by either.
+
+**Probes** (the same harness plus review r4's three detector probes, the R86 review sets and the A5 outputs, before →
+after): `probe_block_r4` core fire 82/82 → 82/82 and must-pass 134/134 → 134/134, with 0 item differences;
+`probe_r4b_new`, the R86 review sets and the review-v7.5-2 probes are unchanged. In `probe_detector_r4` exactly two items
+moved, both a refusal plus an offer: the long refusal page with "What I can do instead" (0/1 → 1/1) and "Here's a
+tasteful version instead" (0/1 → 1/1). Every normal-answer group is unchanged, the ground truth is 32/32, and there are 0
+false refusals on 166 real screen answers and 287 cached pages / apps / games. Of the 18 A5 outputs only Ornith's refusal
+changed (→ refusal).

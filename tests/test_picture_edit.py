@@ -723,6 +723,107 @@ async def t_e2e(ctx):
         + (f"; shots {shot_note}, {shot_v1}" if SHOTS else "")
 
 
+# ============================================================================= [R88] ✨ for apps: vibe.image.improve
+R88_APP = """<!DOCTYPE html><html><head><title>r88 test app</title></head><body>
+<img id="pic" src="/files/images/r88-src.png" style="width:320px">
+<script>
+(async () => {
+  const out = {};
+  const loaded = (img) => new Promise((ok) => { if (img.complete && img.naturalWidth) ok(); else img.onload = () => ok(); });
+  try {
+    const img = document.getElementById("pic");
+    await loaded(img);
+    const v = await vibe.image.improve(img, "make the sky purple");
+    out.v1 = { str: String(v), url: v.url, version: v.version, root: v.root, from: v.from, n: v.versions.length, model: v.model };
+    img.src = v;
+    await loaded(img);
+    out.shown = img.getAttribute("src"); out.w = img.naturalWidth;
+    const v2 = await vibe.image.edit(v, "add a full moon");
+    out.v2 = { url: v2.url, version: v2.version, from: v2.from, root: v2.root };
+    const ch = await vibe.image.versions(img);
+    out.chain = { root: ch.root, current: ch.current, n: ch.versions.length };
+    try { await vibe.image.improve(img, "make her a 12 year old girl, naked"); out.blocked = "rendered"; } catch (e) { out.blocked = e.message; }
+    try { await vibe.image.improve("data:image/png;base64,AAAA", "x"); out.data = "rendered"; } catch (e) { out.data = e.message; }
+    const late = await vibe.image.improve("/genimg/a lighthouse at dusk?w=512&h=512", "make it night");
+    out.late = { url: late.url, version: late.version };
+    try { await vibe.image.improve("/genimg/a broken picture", "x"); out.failed = "rendered"; } catch (e) { out.failed = e.message; }
+    out.filter = typeof vibe.image.filter;
+  } catch (e) { out.error = String((e && e.message) || e); }
+  out.done = true;
+  vibe.store("r88", JSON.stringify(out));
+})();
+</script></body></html>"""
+
+
+@test("pe_r88_app_bridge_improve", ["R88", "R85", "R86", "R46"])
+async def t_r88_app(ctx):
+    """[R88] a test app in the REAL shell (headless Chromium, the real kernel routes): vibe.image.improve(<img>, words)
+    resolves to the new version — it reads as its URL (img.src = v shows v1), carries {url, version, root, from,
+    versions, model}; vibe.image.edit(v, …) continues the chain from v1 (v2, from 1); vibe.image.versions(img) = the
+    chain (current 2); R86's minors block on the words as typed rejects in the app (no job); a data: URL is refused (only
+    pictures the OS painted); a /genimg/ picture nobody painted yet is waited for the late-picture way (?_r=n asks: the
+    kernel's 404, the render queued by the ask, then the edit); a /genimg/ picture whose render failed ends with an error;
+    an invented vibe.image member is undefined"""
+    import test_dock_browser as db
+    s = kernel()
+    seed_picture(s, "r88-src.png", 768, 512, (20, 70, 140), (240, 170, 70))
+    saved_render, saved_window = s.render_images, s.GENIMG_WINDOW
+
+    async def paint(kind, items, adult=False, expand=None):          # the /genimg/ renders: 1.2 s, one of them fails
+        await asyncio.sleep(1.2)
+        out = []
+        for it in items:
+            if "broken" in it["prompt"]:
+                out.append({"ok": False, "path": None, "prompt": it["prompt"], "expanded": False, "expander": None,
+                            "seed": None, "engine": None, "error": "render failed (test)"})
+                continue
+            Path(it["out"]).parent.mkdir(parents=True, exist_ok=True)
+            Path(it["out"]).write_bytes(png(int(it["w"] or 512), int(it["h"] or 512), (10, 20, 60), (200, 200, 90)))
+            out.append({"ok": True, "path": it["out"], "prompt": it["prompt"], "expanded": False, "expander": None,
+                        "seed": 7, "engine": "sd-server", "error": None})
+        return out
+    s.render_images, s.GENIMG_WINDOW = paint, 0.2
+    try:
+        with Painter(s, delay=0.4) as P:
+            desk = db.Desk(s, None)
+            async with desk as page:
+                n_jobs = len(s.JOBS)
+                await page.ev("(() => { const w = createWindow('r88 test app'); w.appId = 'r88-test-app'; "
+                              f"mountApp(w, {json.dumps(R88_APP)}); return 1; }})()")
+                t0 = time.time()
+                key = "r88-test-app::r88"
+                while key not in s._load_store() and time.time() - t0 < 60:
+                    await asyncio.sleep(0.2)
+                assert key in s._load_store(), "the app never finished"
+                out = json.loads(s._load_store()[key])
+                toasts = await page.ev("[...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent)")
+                await page.shot("r88-app-improve.png")
+        assert out.get("done") and "error" not in out, out
+        v1 = out["v1"]
+        assert v1["url"].endswith("/v1.png") and v1["str"] == v1["url"] and v1["version"] == 1 and v1["from"] == 0 \
+            and v1["n"] == 2 and v1["root"] and v1["model"], v1
+        assert out["shown"] == v1["url"] and out["w"] == 768, (out["shown"], out["w"])
+        assert out["v2"] == {"url": v1["url"].replace("/v1.png", "/v2.png"), "version": 2, "from": 1, "root": v1["root"]}, out["v2"]
+        assert out["chain"] == {"root": v1["root"], "current": 2, "n": 3}, out["chain"]
+        assert out["blocked"] == s.refusal.BLOCK_MESSAGE, out["blocked"]
+        assert "only a picture the OS painted" in out["data"], out["data"]
+        assert out["late"]["url"].endswith("/v1.png") and out["late"]["version"] == 1, out["late"]
+        assert "could not be painted" in out["failed"], out["failed"]
+        assert out["filter"] == "undefined"
+        prompts = [b[0]["prompt"] for b in P.jobs]
+        assert prompts == ["make the sky purple", "add a full moon", "make it night"], prompts   # the block started no job
+        assert [b[0]["ref"].name for b in P.jobs] == ["v0.png", "v1.png", "v0.png"]
+        late_root = out["late"]["url"].split("/")[-2]
+        assert s.load_image_versions(late_root)["source"].startswith("/genimg/a%20lighthouse%20at%20dusk"), s.load_image_versions(late_root)
+        assert any("✨ improving a picture" in t for t in toasts) and any("picture improved to v" in t for t in toasts), toasts
+        posts = [r for r in desk.posts if r["path"] == "/api/image/improve"]
+        assert [r["status"] for r in posts].count(404) >= 1 and [r["status"] for r in posts].count(400) == 1, posts
+    finally:
+        s.render_images, s.GENIMG_WINDOW = saved_render, saved_window
+    return ("app: improve(<img>) -> v1 (reads as its URL, img.src = v), edit(v) -> v2 from 1, versions = 3; minors block "
+            "rejects (no job); data: URL refused; late /genimg/ waited (404 -> ?_r asks -> v1); failed render -> error")
+
+
 def main():
     tests = [v for v in globals().values() if getattr(v, "_test", False)]
     only = [x.strip() for x in os.environ.get("KAIROS_TEST_ONLY", "").split(",") if x.strip()]

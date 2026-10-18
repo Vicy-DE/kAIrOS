@@ -1,5 +1,5 @@
 {
- "at": "2026-10-16 20:43:30",
+ "at": "2026-10-18 02:15:32",
  "tests": {
   "desktop_pointer_swcursor_nocursor": {
    "reqs": [
@@ -88,7 +88,7 @@
     "R68"
    ],
    "status": "pass",
-   "detail": "6 pictures (page <img> + CSS bg, app <img>, vibe.browse innerHTML <img> + <style> bg, wallpaper): pending placeholder first, then the picture, no reload, cached file untouched; a removed <img> asked once; 17 s; 25 /genimg requests, max 5 per picture; chromium"
+   "detail": "6 pictures (page <img> + CSS bg, app <img>, vibe.browse innerHTML <img> + <style> bg, wallpaper): pending placeholder first, then the picture, no reload, cached file untouched; a removed <img> asked once; 18 s; 25 /genimg requests, max 5 per picture; chromium"
   },
   "game_exit_with_the_session": {
    "reqs": [

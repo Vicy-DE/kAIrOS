@@ -122,7 +122,8 @@ FALLBACK_BRIDGE = """<script>(() => {
   const store = Object.assign((k, v) => call("store", k, v), { get: (k) => call("load", k), set: (k, v) => call("store", k, v) });
   const fs = {}; for (const op of ["list", "read", "write", "mkdir", "delete"]) fs[op] = (p, c) => call("fs", op, p, c);
   window.vibe = { ask: (p) => call("ask", p), search: (q, l) => call("search", q, l), browse: (a, f) => call("browse", a, f),
-    image: (p, w, h) => call("image", p, w, h), images: (p, o) => call("images", p, o || {}), video: (p) => call("video", p),
+    image: Object.assign((p, w, h) => call("image", p, w, h), { improve: (p, i) => call("imageImprove", String(p), i || ""),
+      versions: (p) => call("imageVersions", String(p)) }), images: (p, o) => call("images", p, o || {}), video: (p) => call("video", p),
     music: (...a) => call("music", ...a), vision: (i, p) => call("vision", i, p), translate: (t, to) => call("translate", t, to),
     dict: (...a) => call("dict", ...a), game: (p) => call("game", p), forge: (p) => call("forge", p), store,
     load: (k) => call("load", k), notify: (t) => call("notify", t), docs: (c) => call("docs", c), fs,
@@ -271,6 +272,8 @@ function stubAnswer(m, a) {
     case "translateLang": return null;
     case "dict": return { entries: [] };
     case "image": return PNG;
+    case "imageImprove": return { url: PNG, version: 1, root: "p0000000000000000", from: 0, versions: [], model: null, ms: 0 };   // [R88]
+    case "imageVersions": return { root: null, current: 0, url: s(a[0]), source: s(a[0]), versions: [] };
     case "images": return Array.isArray(a[0]) ? a[0].map(() => PNG) : Array.from({ length: Math.min(8, Math.max(1, +((a[1] || {}).count) || 1)) }, () => PNG);
     case "music": case "forge": case "store": case "notify": return true;
     case "load": return null;

@@ -182,9 +182,84 @@ Screenshots (SFW): `r85-01-muse-original.png`, `r85-02-improve-note.png`, `r85-0
 - **Readahead when the note opens** (the 2026-10-09 sketch): not built. The first ✨ after a cold boot reads 10.64 GB
   (~127 s at the card's 84 MB/s); a readahead while the user types would save ~10–30 s of it but competes with the LLM's
   page cache (R79). Measure on the card first.
-- **Apps**: there is no `vibe.*` method for picture edits; the routes are the shell's (like the browser's). An app
-  that wants ✨ on its pictures would need one (bridge + docs + tests).
+- ~~**Apps**: there is no `vibe.*` method for picture edits~~ — done 2026-10-17 (R88, the addendum below).
 - The 18+ background change failed once in the A/B with set A (a nude B/W photograph: the beach appeared only through
   the window); the same instruction on a SFW photograph worked. A second try (a new seed) is one click.
 - The 16 GB tier ships the same set (set D, Turbo Q8_0 + encoder Q8_0 + mmproj F16, 18.1 GB, was held, not measured).
 - The engine a1ded76 edits identically on the CPU smoke (same metrics); it was not GPU-tested for edits.
+
+## Addendum 2026-10-17 — ✨ for apps: `vibe.image.improve` (R88) and the 25+ check
+
+Owner (2026-10-17): *"Picture ✨ for apps."* Generated apps get the editor through the bridge; the route and every rule
+above stay as they are.
+
+**The method** (`shell/shell.js` BRIDGE_SRC, documented in the app builder's sheet `docs/api/media.md` and `docs/API.md`):
+
+```js
+const v = await vibe.image.improve(img, "make it a snowy night");   // img, its URL, or an earlier version
+img.src = v;                                                       // the new version reads as its URL
+v.url; v.version; v.root; v.from; v.versions; v.model; v.ms
+const v2 = await vibe.image.edit(v, "add a full moon");            // edit = improve (the name models reach for)
+const chain = await vibe.image.versions(img.src);                  // {root, current, url, versions: [{v, url, instruction, …}]}
+```
+
+- `vibe.image` is still the function it was (`vibe.image(prompt, w, h)`, `.map(vibe.image)`), now with `improve`,
+  `edit` and `versions` and a guard: an invented member (`vibe.image.filter`) is undefined and logged with the real ones.
+- `picture` may be a `/files/images/…` URL (`vibe.image()`, `vibe.images()`, a version), a `/genimg/…` URL, the `<img>`
+  showing one (its `currentSrc`) or a version object. The shell (`appPictureUrl`) passes only same-origin
+  `/files/images/` and `/genimg/` paths (the late-picture `_r` parameter dropped); a canvas, a `data:` URL or another
+  origin is refused in the app — no upload route, as before.
+- The shell (`appImprovePicture`; `shell/bench/host.js` carries the same functions for the X-window app host, the D3
+  parity) posts to `POST /api/image/improve`, so the R86 floor (the words as typed at the entry, `minor_age` on the final
+  English prompt at the sd floor), the 18+ rules (the instruction verbatim), the editor add-on (409 → the app gets the
+  kernel's sentence with `vibe.models.download('image_edit')`), the R72 GPU hold and R79's swap / idle window are the
+  desktop's. The job is polled without a time limit (`pollJobRecord`); a toast says "✨ improving a picture" and
+  "✦ picture improved to vN".
+- **The late picture:** an app usually writes `<img src="/genimg/…">` and may ask ✨ before the picture exists. The kernel
+  answers 404; the shell then asks the `/genimg/` URL the late-picture way (`?_r=n`, answered at once — an ask also queues
+  a picture nobody asked for yet — at once, then 2 s ×1.5 up to every 15 s, at most an hour) and posts the edit once the
+  PNG is there. A final placeholder (an even width: a failed render or the minors block) ends it with an error.
+- The app runtime check (`kernel/appcheck.py`) answers both new calls with canned values, as it does for `vibe.image`.
+
+**The 25+ check** (`kernel/refusal.py` `adult_ages()`, run by `MM.sd_batch` right after the minors block): on the final
+prompt of an adult request — the `adult` flag, or a sexual term (the block's own list) in the request or the final
+prompt — a person's stated age 18–24 becomes 30 and a decade reaching below 25 becomes "thirties" ("in their 20s" → "in
+their thirties", "a 22-year-old" → "a 30-year-old", "aged 19 and 23" → "aged 30 and 30", "early 20s" → "aged 30",
+"twenty-something" → "thirty-something", "in her late teens" → "in her thirties"). Never touched: ages ≥ 25 ("late
+twenties"), a thing's age (a 21-year-old whisky, a cask aged 21 years), eras (the 1920s, "the early twenties"), negations,
+SFW prompts and every under-18 age (the block ran first; the check never rewrites a token the block reads). For the
+editor the `adult` flag is a sexual term in the words as typed (or the English); the picture itself cannot be read. The
+job records the rewritten prompt (`aged_up: [[old, new]]`, `/api/status` → `refusal_fallback.aged_up`).
+
+Found on the way and fixed in the R88 fix round (`docs/REFUSAL-FALLBACK-2026-10-09.md`, its last subsection):
+`minor_block` read the ones word of a compound age ("twenty-two-year-old … naked") as an under-18 age of its own and
+blocked it. That age now reaches the 25+ check and becomes "thirty-year-old". The same round made "early / mid teens"
+block indicators that the 25+ check never ages up; "in her late teens" / "in her teens" are still rewritten as above.
+
+**Tests:** `pe_r88_app_bridge_improve` (tests/test_picture_edit.py — a test app in the REAL shell in headless Chromium on
+the kernel's routes: improve(`<img>`) → v1 shown via `img.src = v`, edit(v) → v2 from v1, versions = 3, the minors block
+rejects in the app with no job, a `data:` URL is refused, a `/genimg/` picture nobody painted yet is waited for (404 →
+`?_r` asks → v1), a failed render ends with an error, an invented member is undefined); `tests/bridge-test.js` (the
+posted calls, the result reading as its URL, the hidden `toString`, errors reaching the app, the guard, `.map`);
+`r88_adult_ages_table_and_invariants` + `r88_adult_ages_at_the_sd_floor` (tests/test_refusal_fallback.py: 18 rewrites,
+18 keeps, 108 R86 under-18 probes untouched, the kernel's own prompts untouched, idempotent, linear; through the real
+`sd_batch`: adult term / flag rewritten, SFW untouched, minors still blocked, the editor kind, `render_images` reporting
+it, an expander's "in their 20s" caught for an adult request only).
+
+**GPU check on the RTX 4070 (2026-10-17, 03:08–03:11, unit `kairos-r88-smoke`)** — the live repo's kernel with the
+shipped engine set and the real tier-8gb weights, in ONE `--network none` container together with the driver (the real
+shell in headless Chromium), under the GPU lock. A small test app (`Picture fixer`) writes `<img src="/genimg/a cosy
+harbour town at dusk …?w=1024&h=576">` and at once calls `vibe.image.improve()` on that URL:
+
+| step | result |
+|---|---|
+| the picture is not painted yet | the bridge waited the late-picture way — the kernel: "not painted yet when the page asked again", then "a late picture reached its page (ask #9)" (the expander on the heretic LLM, then Muse, 1024×576) |
+| `vibe.image.improve(url, "Make it a snowy winter evening …")` | **v1 at 100 s** after the app started (the paint included); the kernel: "✨ v0 -> v1 in 28.3 s" (the editor's load included); `img.src = v1` showed 1024×576; the result read as its URL |
+| `vibe.image.edit(v1, "Add a big full moon …")` | **v2 in 18.7 s** — "1 picture(s) joined the open session (no model load)"; snow and the moon on the same harbour (by eye) |
+| `vibe.image.versions(img)` | root `p075ed8c5aaddb2f7`, current 2: v0 original, v1, v2 with their instructions |
+| the 25+ check: `vibe.images(["Portrait photograph of a woman in her early twenties … fully clothed …"], {adult: true})` | the kernel: "25+ check … 'in her early twenties' -> 'in her thirties'"; Muse rendered the rewritten prompt |
+| VRAM peak | 7124 MiB |
+
+SFW only (no 18+ material was made). The edits ran at the picture's own 1024×576, so they are faster than R85's 1024²
+numbers above. Work log: `results/r88-app-picture-edit/` (STATUS.md, `gpucheck/`, `shots/r88-01…03`).
+

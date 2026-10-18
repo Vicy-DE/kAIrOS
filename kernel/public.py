@@ -310,6 +310,45 @@ def _merge(dst: dict, patch: dict):
             dst[k] = copy.deepcopy(v)
 
 
+def plural(phrase) -> bool:
+    """[R88] English number of a download label or feature, for the verb that follows: "the dictionaries", "pictures",
+    "dictionary look-ups", "apps, web pages, games and answers" are plural; "the language model", "the offline Wikipedia",
+    "translation", "offline search", "looking at pictures" (a gerund phrase) and "this" are singular"""
+    p = str(phrase or "").strip().lower()
+    if not p:
+        return False
+    if " and " in p or "," in p:
+        return True
+    words = p.split()
+    if len(words) > 1 and words[0].endswith("ing"):
+        return False                                   # "looking at pictures" = one activity
+    last = words[-1].strip(".")
+    return len(last) > 2 and last.endswith("s") and not last.endswith(("ss", "us", "is", "ics"))
+
+
+def missing_sentence(label: str, feature: str, status: str, pct=0, left_gb="0", error=None) -> str:
+    """[R87; R88 the grammar] the sentence a feature answers while its first-boot download is not done: "the picture model
+    is downloading (37 %) — pictures work when it is done", "the dictionaries are queued for download (0.3 GB to go) —
+    dictionary look-ups work when they arrive", "the offline Wikipedia … — offline search works when it arrives"."""
+    many = plural(label)
+    feat = feature or "this"
+    is_, needs = ("are", "need") if many else ("is", "needs")
+    work = "work" if plural(feat) else "works"
+    done, arrives = ("they are done", "they arrive") if many else ("it is done", "it arrives")
+    if status in ("downloading", "verifying"):
+        return f"{label} {is_} downloading ({pct} %) — {feat} {work} when {done}"
+    if status == "waiting":
+        return (f"{label} {is_} waiting for the network ({pct} % downloaded) — the download resumes by itself; "
+                f"{feat} {work} when {done}")
+    if status == "queued":
+        return f"{label} {is_} queued for download ({left_gb} GB to go) — {feat} {work} when {arrives}"
+    if status == "paused":
+        return f"{label} {needs} a download ({left_gb} GB, paused) — resume it in ⚙ Models & licences"
+    if status == "error":
+        return f"{label} could not be downloaded ({error}) — retry it in ⚙ Models & licences"
+    return f"{label} {needs} a download ({left_gb} GB) — start it in ⚙ Models & licences"
+
+
 def _gb(n) -> str:
     return f"{n / 1e9:.1f}"
 
@@ -410,21 +449,8 @@ class Essentials:
         if not it:
             return None
         st = self.item_status(it)
-        label = what or st["label"]
-        feat = st["feature"] or "this"
-        left = _gb(max(0, st["total_bytes"] - st["done_bytes"]))
-        if st["status"] in ("downloading", "verifying"):
-            return f"{label} is downloading ({st['pct']} %) — {feat} work when it is done"
-        if st["status"] == "waiting":
-            return (f"{label} is waiting for the network ({st['pct']} % downloaded) — the download resumes by itself; "
-                    f"{feat} work when it is done")
-        if st["status"] == "queued":
-            return f"{label} is queued for download ({left} GB to go) — {feat} work when it arrives"
-        if st["status"] == "paused":
-            return f"{label} needs a download ({left} GB, paused) — resume it in ⚙ Models & licences"
-        if st["status"] == "error":
-            return f"{label} could not be downloaded ({st['error']}) — retry it in ⚙ Models & licences"
-        return f"{label} needs a download ({left} GB) — start it in ⚙ Models & licences"
+        return missing_sentence(what or st["label"], st["feature"], st["status"], st["pct"],
+                                _gb(max(0, st["total_bytes"] - st["done_bytes"])), st.get("error"))
 
     # ---- control
     def start(self) -> bool:

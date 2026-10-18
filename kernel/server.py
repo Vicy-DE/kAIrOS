@@ -1034,7 +1034,12 @@ def expander_llm_spec(kind: str, manifest=None, fallback: bool = False) -> dict:
 # REFUSED, once before any rung (llm_generate / llm_stream); (4) a text request whose PRIMARY is an uncensored
 # model (the manifest flag or the llm_model setting), at the entry. A censored primary's answered request is
 # never checked; system prompts are never checked. A hit: BLOCK_MESSAGE as a 400, no model call, nothing cached,
-# nothing rendered.
+# nothing rendered. [R88 fix round 2] Where the request is KNOWN to be adult, the adult flag counts as the sexual
+# term (refusal.minor_block(text, adult=True): the under-18 age or word alone fires): an image job's `adult` flag at
+# (2) MM.sd_batch (render_images sets it: the request's {"adult"} / {"uncensored"} flag or a sexual term in the
+# request), the explicit flag at render_images' entry (1), a video job's flag at (2) MM.sd_job (h_video: a sexual term
+# in the request). Paths with no adult flag (icons, wallpaper, forge pictures, a page's <video data-gen-video>, music,
+# the text checks) keep the term rule; the picture editor reads the age alone anyway (refusal.minor_age).
 class RefusalError(RuntimeError):
     """[R86] every rung declined (or none was available) — the request is declined; the message is for the user"""
 
@@ -1043,7 +1048,7 @@ class MinorBlockError(RuntimeError):
     """[R86 round 4] the narrow minors block refused the request — no model ran, nothing is cached or rendered"""
 
 
-REFUSALS = {"last": None, "count": 0, "blocked": 0}   # /api/status `last_fallback` + `refusal_fallback`
+REFUSALS = {"last": None, "count": 0, "blocked": 0, "aged_up": 0}   # /api/status `last_fallback` + `refusal_fallback`; aged_up = [R88] final image prompts the 25+ check rewrote
 RUNGS = ("preamble", "llm_uncensored")
 REFUSAL_LADDER_DEFAULT = ("preamble", "llm_uncensored")
 EXPANDER_RUNGS = ("preamble", "encoder")
@@ -2602,20 +2607,25 @@ class ModelManager:
             parts.append(f"image files {sum(r * s for r, s in known) / total:.0%}")
         print(f"[kernel] page cache after the {kind} engine: {', '.join(parts) or 'not measurable'}", flush=True)
 
-    async def sd_job(self, kind, prompt, out_path: Path, extra_args=None):
+    async def sd_job(self, kind, prompt, out_path: Path, extra_args=None, adult: bool = False):
         """Run ONE sd image/video job (the pre-session contract: returns out_path or raises
         RuntimeError). Images go through sd_batch (sd-server when installed, else sd-cli);
-        video stays on sd-cli (-M vid_gen is the CLI's). Frees the LLM from VRAM first (swap)."""
+        video stays on sd-cli (-M vid_gen is the CLI's). Frees the LLM from VRAM first (swap).
+        [R88 fix round 2] `adult`: the caller knows the request is adult (h_video: a sexual term in the user's
+        request — the video API has no adult flag); the final-prompt block then fires on an under-18 age or word alone."""
         if kind.startswith("image"):
             w = h = None
             if extra_args:
                 w, h = self._flag_value(extra_args, "-W"), self._flag_value(extra_args, "-H")
-            r = (await self.sd_batch(kind, [{"prompt": prompt, "out": out_path, "w": w, "h": h}]))[0]
+            job = {"prompt": prompt, "out": out_path, "w": w, "h": h}
+            if adult:
+                job["adult"] = True
+            r = (await self.sd_batch(kind, [job]))[0]
             if not r["ok"]:
                 raise RuntimeError(r["error"])
             return out_path
-        hit, why = refusal.minor_block(prompt)      # [R86 round 4, check point 2] the FINAL video prompt (sd-cli, no sd_batch):
-        if hit:                                     # vibe.video(), an app's <video data-gen-video> asset, every caller
+        hit, why = refusal.minor_block(prompt, adult=adult)   # [R86 round 4, check point 2] the FINAL video prompt (sd-cli,
+        if hit:                                     # no sd_batch): vibe.video(), an app's <video data-gen-video> asset, every caller
             REFUSALS["blocked"] += 1
             print(f"[kernel] blocked (minors: {why}) on {kind} '{str(prompt)[:60]}'", flush=True)
             raise RuntimeError(refusal.BLOCK_MESSAGE)
@@ -2667,16 +2677,32 @@ class ModelManager:
         [R86 round 4, check point 2] the narrow minors block on the FINAL prompt, right before sd renders
         it: a job whose prompt it refuses (refusal.minor_block) is answered {"ok": False, "error":
         BLOCK_MESSAGE, "blocked": True} without reaching any engine — every picture path (icons via sd_job,
-        pages, apps, wallpaper, the forge, /genimg, /api/image(s)) ends here, after the expander or any rung."""
+        pages, apps, wallpaper, the forge, /genimg, /api/image(s)) ends here, after the expander or any rung.
+        [R88] the 25+ check right AFTER the block, on a prompt it let through: when the job is adult (its `adult` flag —
+        the request's — or a sexual term in this final prompt), a person's stated age or decade below 25 is rewritten
+        (refusal.adult_ages: "in their 20s" -> "in their thirties", "22-year-old" -> "30-year-old"; [R88 fix round 2]
+        "teen girl" -> "adult woman aged 30", "barely legal" -> "adult, aged 30"); the job's `prompt` becomes the
+        rewritten one (what the engine gets and the caller reports), `aged_up` lists the changes.
+        [R88 fix round 2] a job whose `adult` flag is set is blocked on an under-18 age or word ALONE (the flag counts as
+        the sexual term: refusal.minor_block(prompt, adult=True)) — "explicit photo, a woman in her early teens" no longer
+        slips through for want of a listed term; a job without the flag still needs the term."""
         if not jobs:
             return []
         blocked = {}                                    # [R86 round 4] the block's floor (see the docstring)
         for i, j in enumerate(jobs):
-            hit, why = (refusal.minor_age if kind == IMAGE_EDIT_KEY else refusal.minor_block)(j.get("prompt"))
+            hit, why = refusal.minor_age(j.get("prompt")) if kind == IMAGE_EDIT_KEY \
+                else refusal.minor_block(j.get("prompt"), adult=bool(j.get("adult")))     # [R88 fix round 2] the flag = the term
             if hit:
                 blocked[i] = why
                 REFUSALS["blocked"] += 1
                 print(f"[kernel] blocked (minors: {why}) on image '{str(j.get('prompt'))[:60]}'", flush=True)
+            elif j.get("adult") or refusal.sexual(j.get("prompt")):     # [R88] the 25+ check (never before the block)
+                fixed, changes = refusal.adult_ages(j.get("prompt"))
+                if changes:
+                    j["prompt"], j["aged_up"] = fixed, changes
+                    REFUSALS["aged_up"] += 1
+                    print(f"[kernel] 25+ check on image '{fixed[:60]}': "
+                          + "; ".join(f"{a!r} -> {b!r}" for a, b in changes[:4]), flush=True)
         live = [j for i, j in enumerate(jobs) if i not in blocked]
         res = await self._sd_batch_render(kind, live) if live else []
         if not blocked:
@@ -5679,10 +5705,12 @@ async def render_images(kind: str, items: list, adult: bool = False, expand=None
     if isinstance(expand, bool):
         setting = "on" if expand else "off"
     # [R86 round 4, check point 1] the narrow minors block at the render's entry, BEFORE the expander: a blocked
-    # prompt is neither expanded nor rendered — its result says why (the final prompt meets check point 2 at sd_batch)
+    # prompt is neither expanded nor rendered — its result says why (the final prompt meets check point 2 at sd_batch).
+    # [R88 fix round 2] an explicit adult request (`adult`: {"adult"} / {"uncensored"}) is blocked on an under-18 age or
+    # word alone already here — never sent to the expander's 18+ rules (a kernel-written prompt is the final one)
     blocked = {}
     for i, it in enumerate(items):
-        hit, why = refusal.minor_block(it.get("prompt"))
+        hit, why = refusal.minor_block(it.get("prompt"), adult=bool(adult))
         if hit:
             blocked[i] = why
             REFUSALS["blocked"] += 1
@@ -5696,18 +5724,21 @@ async def render_images(kind: str, items: list, adult: bool = False, expand=None
             for it in live:
                 it["prompt"] = await english_text(it["prompt"])
         exp = await expand_prompts(kind, [it["prompt"] for it in live], adult=adult, setting=setting)
-        jobs = [{"prompt": e["prompt"], "out": it["out"], "w": it.get("w"), "h": it.get("h")}
+        # [R88] `adult`: the request's flag or a sexual term in the request itself — the 25+ check at the floor
+        jobs = [{"prompt": e["prompt"], "out": it["out"], "w": it.get("w"), "h": it.get("h"),
+                 "adult": bool(adult) or refusal.sexual(it.get("prompt"))}
                 for it, e in zip(live, exp) if not e.get("declined")]   # [R86 r3 X2; r4b S7: the expander sets no `blocked` since round 4]
         rendered = iter(await MM.sd_batch(kind, jobs) if jobs else [])
+        sent = iter(jobs)
         for it, e in zip(live, exp):
             if e.get("declined"):                           # every expander rung refused: declined, never rendered
                 results.append({"ok": False, "path": None, "error": e.get("error") or EXPANDER_DECLINED, "seed": None,
                                 "engine": None, "prompt": it.get("prompt"), "expanded": False, "expander": e.get("expander"),
                                 "expander_model": None, "blocked": False, "declined": True})
                 continue
-            r = next(rendered)
-            r.update(prompt=e["prompt"], expanded=e["expanded"], expander=e["expander"],
-                     expander_model=e.get("expander_model"))
+            r, job = next(rendered), next(sent)
+            r.update(prompt=job["prompt"], expanded=e["expanded"], expander=e["expander"],   # [R88] as rendered (25+ check)
+                     expander_model=e.get("expander_model"), aged_up=job.get("aged_up"))
             results.append(r)
     if not blocked:
         return results
@@ -5752,7 +5783,8 @@ async def h_image(request):
             JOBS[jid].update(status="done", result=f"/files/images/{jid}.png", prompt=r["prompt"],
                              expanded=r["expanded"], expander=r["expander"], seed=r["seed"], engine=r["engine"],
                              lora=r.get("lora"),          # [R76] the LoRA applied (None = the stock DiT)
-                             expander_model=r.get("expander_model"))     # [R79] llm | encoder | None
+                             expander_model=r.get("expander_model"),     # [R79] llm | encoder | None
+                             aged_up=r.get("aged_up"))    # [R88] the 25+ check's rewrites (None = none)
         except Exception as e:
             JOBS[jid].update(status="error", error=str(e))
 
@@ -5815,7 +5847,8 @@ async def h_images(request):
             urls = [f"/files/images/{jid}-{i + 1}.png" if r["ok"] else None for i, r in enumerate(results)]
             records = [{"url": u, "prompt": r["prompt"], "raw": p, "expanded": r["expanded"], "expander": r["expander"],
                         "expander_model": r.get("expander_model"),       # [R79]
-                        "seed": r["seed"], "engine": r["engine"], "lora": r.get("lora"), "error": r["error"]}
+                        "seed": r["seed"], "engine": r["engine"], "lora": r.get("lora"), "error": r["error"],
+                        "aged_up": r.get("aged_up")}                                     # [R88]
                        for u, r, p in zip(urls, results, plist)]
             JOBS[jid].update(results=records)
             if any(urls):
@@ -6062,7 +6095,12 @@ async def _image_improve_job(jid, src: Path, picture: str, root: str, parent, in
             out = image_chain_dir(root) / f"v{n}.png"
             JOBS[jid].update(version=n, prompt=prompt)
             t0 = time.time()
-            r = (await MM.sd_batch(IMAGE_EDIT_KEY, [{"prompt": prompt, "out": out, "w": w, "h": h, "ref": ref}]))[0]
+            job = {"prompt": prompt, "out": out, "w": w, "h": h, "ref": ref,
+                   "adult": refusal.sexual(instruction)}                      # [R88] the 25+ check at the floor
+            r = (await MM.sd_batch(IMAGE_EDIT_KEY, [job]))[0]
+            prompt = job["prompt"]                                            # as the editor got it
+            if job.get("aged_up"):
+                JOBS[jid].update(prompt=prompt, aged_up=job["aged_up"])
             if not r["ok"]:
                 JOBS[jid].update(blocked=bool(r.get("blocked")))
                 raise RuntimeError(r["error"] or "the picture editor rendered nothing")
@@ -6298,7 +6336,8 @@ def refusal_fallback_status() -> dict:
             # [R86 round 4] section = "llm_uncensored" (a tier's add-on) | "llm" (the flagged default) | None
             "uncensored": {"available": section is not None, "reason": why, "section": section,
                            "download_key": "llm_uncensored" if addon else None},
-            "count": REFUSALS["count"], "blocked": REFUSALS["blocked"], "last": REFUSALS["last"]}
+            "count": REFUSALS["count"], "blocked": REFUSALS["blocked"], "aged_up": REFUSALS["aged_up"],
+            "last": REFUSALS["last"]}
 
 
 async def h_model_download(request):
@@ -7159,7 +7198,9 @@ async def h_video(request):
         try:
             out = FILES_DIR / "videos" / f"{jid}.mp4"
             prompt = await english_text(body["prompt"])          # [R71, P2] Wan is English-only
-            await MM.sd_job("video", prompt + prompts.VIDEO_PROMPT_HINT, out)
+            # [R88 fix round 2] the job is adult when the user's request has a sexual term (the image job's rule; the
+            # video API has no adult flag): the final English prompt is then blocked on an under-18 age alone
+            await MM.sd_job("video", prompt + prompts.VIDEO_PROMPT_HINT, out, adult=refusal.sexual(body["prompt"]))
             mp4 = await finish_video(FILES_DIR / "videos" / jid)
             JOBS[jid].update(status="done", result=f"/files/videos/{mp4.name}")
         except Exception as e:

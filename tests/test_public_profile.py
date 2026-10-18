@@ -787,6 +787,9 @@ async def t_e2e(ctx):
             await page.shot("public-first-start.png")
             await page.ev("[...document.querySelectorAll('#setup-actions button')].find((b) => b.textContent === 'Not now').click(), 1")
             await page.wait("document.querySelector('#setup').classList.contains('hidden')", 5, "the dialog closed")
+            t0 = time.time()       # [R88 run] done() hides the dialog first, then POSTs /api/setup/done: wait for the file
+            while not (s.VIBEOS_DIR / "fs" / "data" / ".setup-done").exists() and time.time() - t0 < 5:
+                await asyncio.sleep(0.1)
             assert (s.VIBEOS_DIR / "fs" / "data" / ".setup-done").exists()
             await page.wait("!document.querySelector('#mb-dl').classList.contains('hidden')", 12, "the ⬇ chip")
             chip = await page.ev("document.querySelector('#mb-dl').textContent")
@@ -923,6 +926,57 @@ async def t_muse(ctx):
     return "no key 409, bad 400, wrong 401 (no echo), 0600/0700, licence 409, query ?token -> civitai only, pause/Range resume, sha ok, Muse default; key in no log/response/file"
 
 
+@test("pp_r88_download_sentences_grammar", ["R87"])
+def t_grammar(ctx):
+    """[R88] the first-boot download sentences agree in number: every essential of profile-public.json × every state —
+    "the dictionaries ARE queued / NEED a download … dictionary look-ups work when THEY arrive", "the offline Wikipedia
+    IS … offline search WORKS when IT arrives", "translation works", "looking at pictures works", "pictures work"; the
+    Essentials.note() sentences come from that one function; no "dictionaries is" left in the kernel"""
+    sys.path.insert(0, str(REPO / "kernel"))
+    import public as P
+    want = {"the language model": (False, True), "the picture model": (False, True), "the translation model": (False, False),
+            "the dictionaries": (True, True), "the vision encoder": (False, False), "the offline Wikipedia": (False, False)}
+    items = overlay()["essentials"]
+    assert {it["label"] for it in items} == set(want), [it["label"] for it in items]
+    n = 0
+    for it in items:
+        many, feat_many = want[it["label"]]
+        assert P.plural(it["label"]) is many and P.plural(it["feature"]) is feat_many, (it["label"], it["feature"])
+        for st in ("downloading", "verifying", "waiting", "queued", "paused", "missing", "error"):
+            t = P.missing_sentence(it["label"], it["feature"], st, 37, "0.3", "checksum mismatch")
+            n += 1
+            assert t.startswith(it["label"] + " "), t
+            head = t[len(it["label"]) + 1:]
+            if st == "error":
+                assert head.startswith("could not be downloaded (checksum mismatch)"), t
+                continue
+            verb = head.split()[0]
+            assert verb == ({"paused": "need", "missing": "need"}.get(st, "are") if many else
+                            {"paused": "needs", "missing": "needs"}.get(st, "is")), t
+            if st in ("downloading", "verifying", "waiting", "queued"):
+                assert f" — {it['feature']} {'work' if feat_many else 'works'} when " in t + " " or \
+                    f"; {it['feature']} {'work' if feat_many else 'works'} when " in t, t
+                assert (" when they " in t) is many and (" when it " in t) is not many, t
+    for text in ("the dictionaries are queued for download (0.3 GB to go) — dictionary look-ups work when they arrive",
+                 "the offline Wikipedia is queued for download (0.3 GB to go) — offline search works when it arrives",
+                 "the translation model is downloading (37 %) — translation works when it is done",
+                 "the vision encoder is waiting for the network (37 % downloaded) — the download resumes by itself; "
+                 "looking at pictures works when it is done",
+                 "the picture model is downloading (37 %) — pictures work when it is done",
+                 "the dictionaries need a download (0.3 GB) — start it in ⚙ Models & licences"):
+        label = next(l for l in want if text.startswith(l + " "))
+        it = next(i for i in items if i["label"] == label)
+        st = "queued" if "queued" in text else "downloading" if "downloading" in text else "waiting" if "waiting" in text else "missing"
+        assert P.missing_sentence(label, it["feature"], st, 37, "0.3") == text, (P.missing_sentence(label, it["feature"], st, 37, "0.3"), text)
+    assert P.missing_sentence("the picture model", "", "downloading", 5, "1") == "the picture model is downloading (5 %) — this works when it is done"
+    src = (REPO / "kernel" / "public.py").read_text()
+    note = src[src.index("    def note(self"):src.index("    # ---- control")]
+    assert "return missing_sentence(" in note and "{feat}" not in note and 'f"{label}' not in note, "note() builds no sentence of its own"
+    for f in ("public.py", "server.py", "dictionary.py", "knowledge.py"):
+        assert not re.search(r"dictionaries (is|isn't|needs|has) ", (REPO / "kernel" / f).read_text()), f
+    return f"{len(items)} essentials × 7 states = {n} sentences agree (label verb, feature verb, it/they); note() uses them"
+
+
 # ============================================================================= the scripts
 def _tree(root: Path, licences=True, sources=True):
     """an image root with every private bit the prep script knows, planted"""
@@ -987,6 +1041,8 @@ def _tree(root: Path, licences=True, sources=True):
     w("opt/vibeos/os/docs/OLD-REPORT.md", "measured on jane@example.org's laptop, /home/janeo/kairos\n")
     w("opt/vibeos/os/kernel/server.py.bak-2026-01-01x", "an edit backup: never in the public repo\n")
     w("usr/local/sbin/kairos-bootlog.bak-2026-01-01y", "x")
+    w("opt/vibeos/os/tests/mock-ace-cli", "#!/bin/sh\necho mock\n")             # [R88] an older image's tests/
+    w("opt/vibeos/os/tests/test_kernel.py", "print('test')\n")
     if licences:
         shutil.copytree(REPO / "iso/config/includes.chroot/usr/share/doc/kairos/model-licences",
                         root / "usr/share/doc/kairos/model-licences")
@@ -1046,7 +1102,8 @@ def t_prep(ctx):
                        "operator's private string: /opt/vibeos/HOTFIX", "operator's private string: ESP:/KAIROS-LOGS/latest.txt",
                        "a home path other than /home/kairos: /opt/vibeos/HOTFIX", "private key: /etc/ssh/ssh_host_ed25519_key",
                        "WiFi PSK: /etc/NetworkManager/system-connections/HomeAP.nmconnection",
-                       "2 edit backup(s) (*.bak*, never in the public repository)"):
+                       "2 edit backup(s) (*.bak*, never in the public repository)",
+                       "not part of the runtime (dev / test files): /opt/vibeos/os/tests"):
             assert any(needle in l for l in fails), (needle, "\n".join(fails)[-1500:])
         assert re.search(r"^WARN  operator's private string \(shipped repo text, public on GitHub\): /opt/vibeos/os/docs/OLD-REPORT.md", out, re.M), out
         assert not any("OLD-REPORT" in l for l in fails), "repo text is a warning, not a failure"
@@ -1071,6 +1128,7 @@ def t_prep(ctx):
         assert "127.0.1.1\tkairos" in (root / "etc/hosts").read_text()
         assert not list((root / "opt/vibeos/models").rglob("museByStableYogi*"))
         assert not list(root.rglob("*.bak-*")) and (root / "opt/vibeos/os/kernel/server.py").exists()
+        assert not (root / "opt/vibeos/os/tests").exists() and (root / "opt/vibeos/os/docs").is_dir(), "[R88] tests/ goes, docs stay"
         snap1 = _listing(root)
         rc, out2 = _prep(root, patterns=pat)
         assert rc == 0 and "prepare: 0 change(s)" in out2 and "VERIFY: PASS" in out2, out2[-800:]
@@ -1093,6 +1151,207 @@ def t_prep(ctx):
     finally:
         shutil.rmtree(base, ignore_errors=True)
     return f"verify: {len(fails)} FAIL lines incl. 37 categories + repo text WARN; prepare -> PASS, kept files; 2nd run 0 changes; unfixable stays FAIL"
+
+
+@test("pp_r88_runtime_ships_no_tests", ["R87", "R47"])
+def t_runtime_set(ctx):
+    """[R88] the shipped OS code is exactly kernel/ shell/ manifests/ scripts/ docs/, in all three places that lay it out:
+    iso/build-iso.sh (stages that set into its persistent work tree, first removing anything else — the tests/ an older
+    build left — and never copying edit backups or bytecode), dev/rig/testrig/sync-guest.sh (the same set, then removes
+    anything else from the guest's /opt/vibeos/os) and the public prep script (removes anything else from the image's
+    /opt/vibeos/os); the kernel and the shell read nothing under tests/ at runtime"""
+    want = {"kernel", "shell", "manifests", "scripts", "docs"}
+    iso = (REPO / "iso" / "build-iso.sh").read_text()
+    m = re.search(r'^OS_RUNTIME="([^"]+)"', iso, re.M)
+    assert m and set(m.group(1).split()) == want, m and m.group(1)
+    rs = re.search(r'^rsync -a --delete .*?"\$INC/os/"$', iso, re.M | re.S).group(0)
+    assert set(re.findall(r'"\$REPO/([a-z]+)"', rs)) == want, rs
+    for x in ("--delete-excluded", "--exclude __pycache__", "--exclude '*.bak-*'", "--exclude '*.bak'"):
+        assert x in rs, x
+    loop = iso[iso.index('for e in "$INC/os"/*'):iso.index(rs)]
+    assert 'rm -rf "$e"' in loop and '" $OS_RUNTIME "' in loop, loop
+    sg = (REPO / "dev" / "rig" / "testrig" / "sync-guest.sh").read_text()
+    m = re.search(r'^OS_RUNTIME="([^"]+)"', sg, re.M)
+    assert m and set(m.group(1).split()) == want, m and m.group(1)
+    assert "-czf - $OS_RUNTIME" in sg and "--exclude='*.bak-*'" in sg and "--exclude=__pycache__" in sg
+    assert re.search(r'cd /opt/vibeos/os && for e in \*; do case .*?rm -rf -- ', sg), "sync-guest prunes the guest"
+    prep = (REPO / "scripts" / "public-image-prep.sh").read_text()
+    m = re.search(r'case "\$\(basename "\$e"\)" in ([a-z|]+)\) ;;', prep)
+    assert m and set(m.group(1).split("|")) == want, m and m.group(1)
+    code = [REPO / "kernel" / f for f in os.listdir(REPO / "kernel") if f.endswith(".py")] + list((REPO / "shell").rglob("*.js"))
+    bad = []
+    for f in code:
+        for n, line in enumerate(f.read_text().splitlines(), 1):
+            ln = line.split("#", 1)[0] if f.suffix == ".py" else line.split("//", 1)[0]
+            if re.search(r"""["'/]tests/|/ ?["']tests["']|["']tests["']\s*/""", ln):
+                bad.append(f"{f.name}:{n}: {line.strip()[:80]}")
+    assert not bad, bad
+    return f"build-iso / sync-guest / prep: the same {len(want)} dirs, the rest removed, no *.bak* / __pycache__; kernel + shell ({len(code)} files) read nothing under tests/"
+
+
+# [R88] the raw-byte scrub: a planted GPT disk image (no root needed: mke2fs -d, debugfs -w, mkfs.vfat -C + mtools, sfdisk
+# on a file) with the residue the v7.5-2 build found — old "swapped" pages under the swapfile's UNWRITTEN extents (the
+# freed blocks of a secret file, then debugfs fallocate), a deleted NetworkManager profile in a free ext4 block, a deleted
+# boot log in a free ESP cluster — plus the owner's string in shipped repo text (a WARN, never a FAIL)
+RAW_BUILD = r"""set -eu
+cd "$1"
+mkdir -p tree/etc/NetworkManager/system-connections tree/opt/vibeos/os/docs tree/opt/vibeos/os/kernel tree/root
+echo "/swapfile none swap sw 0 0" > tree/etc/fstab
+echo "keep me" > tree/etc/keep.conf
+echo "measured on Jane Owner's laptop" > tree/opt/vibeos/os/docs/OLD.md
+python3 -c "open('tree/old','wb').write((b'PSK=hunter2hunter2-PLANTED '*200)[:4096]*64)"
+mke2fs -q -t ext4 -b 4096 -L KAIROS_ROOT -d tree root.img 64M
+debugfs -w -R "rm /old" root.img
+truncate -s 262144 sw.tmp
+mkswap -U 11111111-2222-3333-4444-555555555555 -L SWAPL sw.tmp >/dev/null 2>&1
+head -c 4096 sw.tmp > hdr4k
+printf 'write hdr4k swapfile\nfallocate /swapfile 1 63\nsif /swapfile size 262144\nsif /swapfile mode 0100600\n' > c1
+debugfs -w -f c1 root.img
+printf '[wifi]\nssid=HomeAP-PLANTED\n[wifi-security]\npsk=hunter2hunter2-PLANTED\n' > nm.txt
+debugfs -w -R "write nm.txt /etc/NetworkManager/system-connections/Home.nmconnection" root.img
+debugfs -w -R "rm /etc/NetworkManager/system-connections/Home.nmconnection" root.img
+mkfs.vfat -C -n KAIROSEFI esp.img 34816 >/dev/null
+mmd -i esp.img ::EFI ::EFI/BOOT ::KAIROS-LOGS
+echo efi > efi.bin
+mcopy -i esp.img efi.bin ::EFI/BOOT/BOOTX64.EFI
+for i in $(seq 400); do echo "boot log: networks seen HomeAP-PLANTED, owner Jane Owner"; done > log.txt
+mcopy -i esp.img log.txt ::KAIROS-LOGS/latest.txt
+mdel -i esp.img ::KAIROS-LOGS/latest.txt
+E=$(( $(stat -c %s esp.img) / 512 )); R=$(( $(stat -c %s root.img) / 512 ))
+truncate -s $(( (2048 + E + R + 2048) * 512 )) disk.img
+printf 'label: gpt\nstart=2048, size=%d, type=uefi, name="EFI"\nstart=%d, size=%d, type=linux, name="KAIROS_ROOT"\n' \
+  $E $((2048 + E)) $R | sfdisk -q disk.img
+dd if=esp.img of=disk.img bs=512 seek=2048 conv=notrunc status=none
+dd if=root.img of=disk.img bs=512 seek=$((2048 + E)) conv=notrunc status=none
+echo "$((2048 * 512)) $(( (2048 + E) * 512 )) $((E * 512))"
+"""
+RAW_SECRETS = ("Jane Owner", "HomeAP-PLANTED", "hunter2hunter2-PLANTED")
+
+
+def _scrub(disk, *args, patterns=None, env=None):
+    cmd = ["bash", str(REPO / "scripts" / "public-image-prep.sh"), "--scrub", str(disk), *args]
+    if patterns:
+        cmd += ["--patterns", str(patterns)]
+    hermetic = {"KAIROS_WIFI_ENV": "/nonexistent", "KAIROS_SSH_PUBKEY": "/nonexistent"}   # never the operator's own secrets
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=300,
+                       env={**os.environ, "LC_ALL": "C", **hermetic, **(env or {})})
+    return r.returncode, r.stdout + r.stderr
+
+
+@test("pp_r88_raw_scrub_planted_image", ["R87", "R66"])
+def t_raw_scrub(ctx):
+    """[R88] public-image-prep.sh --scrub on a planted GPT disk image (the residue the v7.5-2 build found): --verify FAILS
+    on the swapfile's old pages (unwritten extents over a deleted secret's blocks), the non-zero free ext4 block (the
+    deleted WiFi profile), the free ESP clusters (the deleted boot log) and on each needle's raw hits there — the owner's
+    string in shipped repo text is only a WARN, no needle is ever printed; --scrub zeroes exactly that (the swap header
+    kept: same UUID + label, blkid reads it; e2fsck -fn + fsck.vfat -n clean; kept files intact) and its own raw verify
+    PASSES with only the repo-text WARN; the raw bytes then hold no secret outside that file; a second --scrub writes
+    nothing; stray bytes in the swap header page are wiped (UUID kept); a needle outside the partitions FAILS the verify
+    (never scrubbed: the GPT gaps are left alone); a bare ext4 image works too; an unclean ext4 is refused untouched"""
+    need = ("mke2fs", "debugfs", "e2fsck", "mkfs.vfat", "fsck.vfat", "mcopy", "mdel", "mmd", "mtype", "sfdisk", "mkswap", "blkid")
+    missing = [t for t in need if not shutil.which(t)]
+    if missing:
+        raise SkipTest("needs e2fsprogs, dosfstools, mtools, sfdisk: missing " + ", ".join(missing))
+    base = Path(tempfile.mkdtemp(prefix="kairos-scrub-"))
+    try:
+        r = subprocess.run(["bash", "-c", RAW_BUILD, "build", str(base)], capture_output=True, text=True, timeout=120,
+                           env={**os.environ, "LC_ALL": "C"})
+        assert r.returncode == 0, r.stdout[-500:] + r.stderr[-800:]
+        esp_off, root_off, esp_len = map(int, r.stdout.split()[-3:])
+        disk = base / "disk.img"
+        pat = base / "patterns.txt"
+        pat.write_text("# the owner's strings\n" + "\n".join(RAW_SECRETS) + "\n")
+        raw = disk.read_bytes()
+        assert all(raw.count(x.encode()) >= 1 for x in RAW_SECRETS), "the planted residue is in the raw bytes"
+        before = raw
+        rc, out = _scrub(disk, "--verify", patterns=pat)
+        assert rc == 1 and "RAW VERIFY: FAIL" in out, out
+        for needle in ("p2 (KAIROS_ROOT): swapfile /swapfile: 63 page(s) beyond its header hold old data",
+                       "p2 (KAIROS_ROOT): ext4: 1 free block(s) hold old data", "p1 (EFI): vfat: ",
+                       "raw bytes: pattern 3 in ", "— p2 (KAIROS_ROOT): swapfile /swapfile (old memory pages)",
+                       "— p2 (KAIROS_ROOT): a FREE block", "— p1 (EFI): a FREE cluster"):
+            assert needle in out, (needle, out)
+        assert re.search(r"^WARN  raw bytes: pattern 1 in 1 block\(s\) — p2 \(KAIROS_ROOT\): shipped repo text \(/opt/vibeos/os/…\)$", out, re.M), out
+        assert not any(x in out for x in RAW_SECRETS), "a needle was printed"
+        assert disk.read_bytes() == before, "--verify writes nothing"
+        rc, out = _scrub(disk, patterns=pat)
+        assert rc == 0 and "RAW VERIFY: PASS — 0 findings, 1 warning(s)" in out, out
+        assert "swapfile /swapfile: 63 old page(s) zeroed, header kept" in out and "ext4: 1 non-zero free block(s) zeroed" in out \
+            and re.search(r"vfat \(FAT1[26]\): \d+ non-zero free cluster\(s\) zeroed", out), out
+        assert not any(x in out for x in RAW_SECRETS), "a needle was printed"
+        raw = disk.read_bytes()
+        assert raw.count(b"HomeAP-PLANTED") == 0 and raw.count(b"hunter2hunter2-PLANTED") == 0 and raw.count(b"Jane Owner") == 1, \
+            "only the shipped repo text keeps the owner's string"
+        spec = f"{disk}?offset={root_off}"
+        assert subprocess.run(["e2fsck", "-fn", spec], capture_output=True).returncode == 0
+        esp = base / "esp.out"
+        esp.write_bytes(raw[esp_off:esp_off + esp_len])
+        assert subprocess.run(["fsck.vfat", "-n", str(esp)], capture_output=True).returncode == 0
+        assert subprocess.run(["mtype", "-i", str(esp), "::EFI/BOOT/BOOTX64.EFI"], capture_output=True, text=True).stdout == "efi\n"
+        assert subprocess.run(["debugfs", "-R", "cat /etc/keep.conf", spec], capture_output=True, text=True).stdout == "keep me\n"
+        sw = base / "sw.after"
+        subprocess.run(["debugfs", "-R", f"dump /swapfile {sw}", spec], capture_output=True)
+        b = subprocess.run(["blkid", "-p", "-o", "export", str(sw)], capture_output=True, text=True).stdout
+        assert "TYPE=swap" in b and "UUID=11111111-2222-3333-4444-555555555555" in b and "LABEL=SWAPL" in b, b
+        assert sw.stat().st_size == 262144
+        snap = disk.read_bytes()
+        rc, out = _scrub(disk, patterns=pat)
+        assert rc == 0 and "63 old page(s)" not in out and "0 old page(s) zeroed" in out and "ext4: 0 non-zero" in out \
+            and "vfat (FAT16): 0 non-zero" in out.replace("FAT12", "FAT16"), out
+        assert disk.read_bytes() == snap, "a second scrub writes nothing"
+        # stray bytes in the swap header page (its bootbits): wiped, the header rebuilt with the same UUID / label
+        hb = int(re.search(r"\((?:0)\):(\d+)", subprocess.run(["debugfs", "-R", "stat /swapfile", spec], capture_output=True,
+                                                               text=True).stdout).group(1))
+        with open(disk, "r+b") as f:
+            f.seek(root_off + hb * 4096 + 100)
+            f.write(b"stray old bytes")
+        rc, out = _scrub(disk, "--verify", patterns=pat)
+        assert rc == 1 and "the header page holds stray bytes" in out, out
+        rc, out = _scrub(disk, patterns=pat)
+        assert rc == 0 and "header rebuilt (same UUID/label)" in out, out
+        subprocess.run(["debugfs", "-R", f"dump /swapfile {sw}", spec], capture_output=True)
+        b = subprocess.run(["blkid", "-p", "-o", "export", str(sw)], capture_output=True, text=True).stdout
+        assert "UUID=11111111-2222-3333-4444-555555555555" in b and b"stray" not in sw.read_bytes()[:4096], b
+        # a needle outside the partitions (the GPT gap): the verify FAILS it, the scrub leaves the gap alone
+        with open(disk, "r+b") as f:
+            f.seek(600 * 512)
+            f.write(b"hunter2hunter2-PLANTED")
+        rc, out = _scrub(disk, patterns=pat)
+        assert rc == 1 and "raw bytes: pattern 3 in 1 block(s) — outside the partitions (GPT / gaps)" in out, out
+        assert disk.read_bytes()[600 * 512:600 * 512 + 22] == b"hunter2hunter2-PLANTED", "gaps are never written"
+        # a bare ext4 image (no partition table)
+        bare = base / "root.img"
+        rc, out = _scrub(bare, patterns=pat)
+        assert rc == 0 and "the file system ext4" in out and "63 old page(s) zeroed" in out and "RAW VERIFY: PASS" in out, out
+        # refused: an unclean ext4 (nothing written), no such disk, --scrub with a ROOT
+        unclean = base / "unclean.img"
+        unclean.write_bytes(before)
+        subprocess.run(["debugfs", "-w", "-R", "ssv state 0", f"{unclean}?offset={root_off}"], capture_output=True)
+        snap = unclean.read_bytes()
+        rc, out = _scrub(unclean, patterns=pat)
+        assert rc == 2 and "refused" in out and "not clean" in out and unclean.read_bytes() == snap, out
+        rc, out = _scrub(base / "nope.img")
+        assert rc == 2 and "does not exist" in out, out
+        rc, out = _prep(base, "--scrub", str(disk))
+        assert rc == 2 and "no ROOT" in out, out
+        empty = base / "empty.txt"
+        empty.write_text("# nothing\n")
+        rc, out = _scrub(disk, "--verify", patterns=empty)     # no needles: the structure only, and a WARN
+        assert "WARN  no private patterns: the raw bytes were not searched" in out and "raw needles: 0" in out, out
+        # the build's own secrets are needles too: iso/secrets/wifi.env (SSID + PSK) and authorized_keys (the key body)
+        d2 = base / "d2.img"
+        d2.write_bytes(before)
+        wenv, keys = base / "wifi.env", base / "authorized_keys"
+        wenv.write_text('KAIROS_WIFI_SSID="HomeAP-PLANTED"\nKAIROS_WIFI_PSK=hunter2hunter2-PLANTED\n')
+        keys.write_text("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlantedRigKeyBody0123456789abcdef rig\n")
+        rc, out = _scrub(d2, "--verify", patterns=empty, env={"KAIROS_WIFI_ENV": str(wenv), "KAIROS_SSH_PUBKEY": str(keys)})
+        assert rc == 1 and "raw needles: 3" in out and "raw bytes: wifi-psk in " in out and "raw bytes: wifi-ssid in " in out, out
+        assert not any(x in out for x in RAW_SECRETS) and "PlantedRigKey" not in out, "a needle was printed"
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+    return ("verify FAILs swap pages / free block / free clusters + raw hits (repo text WARN, no needle printed); scrub -> PASS, "
+            "UUID kept, e2fsck + fsck.vfat clean, files intact; 2nd scrub writes nothing; header stray bytes wiped; gap needle "
+            "FAILs (gap untouched); bare ext4 ok; unclean ext4 refused untouched")
 
 
 @test("pp_fetch_licence_sources_mock", ["R87"])

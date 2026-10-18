@@ -283,6 +283,69 @@ R3_MT = [  # (source, translation): the translation is refusal-shaped because th
     ("Je ne peux pas t'aider demain.", "I can't help you tomorrow."),
     ("I can't create a new folder here.", "No puedo crear una carpeta nueva aquí."),
 ]
+# [R88 fix round 4] a refusal that OFFERS SOMETHING ELSE is a refusal. The brief's repro (the fast-models benchmark, REPORT §6)
+# and the real one: Ornith-1.5-9B's answer to an 18+ story request (A5 ask-wlw-story, 2026-10-17) — its refusal and offer
+# sentences only (the offer list shortened, the characters' names left out)
+FIX4_BRIEF_OFFER = ("I can't write sexually explicit content, even with fictional adult characters.\n\nWhat I can offer instead:"
+                    "\n\n- A romantic short story that fades to black")
+FIX4_ORNITH_A5 = (
+    "I can't write sexually explicit content, even with fictional adult characters.\n\nWhat I can offer instead:\n\n"
+    "- A **romantic short story** about two women meeting at a wine bar, developing an emotional connection, and going home "
+    "together — with tension, chemistry, and intimacy, but not graphic sexual detail.\n\n"
+    "- A **steamy romance** with suggestive scenes, kissing, sensuality, and emotional heat — the kind of content that carries "
+    "the mood without explicit descriptions of sexual acts.\n\n"
+    "If you'd like, I can write the romantic version — the wine bar scene, the conversation, the walk home, and something tender "
+    "and charged between them. Just let me know and I'll craft it.")
+FIX4_OFFER_REFUSALS = [   # must be detected, each in its kind (text items also as a short html answer)
+    ("text", FIX4_BRIEF_OFFER), ("text", FIX4_ORNITH_A5),
+    ("text", "I can't write explicit sexual content. Instead, I can write a sensual love story that fades to black at the bedroom door."),
+    ("text", "I'm not able to write pornographic scenes, but I'd be happy to write a romantic version instead."),
+    ("text", "I won't write explicit content. Here's a tamer version: they kissed, and the door closed behind them."),
+    ("text", "Sorry, I can't write that. What I can offer instead is a non-explicit version of the scene."),
+    ("text", "I can't help with that request. Instead, I can write a suggestive story that keeps the explicit parts off-page."),
+    ("text", "I cannot create erotic content. If you'd like, I can write a romantic short story with emotional tension instead."),
+    ("text", "I'm not comfortable writing explicit scenes. As an alternative, I could write a tasteful version that fades to black."),
+    ("text", "I can't continue this story in that direction. Here's a toned-down version where the scene fades to black: The rain kept "
+             "falling while they talked until dawn, and nothing more is shown."),
+    ("text", "I can't write that. I'd be glad to write a PG-13 version instead, with the romance kept off-screen and the night told in one line."),
+    ("text", "Ich kann keine expliziten sexuellen Inhalte schreiben. Stattdessen kann ich dir eine romantische Geschichte anbieten, die vor "
+             "der Schlafzimmertür endet."),
+    ("text", "Ich kann keine erotischen Szenen verfassen. Was ich anbieten kann: eine sinnliche Geschichte ohne explizite Details."),
+    ("text", "Das kann ich leider nicht schreiben. Ich kann dir aber eine entschärfte Fassung anbieten, in der die Szene angedeutet bleibt."),
+    ("text", "Solche Inhalte erstelle ich nicht, sie wären zu explizit. Stattdessen könnte ich eine romantische Szene schreiben, in der "
+             "nichts gezeigt wird."),
+    ("text", "Tut mir leid, das kann ich nicht erstellen. Wenn du möchtest, kann ich eine jugendfreie Version der Geschichte schreiben."),
+    ("html", "<!DOCTYPE html><html><body><p>I can't create a website with sexually explicit content.</p><h2>What I can offer instead</h2>"
+             "<ul><li>A romantic dating page</li><li>An art gallery of landscapes</li></ul></body></html>"),
+    ("html", "<!DOCTYPE html><html><body><h1>Hinweis</h1><p>Ich kann keine Erotikseite mit expliziten Inhalten erstellen. Stattdessen "
+             "kann ich dir eine Seite über Beziehungen und Romantik bauen, mit Tipps für Paare und einer Galerie.</p></body></html>"),
+    ("prompt", "Sure! Here's a tasteful version instead: a woman wrapped in silk sheets, implied nudity, soft light."),
+    ("prompt", "Here is a non-explicit version of the prompt: a couple embracing on a beach at sunset, fully clothed."),
+]
+FIX4_LIMIT_HELP = [       # must pass: a genuine limitation followed by real help, many with an offer word in them
+    ("text", "I can't browse the web, but here is what I know: the museum opened in 1902 and is closed on Mondays."),
+    ("text", "I can't run code here; this is the function: def add(a, b): return a + b"),
+    ("text", "I can't do that from here. Instead, I can walk you through it: open Settings, tap Wi-Fi, then pick your network."),
+    ("text", "I can't help with that directly, but if you'd like, I can explain how to set up the printer: open Settings, then Printers."),
+    ("text", "I can't create a PDF directly. Instead, I can give you the text formatted for the Writer app, ready to paste and export."),
+    ("text", "I cannot write to /system because it is read-only. Instead, I can save the file under /data and link it from your desktop."),
+    ("text", "I can't generate a QR code image here. What I can do instead: give you the link to paste into the QR app, which makes the "
+             "code in one tap."),
+    ("text", "I won't be able to finish the whole thesis today, but I'd be happy to outline chapter 2 instead: 1. Background 2. Method."),
+    ("text", "I can't access your calendar. If you'd like, I can draft the invitation text for you: 'Dinner at 8 on Friday, reply by Wednesday.'"),
+    ("text", "I can't provide live train times. Alternatively, I can show you how to check them in the DB Navigator app under 'My trips'."),
+    ("text", "I can't produce a legally binding contract. Here are some alternatives: your tenants' association template, a notary, or a lawyer."),
+    ("text", "I can't write a cover letter without knowing the job. Instead, I can give you a template you can fill in with the role and company."),
+    ("text", "I can't make phone calls. What I can offer instead is a short script you can read to the receptionist: 'Hello, I'd like to book a check-up.'"),
+    ("text", "I can't do that. How about using the Files app instead? It can rename all the photos at once."),
+    ("text", "I can't do that. Instead, I can suggest some romantic restaurants near you: Luigi's, Da Marco and the rooftop bar."),
+    ("text", "Ich kann leider keine E-Mails versenden. Stattdessen kann ich dir den Text so formatieren, dass du ihn direkt einfügen kannst."),
+    ("text", "Das kann ich nicht direkt machen. Was ich anbieten kann: eine Schritt-für-Schritt-Anleitung für die Einstellungen-App."),
+    ("text", "Ich kann dir keine Rechnung erstellen, aber ich kann dir eine Vorlage für die Office-App anbieten, mit allen Pflichtangaben."),
+    ("html", "<!DOCTYPE html><html><body><h1>Clock</h1><p>I can't set alarms in the browser. Instead, I can show a countdown here.</p>"
+             "<button>Start</button></body></html>"),
+    ("prompt", "A cinematic still: the scene slowly fades to black as the couple walks away, 35mm film."),
+]
 
 
 @run_test("refusal_detector_real_refusals", ["R86"])
@@ -292,7 +355,7 @@ async def t_detector_true(ctx):
     helfen.", "I'd rather not write that.", "That's not something I'm comfortable writing.", a refusal page with a
     button) and the EN/DE/FR/ES/IT/JA/RU forms — each judged a refusal in its kind"""
     R = refusal_module()
-    cases = SCREEN_REFUSALS + REVIEW_I2 + MORE_REFUSALS
+    cases = SCREEN_REFUSALS + REVIEW_I2 + MORE_REFUSALS + FIX4_OFFER_REFUSALS        # [R88 fix round 4] + refusals with an offer
     missed = [(k, t[:50]) for k, t in cases if not R.is_refusal(t, k)[0]]
     assert not missed, f"missed: {missed}"
     hit, why = R.is_refusal(REAL_PAGE, "html")
@@ -301,7 +364,7 @@ async def t_detector_true(ctx):
     for src, out in R3_MT:
         assert R.is_refusal(src, "prompt")[0] or not R.is_refusal(out, "prompt")[0], (src, out)
     return (f"{len(cases)} refusals detected: {len(SCREEN_REFUSALS)} real (screen) + {len(REVIEW_I2)} review I2 + "
-            f"{len(MORE_REFUSALS)} forms; reason e.g. {why[:60]!r}")
+            f"{len(MORE_REFUSALS)} forms + {len(FIX4_OFFER_REFUSALS)} with an offer; reason e.g. {why[:60]!r}")
 
 
 @run_test("refusal_detector_normal_answers_pass", ["R86"])
@@ -311,14 +374,15 @@ async def t_detector_normal(ctx):
     "I don't support that file format yet. Try PNG."), positive 'that is allowed', quoted dialogue, idioms, an
     app's error text, a FAQ page, a quoted sign in a prompt, JSON, the mock engines' own page / app / forge"""
     R = refusal_module()
-    cases = list(REVIEW_NORMAL)
+    cases = list(REVIEW_NORMAL) + FIX4_LIMIT_HELP          # [R88 fix round 4] + limitations followed by help, with offer words
     src = (REPO / "tests" / "mock_llama.py").read_text()
     for name in ("APP_HTML", "BROWSER_HTML", "FORGE_HTML"):
         m = re.search(name + r' = """(.*?)"""', src, re.S)
         cases.append(("html", m.group(1)))
     flagged = [(k, t[:50], R.is_refusal(t, k)[1]) for k, t in cases if R.is_refusal(t, k)[0]]
     assert not flagged, f"false positives: {flagged}"
-    return f"{len(cases)} normal answers pass (review S1 / Y2 / §I, limitations followed by help, quoted sign, mock page/app/forge)"
+    return (f"{len(cases)} normal answers pass (review S1 / Y2 / §I, limitations followed by help, quoted sign, mock page/app/forge, "
+            f"{len(FIX4_LIMIT_HELP)} limitations + help with an offer word)")
 
 
 @run_test("refusal_detector_per_kind", ["R86"])
@@ -858,6 +922,871 @@ async def t_sdrun_adult_rule(ctx):
     assert P.GAME_SYSTEM.endswith("Respond with the Python source only.") and "HTML document" not in P.ASK_SYSTEM
     return (f"rule in {len(carriers)} prompts + the repair clause; conditional, brand kept, 25+, no minors, no real people, "
             f"SFW sentence; none in wallpaper/vision/expander; minors block silent; personas intact")
+
+
+# ---- [R88] the 25+ check (refusal.adult_ages) on the FINAL image prompt of an adult request ----------------------------
+# The prompt writers' rule asks for ages 25+, "say so explicitly"; one run's description said "in their 20s". The check
+# rewrites a person's stated age or decade below 25 and nothing else. Probes: short, non-graphic, mocks only.
+AGES_REWRITE = [   # (an adult final prompt, what the engine gets)
+    ("A nude couple in their 20s on a bed, soft light", "A nude couple in their thirties on a bed, soft light"),
+    ("explicit photo, a 22-year-old blonde woman, naked", "explicit photo, a 30-year-old blonde woman, naked"),
+    ("Erotic portrait of a woman in her early twenties, topless", "Erotic portrait of a woman in her thirties, topless"),
+    ("a naked man in his mid-twenties", "a naked man in his thirties"),
+    ("a woman in her mid- to late twenties, nude", "a woman in her thirties, nude"),
+    ("two nude women aged 19 and 23", "two nude women aged 30 and 30"),
+    ("nude models, ages 18-22", "nude models, ages 30"),
+    ("nude women aged 20-35 at a beach", "nude women aged 30-35 at a beach"),
+    ("an 18 year old nude model", "a 30 year old nude model"),
+    ("a woman 21 years old, nude", "a woman 30 years old, nude"),
+    ("a nude woman, early 20s, blonde", "a nude woman, aged 30, blonde"),
+    ("a nude woman in early twenties", "a nude woman in their thirties"),
+    ("a twenty-something man, nude", "a thirty-something man, nude"),
+    ("sexy woman in her late teens", "sexy woman in her thirties"),
+    ("nude 19yo", "nude 30yo"),
+    ("a woman aged nineteen, naked", "a woman aged thirty, naked"),
+    ("the 23-year-old woman, topless", "the 30-year-old woman, topless"),
+    ("A nude woman in her twenties, never sexualizing minors or anyone who looks underage.",
+     "A nude woman in her thirties, never sexualizing minors or anyone who looks underage."),
+    # [R88 fix] a compound number word reaches the check now (the block no longer reads its last part), and the teens
+    # ranges that reach 18–19 are still aged up
+    ("a twenty-two-year-old woman, naked", "a thirty-year-old woman, naked"),
+    ("nude, in her teens", "nude, in her thirties"),
+    ("a nude woman in her mid- to late teens", "a nude woman in her thirties"),
+    ("a nude woman, mid- to late teens", "a nude woman, aged 30"),
+]
+AGES_KEEP = [      # adult final prompts it must leave alone: 25+, things, eras, negations, a bare number (not read)
+    R4C_K4_SCENE, "a nude woman in her late twenties", "a 25-year-old naked woman", "nude woman, aged 25", "Nude art model, 30",
+    "a 21-year-old whisky beside a nude woman in her forties", "a nude woman next to her 20-year-old car",
+    "a whisky cask aged 21 years in oak, a nude woman in her thirties", "1920s fashion: a nude flapper in her thirties",
+    "the roaring twenties, a nude dancer aged 30", "a nude dancer in early-20s fashion, aged 31", "nude women aged 25 and 40",
+    "a nude woman, no longer in her twenties", "not a 22-year-old: a nude woman of 35", "18+ only, nude adults",
+    "nude adults, 20 candles on the cake, 24 balloons", "Erotic scene, every participant over 25, never anyone under 18.",
+    "she is 22, nude",
+]
+
+# ---- [R88 fix round] two defects the integrator confirmed in-process (2026-10-17) -------------------------------------
+# 1. a compound number word read as its last part: "a twenty-two-year-old woman, naked" fired as "two-year-old" + a term.
+#    Ages 18+ written as words — English twenty-one … ninety-nine with a hyphen / space (and "hundred (and)"), German
+#    one-word compounds — never fire; real under-18 ages still do. Short probes: an age + one term.
+FIX_COMPOUND_PASS = [
+    "a twenty-two-year-old woman, naked", "twenty two year old, nude", "a twenty-one year old, nude", "ninety-nine-year-old, nude",
+    "a twenty-five-year-old woman, naked", "forty five years old, nude", "thirty-three yr old, nude", "seventy-seven-year-old nude",
+    "eighty-eight years old, nude", "a hundred and two-year-old, nude", "fifty–two-year-old, nude", "sixty‐one-year-old, nude",
+    "zweiundzwanzigjährige, nackt", "einundzwanzig Jahre alt, nackt", "eine Dreiundzwanzigjährige nackt", "Fünfundzwanzigjährige, nackt",
+    "Zweiundzwanzig-Jährige, nackt", "achtzehnjährige nackt", "neunzehn Jahre alt, nackt", "im Alter von einundzwanzig, nackt",
+]
+FIX_COMPOUND_FIRE = [
+    "a fifteen-year-old, nude", "fifteen year old, nude", "a nine-year-old, nude", "15-jährige, nackt", "fünfzehnjährige, nackt",
+    "fünfzehn Jahre alt, nackt", "twenty fifteen-year-olds, nude",      # a count of people + an age: "ten" … "seventeen" form no compound
+    "nude, twenty, two-year-old",                                        # a list, not a compound
+]
+# 2. the unambiguous under-18 DECADES are indicators (the integrator's decision): paired with a sexual term like every other
+#    indicator, never aged up by the 25+ check. The ambiguous ones (they can mean 18–19) never block and stay the 25+ check's.
+FIX_TEEN_FIRE = [
+    "nude, in her early teens", "nude, in her mid teens", "nude, mid-teens", "naked, midteens", "porn, early-teen girl",
+    "nude, early teenage years", "nude early teenager", "a girl in her early teens, naked", "nude, in her early to mid teens",
+    "the early-teen girl, nude",
+    "nackt, in ihren frühen Teenagerjahren", "nackt, frühe Teenagerjahre", "nackt, Mitte der Teenagerjahre",
+    "Erotik, im frühen Teenageralter", "nackt, Anfang der Teenagerjahre", "Porno, frühe Teenager", "nackt, Mitte ihrer Teenagerzeit",
+    "nackt, frühen Teenie-Jahren", "nackt, in den fruehen Teenagerjahren",
+]
+FIX_TEEN_PASS = [
+    # ambiguous: can mean 18–19 (the 25+ check ages the decades up for an adult request)
+    "nude, in her late teens", "nude, in her teens", "nude teen", "barely legal nudes", "nude, late teens", "nude, mid- to late teens",
+    "nackt, in ihren Teenagerjahren", "nackt, späte Teenagerjahre", "nackt, Ende der Teenagerjahre", "nackter Teenager, 19",
+    # an era / a temperature / a unit, not an age
+    "nude beach, temperatures in the mid-teens", "porn trends of the early teens", "nude, mid-teens °C", "erotic, mid teens percent",
+    # negated disclaimers (the kernel's limits line and its paraphrases) and German "früher" (= formerly)
+    "nude adults, never anyone in their early teens", "nude, nobody in her early teens",
+    "nackt, keine Personen in ihren frühen Teenagerjahren", "Sie war früher Teenager-Star, jetzt 35, nackt", "die frühen Teenager-Filme, Erotik",
+]
+
+
+@run_test("r88_adult_ages_table_and_invariants", ["R88", "R86"])
+async def t_r88_ages(ctx):
+    """[R88] refusal.adult_ages: every stated person age 18–24 / decade below 25 of the table is rewritten exactly (to 30 /
+    "in <their> thirties" / "aged 30" / "thirty-something"); the keep list (25+, a whisky's / car's / cask's age, the 1920s
+    and "the roaring twenties", early-20s fashion, negations, counts, "18+", a bare number) is untouched; NEVER an
+    under-18 age: every must-fire probe of R86 (rounds 4, 4b, 4c) comes back unchanged — the block runs first and its
+    tokens are never rewritten; a rewrite never changes the block's verdict, is idempotent and leaves no age < 25;
+    the kernel's own prompts are untouched; sexual() reads the block's term list (EN + DE); linear on 50 KB"""
+    R = refusal_module()
+    sys.path.insert(0, str(REPO / "kernel"))
+    import prompts as P
+    wrong = [(a, R.adult_ages(a)[0], b) for a, b in AGES_REWRITE if R.adult_ages(a)[0] != b]
+    assert not wrong, wrong
+    for a, b in AGES_REWRITE:
+        out, ch = R.adult_ages(a)
+        assert ch and not R.minor_block(a)[0] and not R.minor_block(out)[0], (a, ch)
+        assert R.adult_ages(out) == (out, []), f"not idempotent: {out!r}"
+    touched = [(k, R.adult_ages(k)[1]) for k in AGES_KEEP if R.adult_ages(k)[1]]
+    assert not touched, touched
+    fire = (BLOCK_FIRE + R4B_FIRE + R4C_K1_FIRE + R4C_K2_AGES + FIX_COMPOUND_FIRE + FIX_TEEN_FIRE
+            + [MINOR_IMAGE, MINOR_ASK, "nude, aged 16 and 22", "naked 17yo"])
+    moved = [p for p in fire if R.adult_ages(p) != (p, [])]
+    assert not moved, f"an under-18 text was rewritten: {moved}"
+    assert all(R.minor_block(p)[0] for p in fire[-4:]), "the four extra probes are blocks"
+    own = [(k, R.adult_ages(v)[1]) for k, v in vars(P).items() if isinstance(v, str) and not k.startswith("__") and R.adult_ages(v)[1]]
+    assert not own, f"the kernel's own prompts: {own}"
+    assert R.sexual("a nude woman") and R.sexual("Nackte Frau am Strand") and R.sexual("lingerie shoot")
+    assert not R.sexual("a family picnic, a student in her 20s") and not R.sexual("") and not R.sexual(None)
+    assert R.adult_ages(None) == (None, []) and R.adult_ages("") == ("", [])
+    big = "a nude woman in her 20s and a 21-year-old man, " * 1100
+    t0 = time.time()
+    out, ch = R.adult_ages(big)
+    dt = time.time() - t0
+    assert dt < 2.0 and len(ch) == 2200 and "20s" not in out and "21-year-old" not in out, (dt, len(ch))
+    return (f"{len(AGES_REWRITE)} rewrites exact (block verdict unchanged, idempotent), {len(AGES_KEEP)} kept, {len(fire)} under-18 "
+            f"probes untouched, kernel prompts untouched, 50 KB in {dt:.2f} s")
+
+
+@run_test("r88_adult_ages_at_the_sd_floor", ["R88", "R86", "R85"], needs="kernel")
+async def t_r88_floor(ctx):
+    """[R88] the check sits at the sd floor, after the block: through the REAL MM.sd_batch (renderer stubbed) an adult job
+    (a sexual term in its final prompt, or the request's adult flag) gets "in their thirties" / "30-year-old"; a SFW job
+    with a 20s age is untouched; a minors probe is still blocked (nothing rendered); the picture editor's kind too
+    (minor_age first, then the check); render_images reports the rendered prompt + aged_up; an expander that writes
+    "in their 20s" is caught for an adult request and left alone for a SFW one; the counter reaches /api/status"""
+    S = ctx["server"]
+    mm = S.MM
+    rendered, chats = [], []
+
+    async def fake_render(kind, jobs):
+        rendered.append((kind, [j["prompt"] for j in jobs]))
+        return [{"ok": True, "path": "x", "error": None, "seed": 1, "engine": "stub"} for _ in jobs]
+
+    async def fake_chat(system, messages, key="llm", **kw):
+        chats.append(key)
+        return "A realistic photograph of a couple in their 20s at a cafe table, warm window light."
+    saved_render, saved_chat = mm._sd_batch_render, mm.chat
+    mm._sd_batch_render, mm.chat = fake_render, fake_chat
+    a0, b0 = S.REFUSALS["aged_up"], S.REFUSALS["blocked"]
+    try:
+        jobs = [{"prompt": "a nude couple in their 20s", "out": Path("/x/1.png")},
+                {"prompt": "portrait of a couple in their 20s at a cafe", "out": Path("/x/2.png"), "adult": True},
+                {"prompt": "a family picnic, a student in her 20s", "out": Path("/x/3.png")},
+                {"prompt": MINOR_IMAGE, "out": Path("/x/4.png"), "adult": True}]
+        res = await mm.sd_batch("image", jobs)
+        assert [r["ok"] for r in res] == [True, True, True, False] and res[3]["blocked"], res
+        assert rendered == [("image", ["a nude couple in their thirties", "portrait of a couple in their thirties at a cafe",
+                                       "a family picnic, a student in her 20s"])], rendered
+        assert jobs[0]["aged_up"] == [("in their 20s", "in their thirties")] and "aged_up" not in jobs[2]
+        assert S.REFUSALS["aged_up"] == a0 + 2 and S.REFUSALS["blocked"] == b0 + 1
+        rendered.clear()
+        res = await mm.sd_batch(S.IMAGE_EDIT_KEY, [{"prompt": "make her a 22-year-old, topless", "out": Path("/x/5.png")},
+                                                   {"prompt": "make her a 15-year-old", "out": Path("/x/6.png")}])
+        assert [r["ok"] for r in res] == [True, False] and res[1]["blocked"], res
+        assert rendered == [(S.IMAGE_EDIT_KEY, ["make her a 30-year-old, topless"])], rendered
+        rendered.clear()
+        out = await S.render_images("image", [{"prompt": "a nude woman in her early twenties", "out": Path("/x/7.png"),
+                                               "w": 512, "h": 512}], expand="off")
+        assert out[0]["ok"] and out[0]["prompt"].startswith("a nude woman in her thirties") \
+            and out[0]["aged_up"] == [("in her early twenties", "in her thirties")], out      # (+ IMAGE_PROMPT_HINT, unexpanded)
+        assert rendered[-1][1] == [out[0]["prompt"]]
+        out = await S.render_images("image", [{"prompt": "a couple at a cafe", "out": Path("/x/8.png"), "w": 512, "h": 512}],
+                                    adult=True, expand="on")
+        assert len(chats) == 1 and out[0]["prompt"] == ("A realistic photograph of a couple in their thirties at a cafe table, "
+                                                        "warm window light."), out
+        out = await S.render_images("image", [{"prompt": "a couple at a cafe", "out": Path("/x/9.png"), "w": 512, "h": 512}],
+                                    expand="on")
+        assert len(chats) == 2 and "in their 20s" in out[0]["prompt"] and not out[0].get("aged_up"), "SFW: untouched"
+        st = S.refusal_fallback_status()
+        assert st["aged_up"] == S.REFUSALS["aged_up"] == a0 + 5, st
+    finally:
+        mm._sd_batch_render, mm.chat = saved_render, saved_chat
+    return "sd floor: adult term / adult flag rewritten, SFW untouched, minors still blocked; editor kind; render_images reports it; expander output caught for adult only; counter in status"
+
+
+@run_test("r88_fix_compound_ages_and_teen_decades", ["R86", "R88"])
+async def t_r88_fix(ctx):
+    """[R88 fix round] (1) a compound number word is never read as its last part: every English age twenty-one …
+    ninety-nine (hyphen / space; "-year-old", " year old", " years old", " yr old") and every German one-word compound
+    ("<ones>und<tens>jährige", "… Jahre alt") with a sexual term passes, the table's EN + DE forms too; real under-18 ages
+    still fire (fifteen-year-old, 15-jährige, fünfzehnjährige; "twenty fifteen-year-olds" = a count + an age). (2) the
+    unambiguous under-18 decades (early / mid teens, early teenage, frühe Teenagerjahre, Mitte der Teenagerjahre …) fire
+    with a sexual term and, in a picture edit, alone; the ambiguous ones (late teens, in her teens, teen, barely legal,
+    späte / Ende der Teenagerjahre), eras / temperatures ("the early teens", "the mid-teens") and negated disclaimers pass.
+    The 25+ check never ages an early / mid teens phrase up (with or without a sexual term), still ages up the ranges
+    that reach 18–19, and now reads "twenty-two-year-old" (-> thirty-year-old)."""
+    R = refusal_module()
+    missed = [p for p in FIX_COMPOUND_FIRE + FIX_TEEN_FIRE if not R.minor_block(p)[0]]
+    assert not missed, f"not fired: {missed}"
+    wrong = [(p, R.minor_block(p)[1]) for p in FIX_COMPOUND_PASS + FIX_TEEN_PASS if R.minor_block(p)[0]]
+    assert not wrong, f"fired: {wrong}"
+    assert R.minor_block("a twenty-two-year-old woman, naked") == (False, "")
+    assert R.minor_block("a fifteen-year-old, nude") == (True, "age 'fifteen-year-old' + 'nude'")
+    assert R.minor_block("nude, in her early teens") == (True, "age 'early teens' + 'nude'")
+    assert R.minor_block("nackt, in ihren frühen Teenagerjahren") == (True, "age 'frühen teenagerjahren' + 'nackt'")
+    # the sweep: every compound 21–99, EN (2 separators x 4 unit forms) and DE (2 forms)
+    ones = "one two three four five six seven eight nine".split()
+    tens = "twenty thirty forty fifty sixty seventy eighty ninety".split()
+    en = [f"{t}{sep}{o}{unit}, nude" for t in tens for o in ones for sep in ("-", " ")
+          for unit in ("-year-old", " year old", " years old", " yr old")]
+    eins = "ein zwei drei vier fünf sechs sieben acht neun".split()
+    zehner = "zwanzig dreißig vierzig fünfzig sechzig siebzig achtzig neunzig".split()
+    de = [f"{form.format(e + 'und' + z)}, nackt" for e in eins for z in zehner for form in ("{}jährige", "{} Jahre alt")]
+    fired = [p for p in en + de if R.minor_block(p)[0]]
+    assert not fired, f"compounds fired: {fired[:6]} (+{max(0, len(fired) - 6)})"
+    young = [f"{o}{unit}, nude" for o in ones for unit in ("-year-old", " year old", " years old")]
+    assert all(R.minor_block(p)[0] for p in young), "the ones words alone are still under-18 ages"
+    # a picture edit: the decade alone fires (the picture is the request's other half); the ambiguous ones do not
+    assert R.minor_age("make her in her early teens")[0] and R.minor_age("make her mid-teens")[0]
+    assert not R.minor_age("make her in her late teens")[0] and not R.minor_age("make her twenty-two years old")[0]
+    # the 25+ check: never ages an under-18 decade up — with a term the block refuses the text, without one it is left alone
+    for p in FIX_TEEN_FIRE + ["portrait of a woman in her early teens", "a woman, early teens", "a woman in her early to mid teens",
+                              "a woman in her mid-teens", "a woman in her early teenage years"]:
+        assert R.adult_ages(p) == (p, []), f"aged up: {p!r} -> {R.adult_ages(p)}"
+    assert R.adult_ages("nude, in her late teens") == ("nude, in her thirties", [("in her late teens", "in her thirties")])
+    assert R.adult_ages("a twenty-two-year-old woman, naked")[0] == "a thirty-year-old woman, naked"
+    assert R.adult_ages("a twenty-five-year-old woman, naked") == ("a twenty-five-year-old woman, naked", [])
+    return (f"compounds: {len(FIX_COMPOUND_PASS)} + {len(en)} EN + {len(de)} DE sweep pass, {len(FIX_COMPOUND_FIRE)} + {len(young)} "
+            f"under-18 fire; decades: {len(FIX_TEEN_FIRE)} fire, {len(FIX_TEEN_PASS)} ambiguous / era / negated pass; "
+            "edit fires on the decade alone; 25+ check never ages early / mid teens up")
+
+
+@run_test("r88_fix_teen_decades_at_the_sd_floor", ["R86", "R88"], needs="kernel")
+async def t_r88_fix_floor(ctx):
+    """[R88 fix round] through the REAL MM.sd_batch (renderer stubbed): an early / mid teens phrase with a sexual term is
+    blocked at the floor (nothing rendered, never "in her thirties"), in English and German; a late-teens adult prompt is
+    still aged up; the compound age "twenty-two-year-old … naked" is rendered as "thirty-year-old" instead of blocked"""
+    S = ctx["server"]
+    mm = S.MM
+    rendered = []
+
+    async def fake_render(kind, jobs):
+        rendered.append([j["prompt"] for j in jobs])
+        return [{"ok": True, "path": "x", "error": None, "seed": 1, "engine": "stub"} for _ in jobs]
+    saved = mm._sd_batch_render
+    mm._sd_batch_render = fake_render
+    try:
+        jobs = [{"prompt": "nude, in her early teens", "out": Path("/x/f1.png"), "adult": True},
+                {"prompt": "nackt, Mitte der Teenagerjahre", "out": Path("/x/f2.png")},
+                {"prompt": "a nude woman in her late teens", "out": Path("/x/f3.png")},
+                {"prompt": "a twenty-two-year-old woman, naked", "out": Path("/x/f4.png")}]
+        res = await mm.sd_batch("image", jobs)
+        assert [r["ok"] for r in res] == [False, False, True, True] and res[0]["blocked"] and res[1]["blocked"], res
+        assert rendered == [["a nude woman in her thirties", "a thirty-year-old woman, naked"]], rendered
+        assert "aged_up" not in jobs[0] and jobs[0]["prompt"] == "nude, in her early teens"
+    finally:
+        mm._sd_batch_render = saved
+    return "floor: early / mid teens + term blocked (EN + DE, never aged up); late teens aged up; twenty-two-year-old rendered as thirty"
+
+
+# ---- [R88 fix round 2] the integrator's decisions (2026-10-17) -------------------------------------------------------
+# A. the adult flag counts as the sexual term where the kernel KNOWS the request is adult (minor_block(text, adult=True)):
+#    an adult picture whose final prompt names an under-18 age or word without a listed term is blocked. Short probes
+#    (an age + a neutral word), in-process only.
+FIX2_ADULT_FIRE = [   # fire WITH the adult flag, pass without it (no sexual term in them)
+    "explicit photo, a woman in her early teens", "explicit photo, a 15-year-old woman", "a fifteen-year-old, posing",
+    "portrait, aged 14", "a woman, mid-teens, posing", "underage model, posing", "a model under 16, posing", "loli cosplay",
+    "a 12-year-old scotch on the bar",                               # the accepted cost: an object's age in an ADULT picture
+    "Porträt einer 15-Jährigen", "Fotoshooting, 14 Jahre alt", "Porträt, in ihren frühen Teenagerjahren", "minderjähriges Model",
+    "eine 12 Jahre alte Whisky-Flasche an der Bar",
+]
+FIX2_ADULT_PASS = [   # pass even WITH the adult flag: negations, age gates, measurements, counts, adult ages, ambiguous words
+    "explicit photo, no one under 18", "fictional adults 25+, never minors or anyone who looks underage",
+    "nobody in their early teens, explicit", "keine Minderjährigen, explizit", "if you are under 18, leave now",
+    "für Minderjährige verboten", "a 17 inch monitor, explicit", "15 cm heels, explicit", "explicit, under 18 dollars",
+    "explicit, under 15 photos", "explizit, unter 12 Bilder", "a woman in her thirties", "a 30-year-old woman",
+    "a twenty-two-year-old woman", "explicit photo, a teen", "a woman in her late teens", "barely legal", "a 25-year-old model",
+]
+# B. "teen" / "barely legal" in an ADULT final prompt -> adult wording (refusal.adult_ages, after the block)
+TEEN_REWRITE = [      # (an adult final prompt, what the engine gets)
+    ("a nude teen girl", "a nude adult woman aged 30"),
+    ("nude teen girls on a bed", "nude adult women aged 30 on a bed"),
+    ("a teen, nude", "an adult aged 30, nude"),
+    ("a nude teen posing on a bed", "a nude adult aged 30 posing on a bed"),
+    ("nude teens on a beach", "nude adults aged 30 on a beach"),
+    ("a nude teenager in lingerie", "a nude adult aged 30 in lingerie"),
+    ("a teenage couple, naked", "an adult couple aged 30, naked"),
+    ("explicit, teenage, naked", "explicit, adult, naked"),
+    ("nude, teen-age boys", "nude, adult men aged 30"),
+    ("she is barely legal, nude", "she is adult, aged 30, nude"),
+    ("a barely legal teen, nude", "an adult aged 30, nude"),
+    ("barely legal girls, nude", "adult women aged 30, nude"),
+    ("barely legal teen porn", "adult porn"),
+    ("teen porn, a nude woman", "adult porn, a nude woman"),
+    ("nude teen blonde girl", "nude adult blonde woman aged 30"),
+    ("a late teen girl, nude", "an adult woman aged 30, nude"),
+    ("Teen girl, nude", "Adult woman aged 30, nude"),
+    ("nude, a teen girl aged 19", "nude, an adult woman aged 30"),    # the 25+ check's "aged 30" is the only age
+    ("a nude woman in her teen years", "a nude woman in her thirties"),
+    ("Sexy Teen Nude Photo", "Sexy Adult Nude Photo"),               # Title Case with a sexual term next: no title
+]
+TEEN_KEEP = [         # adult final prompts B leaves alone: titles / names, negations, the decade rule's forms, other words
+    "a poster of Teen Titans, a nude woman in her thirties", "Teenage Mutant Ninja Turtles poster, a nude woman aged 30",
+    "a nude woman reading Teen Vogue", "nude, fictional adults only, no teens",      # ("teen Anna": fix round 3 rewrites it)
+    "nude, nobody who looks like a teen", "nude adults, never teenagers", "a nude woman, no longer in her teens",
+    "a nude woman, no longer in her late teens", "a nude woman, never in her mid twenties",     # (the decade rule, found on the way)
+    "a nude woman in the canteen", "nude, nineteenth-century style, a woman aged 35", "a nude woman aged 30",
+]
+TEEN_BLOCKED = [      # texts the floor refuses for an adult job: B never rewrites them (the adult block reads them first)
+    "a nude teen girl, 15 years old", "a teen girl in her early teens", "pre-teen girl, nude", "nude, early teen girl",
+    "a nude teen, mid-teens", "a teen model under 16", "nackter Teenager, 15 Jahre alt",
+]
+
+
+@run_test("r88_fix2_adult_flag_block", ["R86", "R88"])
+async def t_r88_fix2_block(ctx):
+    """[R88 fix round 2, A] minor_block(text, adult=True): the adult flag counts as the sexual term — every FIX2_ADULT_FIRE
+    probe (EN + DE: an under-18 age, decade or word, loli, and the accepted cost "a 12-year-old scotch") fires with the
+    flag and passes without it; negations, age gates, measurements, counts, adult ages and the ambiguous words pass with
+    the flag too; the reason names the flag; a text with a term reads as before; every must-fire probe of R86 still fires
+    with the flag; the kernel's own prompts, the expander's limits-line echoes, the real age gates and the people counts
+    never fire with it; minor_age (the picture edit) is unchanged"""
+    R = refusal_module()
+    sys.path.insert(0, str(REPO / "kernel"))
+    import prompts as P
+    missed = [p for p in FIX2_ADULT_FIRE if not R.minor_block(p, adult=True)[0]]
+    assert not missed, f"not fired with the adult flag: {missed}"
+    without = [p for p in FIX2_ADULT_FIRE if R.minor_block(p)[0] or R.minor_block(p, adult=False)[0]]
+    assert not without, f"fired WITHOUT the flag (SFW must still need a term): {without}"
+    wrong = [(p, R.minor_block(p, adult=True)[1]) for p in FIX2_ADULT_PASS if R.minor_block(p, adult=True)[0]]
+    assert not wrong, f"fired with the adult flag: {wrong}"
+    assert R.minor_block("explicit photo, a 15-year-old woman", adult=True) == (True, "age '15-year-old' + the adult flag")
+    assert R.minor_block("loli cosplay", adult=True) == (True, "'loli' + the adult flag")
+    assert R.minor_block("nude 15-year-old", adult=True) == R.minor_block("nude 15-year-old") == (True, "age '15-year-old' + 'nude'")
+    assert R.minor_block("csam", adult=True) == R.minor_block("csam") and R.minor_block("", adult=True) == (False, "")
+    fire = BLOCK_FIRE + R4B_FIRE + R4C_K1_FIRE + R4C_K2_AGES + FIX_COMPOUND_FIRE + FIX_TEEN_FIRE
+    assert all(R.minor_block(p, adult=True)[0] for p in fire), "a must-fire probe passes with the flag"
+    echoes = R4C_K1_GATES + R4C_K2_COUNTS + R4C_K4_ECHOES + [R4C_K4_SCENE] + FIX_COMPOUND_PASS
+    fp = [p for p in echoes if R.minor_block(p, adult=True)[0]]
+    # [R88 fix round 3] round 2 pinned one known echo here: "Sensual portrait of an adult woman; no one depicted is underage
+    # or under 18." fired (the negation removed only the FIRST under-18 word after it). The negation now carries across
+    # the coordinated list (r88_fix3_negated_lists): with the flag and with a term, it passes
+    known = []
+    assert fp == known, f"a gate / count / limits-line echo / adult age fires with the flag: {fp}"
+    assert not R.minor_block("Sensual portrait of an adult woman; no one depicted is underage or under 18. nude")[0]
+    own = [k for k, v in vars(P).items() if isinstance(v, str) and not k.startswith("__") and R.minor_block(v, adult=True)[0]]
+    assert not own, f"the kernel's own prompts fire with the flag (an expander echo would block adult pictures): {own}"
+    assert R.minor_age("make her a 15-year-old") == (True, "age '15-year-old' (a picture edit)") \
+        and not R.minor_age("loli cosplay")[0], "minor_age unchanged"
+    return (f"{len(FIX2_ADULT_FIRE)} fire with the flag / pass without (EN + DE, the scotch cost), {len(FIX2_ADULT_PASS)} pass with "
+            f"it; {len(fire)} R86 must-fire still fire; {len(echoes) - len(known)} gates / counts / echoes / adult ages + kernel "
+            f"prompts pass (the round-2 two-word negation echo passes since fix round 3)")
+
+
+@run_test("r88_fix2_teen_words_adult_wording", ["R88", "R86"])
+async def t_r88_fix2_teen(ctx):
+    """[R88 fix round 2, B] refusal.adult_ages on an adult final prompt: "teen" / "teens" / "teenage" / "teen-age" /
+    "teenager" / "barely legal" become adult wording exactly as the table says (girl -> woman, the noun -> "adult aged 30",
+    an attribute -> "adult", "barely legal" alone -> "adult, aged 30", a/an fixed, no second age where one is stated),
+    reported in the changes; titles / names / negations / the decade rule's forms / other words are kept; a text the
+    adult block refuses comes back unchanged (never weakened); "late teens" / "in her teens" keep their rewrite; the result
+    passes the adult block, is idempotent and has no teen word left; German shares the word "Teenager" only"""
+    R = refusal_module()
+    wrong = [(a, R.adult_ages(a)[0], b) for a, b in TEEN_REWRITE if R.adult_ages(a)[0] != b]
+    assert not wrong, wrong
+    teen = re.compile(r"\b(?:teen\w*|barely[\s-]+legal)\b", re.IGNORECASE)
+    for a, b in TEEN_REWRITE:
+        out, ch = R.adult_ages(a)
+        assert ch and not R.minor_block(a, adult=True)[0] and not R.minor_block(out, adult=True)[0], (a, ch)
+        assert not teen.search(out) and R.adult_ages(out) == (out, []), f"left a teen word / not idempotent: {out!r}"
+    assert R.adult_ages("a nude teen girl")[1] == [("teen girl", "adult woman aged 30")]
+    assert R.adult_ages("she is barely legal, nude")[1] == [("barely legal", "adult, aged 30")]
+    touched = [(k, R.adult_ages(k)) for k in TEEN_KEEP if R.adult_ages(k)[1]]
+    assert not touched, touched
+    for p in TEEN_BLOCKED:
+        assert R.minor_block(p, adult=True)[0] and R.adult_ages(p) == (p, []), f"a blocked text was rewritten: {p!r}"
+    assert R.adult_ages("nude, in her teens") == ("nude, in her thirties", [("in her teens", "in her thirties")])
+    assert R.adult_ages("nude, late teens") == ("nude, aged 30", [("late teens", "aged 30")])
+    # German: the 25+ check is English (the final prompt is English when the expander or the MT hop runs); the one word
+    # both languages share is replaced, nothing German is read, the block reads the German ages / decades first
+    out, ch = R.adult_ages("nackter Teenager am Strand")
+    assert out == "nackter Adult am Strand" and ch == [("Teenager", "Adult")], (out, ch)
+    assert R.adult_ages("nackte Teenagerin, Teenie") == ("nackte Teenagerin, Teenie", [])
+    assert R.adult_ages("nackter Teenager, 15 Jahre alt") == ("nackter Teenager, 15 Jahre alt", [])
+    big = "a nude teen girl and a 21-year-old man, " * 1100
+    t0 = time.time()
+    out, ch = R.adult_ages(big)
+    dt = time.time() - t0
+    assert dt < 2.0 and len(ch) == 2200 and "teen" not in out, (dt, len(ch))
+    return (f"{len(TEEN_REWRITE)} rewrites exact (adult block passes, idempotent, no teen word left), {len(TEEN_KEEP)} kept "
+            f"(titles, names, negations, decades), {len(TEEN_BLOCKED)} blocked texts unchanged, DE pinned, 50 KB in {dt:.2f} s")
+
+
+@run_test("r88_fix2_adult_flag_at_the_sd_floor", ["R86", "R88"], needs="kernel")
+async def t_r88_fix2_floor(ctx):
+    """[R88 fix round 2] through the REAL MM.sd_batch (renderer stubbed): an ADULT job (the flag) whose final prompt has an
+    under-18 age / decade and no sexual term is blocked (EN + DE, nothing rendered, BLOCK_MESSAGE, counted), "a 12-year-old
+    scotch on the bar" renders in a SFW job and is blocked in an adult one (the accepted cost); an adult "nude teen girl"
+    is rendered as "adult woman aged 30" with aged_up, a SFW "teen" prompt untouched (the editor's kind too); render_images
+    blocks an adult REQUEST
+    with the age alone before the expander (0 LLM calls) and catches a mocked expander that writes "early teens" without a
+    term for an adult request (flag or a sexual term in the request); a video job with the flag is blocked at sd_job's
+    floor, without it the same prompt passes the block; h_video gives the job adult = a sexual term in the user's request"""
+    S = ctx["server"]
+    mm = S.MM
+    rendered, chats = [], []
+
+    async def fake_render(kind, jobs):
+        rendered.append([j["prompt"] for j in jobs])
+        return [{"ok": True, "path": "x", "error": None, "seed": 1, "engine": "stub"} for _ in jobs]
+
+    async def fake_chat(system, messages, key="llm", **kw):      # an expander that writes an under-18 decade, no listed term
+        chats.append(key)
+        return "explicit photo, a woman in her early teens, soft window light."
+    saved_render, saved_chat = mm._sd_batch_render, mm.chat
+    mm._sd_batch_render, mm.chat = fake_render, fake_chat
+    b0 = S.REFUSALS["blocked"]
+    try:
+        jobs = [{"prompt": "explicit photo, a woman in her early teens", "out": Path("/x/g1.png"), "adult": True},
+                {"prompt": "explicit photo, a 15-year-old woman", "out": Path("/x/g2.png"), "adult": True},
+                {"prompt": "a 12-year-old scotch on the bar", "out": Path("/x/g3.png")},
+                {"prompt": "a 12-year-old scotch on the bar", "out": Path("/x/g4.png"), "adult": True},
+                {"prompt": "a nude teen girl on a bed", "out": Path("/x/g5.png"), "adult": True},
+                {"prompt": "a teen reading in a library", "out": Path("/x/g6.png")},
+                {"prompt": "Porträt einer 15-Jährigen", "out": Path("/x/g7.png"), "adult": True},
+                {"prompt": "Porträt einer 15-Jährigen", "out": Path("/x/g8.png")}]
+        res = await mm.sd_batch("image", jobs)
+        assert [r["ok"] for r in res] == [False, False, True, False, True, True, False, True], res
+        assert all(res[i]["blocked"] is True and res[i]["error"] == S.refusal.BLOCK_MESSAGE for i in (0, 1, 3, 6)), res
+        assert rendered == [["a 12-year-old scotch on the bar", "a nude adult woman aged 30 on a bed", "a teen reading in a library",
+                             "Porträt einer 15-Jährigen"]], rendered
+        assert jobs[4]["aged_up"] == [("teen girl", "adult woman aged 30")] and "aged_up" not in jobs[5] and "aged_up" not in jobs[2]
+        assert S.REFUSALS["blocked"] == b0 + 4
+        rendered.clear()
+        # the picture editor's kind: minor_age as before (the age alone), then the teen rewrite for an adult instruction
+        res = await mm.sd_batch(S.IMAGE_EDIT_KEY, [{"prompt": "make her a nude teen girl", "out": Path("/x/e1.png"), "adult": True},
+                                                   {"prompt": "make her a teen", "out": Path("/x/e2.png")}])
+        assert [r["ok"] for r in res] == [True, True] and rendered == [["make her a nude adult woman aged 30", "make her a teen"]], rendered
+        rendered.clear()
+        # render_images: an adult REQUEST with the age alone is blocked at the entry, before the expander
+        out = await S.render_images("image", [{"prompt": "a 15-year-old at a cafe", "out": Path("/x/g9.png"), "w": 512, "h": 512}],
+                                    adult=True, expand="on")
+        assert out[0]["blocked"] is True and out[0]["expanded"] is False and not chats and not rendered, out
+        out = await S.render_images("image", [{"prompt": "a 15-year-old at a cafe", "out": Path("/x/g10.png"), "w": 512, "h": 512}],
+                                    expand="off")
+        assert out[0]["ok"] and rendered == [[out[0]["prompt"]]], "SFW request: the age alone is no block"
+        rendered.clear()
+        # … and the expander's final prompt without a term: caught for the adult flag and for a sexual term in the request
+        for body, adult in (("a couple at a cafe", True), ("a nude couple at a cafe", False)):
+            out = await S.render_images("image", [{"prompt": body, "out": Path("/x/g11.png"), "w": 512, "h": 512}],
+                                        adult=adult, expand="on")
+            assert out[0]["blocked"] is True and not rendered, (body, out)
+        assert len(chats) == 2 and S.REFUSALS["blocked"] == b0 + 7, (chats, S.REFUSALS)
+        # video: the floor in sd_job reads the flag
+        try:
+            await mm.sd_job("video", "a clip of a 15-year-old dancing, cinematic", Path("/x/v1.mp4"), adult=True)
+            raise AssertionError("sd_job passed an adult video prompt with an under-18 age")
+        except RuntimeError as e:
+            assert str(e) == S.refusal.BLOCK_MESSAGE
+        saved_space = S.ensure_cache_space
+
+        class PassedTheBlock(Exception):
+            pass
+
+        def past(kind):
+            raise PassedTheBlock(kind)
+        S.ensure_cache_space = past
+        try:
+            await mm.sd_job("video", "a clip of a 15-year-old dancing, cinematic", Path("/x/v2.mp4"))
+            raise AssertionError("no PassedTheBlock")
+        except PassedTheBlock:
+            pass                                     # without the flag the same SFW prompt is no block (the engine stays stubbed)
+        finally:
+            S.ensure_cache_space = saved_space
+        assert S.REFUSALS["blocked"] == b0 + 8
+    finally:
+        mm._sd_batch_render, mm.chat = saved_render, saved_chat
+    # h_video: the job's adult flag = a sexual term in the user's request (the video API has no adult flag)
+    seen = []
+
+    async def fake_sd_job(kind, prompt, out, extra_args=None, adult=False):
+        seen.append((prompt, adult))
+        raise RuntimeError("stub: no video engine here")
+
+    async def same(text, settings=None):
+        return text
+
+    class Req:
+        def __init__(self, body):
+            self.body = body
+
+        async def json(self):
+            return self.body
+    saved = (mm.sd_job, S.video_available, S.engine_missing, S.english_text)
+    mm.sd_job, S.video_available, S.engine_missing, S.english_text = fake_sd_job, (lambda: True), (lambda b: None), same
+    try:
+        for prompt in ("a nude dance on a beach", "a cat chasing a ball"):
+            resp = await S.h_video(Req({"prompt": prompt}))
+            jid = json.loads(resp.text)["job"]
+            for _ in range(40):
+                await asyncio.sleep(0.05)
+                if S.JOBS[jid]["status"] != "running":
+                    break
+            assert S.JOBS[jid]["status"] == "error", S.JOBS[jid]
+        assert [a for _, a in seen] == [True, False] and seen[0][0].startswith("a nude dance on a beach"), seen
+    finally:
+        mm.sd_job, S.video_available, S.engine_missing, S.english_text = saved
+    return ("floor: adult flag + age / decade alone blocked (EN + DE), SFW scotch renders, adult scotch blocked, adult teen "
+            "girl -> adult woman aged 30, SFW teen untouched; render_images: adult request blocked before the expander, expander "
+            "output caught (flag / term in the request); video floor reads the flag; h_video flag = a term in the request")
+
+
+# ---- [R88 fix round 3] the integrator's decisions (2026-10-17) -------------------------------------------------------
+# 1. a negation's scope carries across a COORDINATED LIST of under-18 words (joins: or / and / nor / , / "/", DE oder / und /
+#    noch / ,), and ends at a clause break, any other word, a number (never negated) and an item a person noun follows.
+#    Short probes (a disclaimer + one term), in-process only.
+FIX3_LIST_PASS = [    # pass with a term AND with the adult flag (the brief's three texts first)
+    "nude woman, nobody is underage or under 18", "nackt, niemand ist minderjährig oder unter 18",
+    "explicit, nobody under 18 or underage",
+    "no one underage, no one under 18, nude",                        # a repeated negation (passed before, kept)
+    "nude, neither underage nor under 18", "nude, no one under 18, underage or pre-teen", "nude, nobody underage and/or under 18",
+    "nude, nobody underage/under 18", "nude, nobody under 18, or underage", "nude, nobody under 18 or anyone who looks underage",
+    "nude, nobody is underage or is under 18", "explicit, nobody under 18 or underage in the image",
+    "nude adults, not underage, under 18 or under 16",
+    "Sensual portrait of an adult woman; no one depicted is underage or under 18. Nude.",   # round 2's known echo + a term
+    "nackt, weder minderjährig noch unter 18", "nackt, niemand ist minderjährig, unter 18 oder unter 16",
+    "Aktfoto, nackt, keine Personen unter 18 oder minderjährig", "Erotik, niemand unter 18 oder wer minderjährig ist",
+    "nackt, niemand unter 18 und niemand minderjährig",
+]
+FIX3_LIST_FIRE = [    # fire with a term (and with the flag): not negated, or the scope has ended
+    "nude, underage or 15", "nude, underage or under 18", "nude, an underage girl or under 18",        # no negation
+    "nobody is underage. she is 15 years old, nude", "nobody is underage. she is under 18, nude",   # a clause break ends it
+    "nobody is underage; under 18 girls, nude", "nobody is underage: underage girls, nude", "nobody is underage! under 18, nude",
+    "nobody is underage, she is under 18, nude", "nobody is underage but under 18, nude",          # a positive statement
+    "nobody under 18, underage girl, nude",                          # a person noun: a positive noun phrase (a tag of its own)
+    "nobody under 18 or underage girls, nude",                       # … also as a shared head noun (the accepted cost)
+    "nobody is underage or 15 years old, nude",                      # a number is never negated, in a list neither
+    "nackt, minderjährig oder unter 18", "niemand ist minderjährig. sie ist unter 18, nackt",
+    "niemand ist minderjährig, sie ist unter 18, nackt", "niemand ist unter 18, minderjähriges Mädchen, nackt",
+    "niemand ist minderjährig oder 15 Jahre alt, nackt",
+]
+FIX3_LIST_FLAG_FIRE = [   # no listed term: fire with the adult flag, pass without it
+    "explicit photo, a 15-year-old or a 16-year-old", "explicit, underage or under 18",
+    "explicit, nobody is underage. she is under 18", "explizit, niemand ist minderjährig. sie ist unter 18",
+]
+# 2. the teen title rule: a lowercase teen word is never a title; a capitalised "Teen" / "Teenage" is one only in
+#    refusal._TEEN_TITLES (and with no person noun next) — everything else is rewritten as in round 2
+TEEN_TITLE_REWRITE = [    # (an adult final prompt, what the engine gets)
+    ("nude teen Latina", "nude adult Latina"), ("nude teen Asian", "nude adult Asian"), ("nude teen Ebony", "nude adult Ebony"),
+    ("a nude teen Latina on a bed", "a nude adult Latina on a bed"), ("nude, teen Anna", "nude, adult Anna"),
+    ("nude teen Latina babe", "nude adult Latina babe aged 30"), ("Teen Latina, nude", "Adult Latina, nude"),
+    ("nude Teen Ebony", "nude Adult Ebony"), ("nude TEEN LATINA", "nude Adult LATINA"),
+    ("teen titans poster, nude woman", "adult titans poster, nude woman"),     # lowercase: never a title (cosmetic)
+    ("Teen Beach Movie poster, nude", "Adult Beach Movie poster, nude"),       # an unlisted title: rewritten (cosmetic)
+    ("Teen Titans girls, nude", "Adult Titans women aged 30, nude"),          # a person noun next: no title
+    ("nude Teen Mom", "nude Adult Mom aged 30"),
+]
+TEEN_TITLE_KEEP = [       # the listed titles, capitalised as written (TEEN TITANS too), with a hyphen too
+    "a poster of Teen Titans, a nude woman in her thirties", "TEEN TITANS poster, nude", "nude, Teen-Titans cosplay",
+    "nude woman, Teen Wolf poster", "a nude woman reading Teen Vogue", "Teen Choice Awards, nude",
+    "Smells Like Teen Spirit poster, nude woman", "Teenage Mutant Ninja Turtles poster, a nude woman aged 30",
+    "Teenage Mutant Hero Turtles, nude", "Teenage Dream poster, nude", "Teenage Kicks on the radio, nude woman",
+    "a Teenage Engineering synth, nude woman",
+    "nude adults, neither teens nor minors",                         # a negation ("neither", new this round) stays kept
+]
+
+
+@run_test("r88_fix3_negated_lists", ["R86", "R88"])
+async def t_r88_fix3_lists(ctx):
+    """[R88 fix round 3, 1] a negation exempts a whole coordinated list of under-18 words: every FIX3_LIST_PASS text (EN +
+    DE: or / and / nor / , / and-or / slash, oder / und / noch, neither … nor, weder … noch, a closed filler list, the
+    repeated negation) passes with a term and with the adult flag, and in a picture edit (minor_age); every FIX3_LIST_FIRE
+    text fires with and without the flag (no negation, a clause break, a positive statement, a person noun after an item, a
+    number); every FIX3_LIST_FLAG_FIRE text fires with the flag only; every earlier must-fire probe still fires (with a
+    term and with the flag), every earlier must-pass echo / gate / count and the kernel's own prompts still pass; a bare
+    number after a clause break is no age (the R86 design, pinned as known); dense lists stay milliseconds"""
+    R = refusal_module()
+    sys.path.insert(0, str(REPO / "kernel"))
+    import prompts as P
+    for t in ("nude woman, nobody is underage or under 18", "nackt, niemand ist minderjährig oder unter 18",
+              "explicit, nobody under 18 or underage"):          # the brief's table, verbatim: no block with or without the flag
+        assert R.minor_block(t) == (False, "") and R.minor_block(t, adult=True) == (False, ""), t
+    wrong = [(p, R.minor_block(p)[1] or R.minor_block(p, adult=True)[1]) for p in FIX3_LIST_PASS
+             if R.minor_block(p)[0] or R.minor_block(p, adult=True)[0]]
+    assert not wrong, f"a negated list fired: {wrong}"
+    edits = [p for p in FIX3_LIST_PASS if R.minor_age(p)[0]]
+    assert not edits, f"a negated list fired in a picture edit: {edits}"
+    missed = [p for p in FIX3_LIST_FIRE if not (R.minor_block(p)[0] and R.minor_block(p, adult=True)[0])]
+    assert not missed, f"not fired: {missed}"
+    missed = [p for p in FIX3_LIST_FLAG_FIRE if not R.minor_block(p, adult=True)[0] or R.minor_block(p)[0]]
+    assert not missed, f"not fired with the flag only: {missed}"
+    assert R.minor_block("nobody is underage, she is under 18, nude") == (True, "age 'under 18' + 'nude'")
+    assert R.minor_block("nobody under 18, underage girl, nude") == (True, "age 'underage' + 'nude'")
+    assert R.minor_block("explicit photo, a 15-year-old or a 16-year-old", adult=True) == (True, "age '15-year-old' + the adult flag")
+    assert R.minor_age("make her nude, underage or under 18")[0] and R.minor_age("make her under 18, nobody underage")[0]
+    # known, by design since R86 (not changed): a BARE number has no age unit ("2 girls", "15 photos") and is never read,
+    # so the brief's "nobody is underage. she is 15, nude" passes — the unit form fires (FIX3_LIST_FIRE)
+    assert R.minor_block("nobody is underage. she is 15, nude") == (False, "")
+    fire = (BLOCK_FIRE + R4B_FIRE + R4C_K1_FIRE + R4C_K2_AGES + FIX_COMPOUND_FIRE + FIX_TEEN_FIRE)
+    assert all(R.minor_block(p)[0] and R.minor_block(p, adult=True)[0] for p in fire), "an earlier must-fire probe passes"
+    assert all(R.minor_block(p, adult=True)[0] for p in FIX2_ADULT_FIRE), "a round-2 flag probe passes"
+    passing = BLOCK_PASS + R4C_K1_GATES + R4C_K2_COUNTS + R4C_K4_ECHOES + FIX_COMPOUND_PASS + FIX_TEEN_PASS
+    assert not [p for p in passing if R.minor_block(p)[0]], "an earlier must-pass probe fires"
+    assert not [p for p in FIX2_ADULT_PASS if R.minor_block(p, adult=True)[0]], "a round-2 flag must-pass fires"
+    own = [k for k, v in vars(P).items() if isinstance(v, str) and not k.startswith("__") and R.minor_block(v, adult=True)[0]]
+    assert not own, f"the kernel's own prompts fire: {own}"
+    t0 = time.time()
+    for big in ("nude, nobody under 18 or underage, " * 2800, "nobody underage" + " or under 18" * 8000 + ", nude",
+                "nude, nobody underage" + ", or" * 30000, "niemand ist minderjährig" + " oder wer ist" * 8000 + " unter 18, nackt"):
+        R.minor_block(big), R.minor_block(big, adult=True)
+    dt = time.time() - t0
+    assert dt < 2.0, f"dense lists took {dt:.2f} s"
+    return (f"{len(FIX3_LIST_PASS)} negated lists pass (term + flag + picture edit, EN + DE), {len(FIX3_LIST_FIRE)} fire, "
+            f"{len(FIX3_LIST_FLAG_FIRE)} fire with the flag only; {len(fire)} earlier must-fire still fire, {len(passing)} must-pass "
+            f"+ kernel prompts pass; the bare-number case pinned as known; 4 dense 100 KB lists x2 in {dt:.2f} s")
+
+
+@run_test("r88_fix3_teen_title_rule", ["R88", "R86"])
+async def t_r88_fix3_titles(ctx):
+    """[R88 fix round 3, 2] adult_ages: a lowercase teen word is never a title ("nude teen Latina" -> "nude adult Latina",
+    "teen Anna" -> "adult Anna"); a capitalised Teen / Teenage is a title only when it starts one of refusal._TEEN_TITLES
+    and no person noun follows (Teen Titans, Teen Wolf, Teen Vogue, Teen Choice, Teen Spirit, Teenage Mutant Ninja / Hero
+    Turtles, Teenage Dream, Teenage Kicks, Teenage Engineering) — an unlisted title is rewritten (cosmetic); the results
+    pass the adult block, are idempotent and keep no teen word outside a listed title; round 2's rules stay (its
+    TEEN_REWRITE / TEEN_KEEP / TEEN_BLOCKED tables, "late teens" -> thirties, the block's forms, negations)"""
+    R = refusal_module()
+    wrong = [(a, R.adult_ages(a)[0], b) for a, b in TEEN_TITLE_REWRITE if R.adult_ages(a)[0] != b]
+    assert not wrong, wrong
+    teen = re.compile(r"\b(?:teen\w*|barely[\s-]+legal)\b", re.IGNORECASE)
+    for a, b in TEEN_TITLE_REWRITE:
+        out, ch = R.adult_ages(a)
+        assert ch and not R.minor_block(out, adult=True)[0] and R.adult_ages(out) == (out, []), (a, out, ch)
+        assert not teen.search(out), f"a teen word left: {out!r}"
+    assert R.adult_ages("nude teen Latina") == ("nude adult Latina", [("teen", "adult")])
+    touched = [(k, R.adult_ages(k)) for k in TEEN_TITLE_KEEP if R.adult_ages(k)[1]]
+    assert not touched, touched
+    assert set(R._TEEN_TITLES) == {"teen", "teenage"}, "the title list is the documented one"
+    # round 2 stays: its tables (now with "teen Anna" moved to the rewrites), the decade forms, the block's forms
+    assert all(R.adult_ages(a)[0] == b for a, b in TEEN_REWRITE) and not [k for k in TEEN_KEEP if R.adult_ages(k)[1]]
+    assert all(R.adult_ages(p) == (p, []) for p in TEEN_BLOCKED)
+    assert R.adult_ages("nude, late teens") == ("nude, aged 30", [("late teens", "aged 30")])
+    assert R.adult_ages("a nude woman in her late teens")[0] == "a nude woman in her thirties"
+    assert R.adult_ages("nude, early teen Latina") == ("nude, early teen Latina", []), "the block's form, never rewritten"
+    assert R.minor_block("nude, early teen Latina")[0]
+    assert R.adult_ages("nude, no teen Latinas") == ("nude, no teen Latinas", []), "a negation is kept"
+    assert R.adult_ages("nackter Teenager am Strand")[0] == "nackter Adult am Strand"     # German: as round 2
+    return (f"{len(TEEN_TITLE_REWRITE)} rewrites exact (lowercase never a title, unlisted titles, person nouns), "
+            f"{len(TEEN_TITLE_KEEP)} listed titles / negations kept; round 2's {len(TEEN_REWRITE)} + {len(TEEN_KEEP)} + "
+            f"{len(TEEN_BLOCKED)} still hold")
+
+
+@run_test("r88_fix3_at_the_sd_floor", ["R86", "R88"], needs="kernel")
+async def t_r88_fix3_floor(ctx):
+    """[R88 fix round 3] through the REAL MM.sd_batch (renderer stubbed): an ADULT job whose final prompt carries the
+    expander's negated list ("nobody is underage or under 18", DE "niemand ist minderjährig oder unter 18", "nobody under
+    18 or underage" with the flag or in a SFW job) renders unchanged; a list whose scope has ended ("nobody is underage.
+    she is under 18, nude") and the not-negated "a 15-year-old or a 16-year-old" with the flag are blocked (BLOCK_MESSAGE,
+    counted, nothing rendered); an adult "nude teen Latina" renders as "nude adult Latina" with aged_up, a listed title
+    and a SFW teen prompt reach the engine untouched"""
+    S = ctx["server"]
+    mm = S.MM
+    rendered = []
+
+    async def fake_render(kind, jobs):
+        rendered.append([j["prompt"] for j in jobs])
+        return [{"ok": True, "path": "x", "error": None, "seed": 1, "engine": "stub"} for _ in jobs]
+    saved = mm._sd_batch_render
+    mm._sd_batch_render = fake_render
+    b0 = S.REFUSALS["blocked"]
+    try:
+        jobs = [{"prompt": "nude woman, nobody is underage or under 18", "out": Path("/x/h1.png"), "adult": True},
+                {"prompt": "nackt, niemand ist minderjährig oder unter 18", "out": Path("/x/h2.png"), "adult": True},
+                {"prompt": "explicit, nobody under 18 or underage", "out": Path("/x/h3.png"), "adult": True},
+                {"prompt": "explicit, nobody under 18 or underage", "out": Path("/x/h4.png")},
+                {"prompt": "nobody is underage. she is under 18, nude", "out": Path("/x/h5.png"), "adult": True},
+                {"prompt": "explicit photo, a 15-year-old or a 16-year-old", "out": Path("/x/h6.png"), "adult": True},
+                {"prompt": "nude teen Latina on a bed", "out": Path("/x/h7.png"), "adult": True},
+                {"prompt": "a nude woman, Teen Titans poster", "out": Path("/x/h8.png"), "adult": True},
+                {"prompt": "a teen Latina reading in a library", "out": Path("/x/h9.png")}]
+        res = await mm.sd_batch("image", jobs)
+        assert [r["ok"] for r in res] == [True, True, True, True, False, False, True, True, True], res
+        assert all(res[i]["blocked"] is True and res[i]["error"] == S.refusal.BLOCK_MESSAGE for i in (4, 5)), res
+        assert rendered == [["nude woman, nobody is underage or under 18", "nackt, niemand ist minderjährig oder unter 18",
+                             "explicit, nobody under 18 or underage", "explicit, nobody under 18 or underage",
+                             "nude adult Latina on a bed", "a nude woman, Teen Titans poster",
+                             "a teen Latina reading in a library"]], rendered
+        assert jobs[6]["aged_up"] == [("teen", "adult")] and "aged_up" not in jobs[7] and "aged_up" not in jobs[8]
+        assert S.REFUSALS["blocked"] == b0 + 2
+    finally:
+        mm._sd_batch_render = saved
+    return ("floor: negated lists render unchanged (EN + DE, flag / SFW), an ended scope + a not-negated pair blocked; adult "
+            "'nude teen Latina' -> 'nude adult Latina', a listed title + a SFW teen prompt untouched")
+
+
+# [R88 fix round 4, 2] "neither … nor" / "weder … noch" lists of bridge words and under-18 words — short probes, unit tests only
+FIX4_NOR_PASS = [
+    "nude woman, neither minors nor anyone under 18",                     # the brief's, verbatim
+    "nude woman, neither minors, nor anyone under 18", "explicit, neither minors nor anybody who looks underage",
+    "nude, neither underage nor minors nor under 18", "nude couple, no minors nor anyone under 18",
+    "nude, not minors, nor anyone underage", "explicit photo, neither children nor teens under 18",
+    "nude art, neither kids nor anyone under the age of 18", "nude, neither minors nor under-18s",
+    "nude, nobody underage nor anyone under 18", "nude, nobody under 18 nor minors nor anyone underage",
+    "Aktfoto, weder Kinder noch Jugendliche unter 18", "Nacktbild, weder minderjährig noch Kinder noch unter 18",
+    "nackt, weder Minderjährige noch jemand unter 18", "nackt, weder Kinder noch Jugendliche noch jemand unter 18",
+    "Erotik, weder Kinder, noch Jugendliche unter 18",
+]
+FIX4_NOR_FIRE = [         # the scope has ended (a clause break, a number, a tagged item) or there is no negation at all
+    "nude, neither minors nor anyone under 18. she is underage", "nude, neither minors nor anyone under 18 and she is 15 years old",
+    "nude, neither minors nor anyone under 18, underage girl", "nude, nor under 18", "Nacktbild, noch unter 18",
+    "nackt, ist sie nicht noch minderjährig?", "nackt, sie ist noch minderjährig, weder schüchtern noch prüde",
+    "nackt, weder Kinder noch Jugendliche, sie ist 15 Jahre alt",
+]
+FIX4_NOR_KNOWN_FIRE = [   # known, by design: the bridge is a CLOSED list ("shy" ends it), "noch" bridges only after "weder",
+    "nude, neither shy nor under 18", "nackt, keine Kinder noch unter 18",   # round 3's person-noun rule holds for a nor item
+    "nude, nobody under 18 nor underage girls",
+]
+
+
+@run_test("r88_fix4_refusal_offers", ["R86", "R88"])
+async def t_r88_fix4_offers(ctx):
+    """[R88 fix round 4, 1] a refusal of the requested content followed by an OFFER of something else is a refusal, in
+    every kind where it applies: the brief's repro and Ornith's real A5 answer (refusal + offer sentences) as text and as a
+    short page; every FIX4_OFFER_REFUSALS form (EN + DE: "What I can offer instead", "Instead, I can", "I'd be happy to …
+    instead", "Here's a tamer version", "fades to black", "Stattdessen kann ich", "Was ich anbieten kann", "Ich kann dir aber
+    … anbieten") in its kind, the text ones also as html; a rich page that OPENS with such a refusal; a prompt's sanitised
+    rewrite. An offer counts only after a CONTENT refusal (policy vocabulary in the sentence, or a bare sentence and a
+    watered-down offer): every FIX4_LIMIT_HELP answer passes in its kind (and as html), "instead of" is no offer, a prompt's
+    fade-to-black / list of alternatives / "a more detailed version" passes, the MT check's UI strings pass"""
+    R = refusal_module()
+    assert R.is_refusal(FIX4_BRIEF_OFFER, "text") == (True, "en_cant: 'I can't write'"), R.is_refusal(FIX4_BRIEF_OFFER, "text")
+    assert R.is_refusal(FIX4_BRIEF_OFFER.split("\n")[0], "text") == (True, "en_cant: 'I can't write'")
+    for kind in ("text", "html"):
+        assert R.is_refusal(FIX4_ORNITH_A5, kind)[0] and R.is_refusal(FIX4_BRIEF_OFFER, kind)[0], kind
+    missed = [(k, t[:60]) for k, t in FIX4_OFFER_REFUSALS if not R.is_refusal(t, k)[0]]
+    missed += [("as html", t[:60]) for k, t in FIX4_OFFER_REFUSALS if k == "text" and not R.is_refusal(t, "html")[0]]
+    assert not missed, f"refusals with an offer missed: {missed}"
+    flagged = [(k, t[:60], R.is_refusal(t, k)[1]) for k, t in FIX4_LIMIT_HELP if R.is_refusal(t, k)[0]]
+    flagged += [("as html", t[:60]) for k, t in FIX4_LIMIT_HELP if k == "text" and R.is_refusal(t, "html")[0]]
+    assert not flagged, f"limitations followed by help judged refusals: {flagged}"
+    # the gate: a bare refusal needs a WATERED-DOWN offer; a content refusal any offer; "instead of" is no offer
+    assert not R.is_refusal("I can't do that. Instead, I can show you how: open Settings, tap Wi-Fi, then Join.", "text")[0]
+    assert R.is_refusal("I can't do that. Instead, I can write a tamer version of the scene for you.", "text")[0]
+    assert R.is_refusal("I can't write explicit scenes. Instead, I can write a love story about the two of them.", "text")[0]
+    assert not R.is_refusal("I can't write explicit scenes in Markdown, but I can use bold instead of headings: **Scene 1** the "
+                            "kitchen, **Scene 2** the garden.", "text")[0], "'instead of' is a preposition"
+    # html: a rich page whose visible text OPENS with a content refusal + an offer (review r4's long refusal page)
+    rich = ("<!DOCTYPE html><html><head><title>Request declined</title></head><body><header><h1>Request declined</h1><nav>"
+            "<a href=/1>Home</a><a href=/2>Help</a></nav></header><main><p>I'm sorry, but I can't create this website because it "
+            "would contain sexually explicit content.</p><h2>What I can do instead</h2><ul>"
+            + "".join(f"<li>Idea {i}: a tasteful page about relationships, art history or wellness, with a gallery of landscapes "
+                      f"and a short introduction text.</li>" for i in range(1, 7)) + "</ul></main><footer>assistant</footer></body></html>")
+    assert len(R.visible_text(rich)) > R.HTML_SHORT and R._count_tags(rich) > R.HTML_RICH
+    hit, why = R.is_refusal(rich, "html")
+    assert hit and "+ an offer" in why, why
+    shop = rich.replace("I'm sorry, but I can't create this website because it would contain sexually explicit content.",
+                        "We can't ship to PO boxes. Instead, we can offer pickup points in every city.").replace("Request declined", "Shop")
+    assert not R.is_refusal(shop, "html")[0], "a real page that says 'we can't … instead, we can offer' is a page"
+    # prompt: the sanitised rewrite is a refusal; a video's last shot, prompt variants, "a more detailed version" are not
+    assert R.is_refusal("Sure! Here's a tasteful version instead: a woman wrapped in silk sheets.", "prompt")[1].startswith("offer")
+    for p in ("A cinematic still: the scene slowly fades to black as the couple walks away, 35mm film.",
+              "Here are some alternatives: a red fox in snow at golden hour; a red fox in a meadow at dawn.",
+              "Here's a more detailed version of the prompt instead of the short one: a red fox in snow, golden hour, telephoto.",
+              "A cat wearing a crown instead of a hat, oil painting, warm light.",
+              "A neon sign that reads \"What I can offer instead\" above a pawn shop door, rain, night."):
+        assert not R.is_refusal(p, "prompt")[0] and not R.is_expansion_refusal(p)[0], p
+    assert not [t for t in R4B_MT_UI if R.is_refusal(t, "prompt")[0]], "the MT check's UI translations"
+    t0 = time.time()
+    for big in ("I can't write explicit content. " + "Instead, I can " * 20000, "I can't do that. " + "what I can offer " * 15000,
+                "<p>I can't write that.</p>" + "<li>a tamer version that fades to black</li>" * 8000):
+        for kind in ("text", "html", "prompt"):
+            R.is_refusal(big, kind)
+    dt = time.time() - t0
+    assert dt < 2.0, f"long offers took {dt:.2f} s"
+    return (f"brief repro + Ornith A5 (text, html); {len(FIX4_OFFER_REFUSALS)} refusals with an offer detected (+ text as html), "
+            f"{len(FIX4_LIMIT_HELP)} limitations + help pass (+ as html); bare needs a watered-down offer; rich page; prompt rewrite; "
+            f"3 long shapes x3 kinds in {dt:.2f} s")
+
+
+@run_test("r88_fix4_offer_climbs_the_ladder", ["R86", "R88"], needs="kernel")
+async def t_r88_fix4_ladder(ctx):
+    """[R88 fix round 4, 1] in the kernel: Ornith's refusal + offer from a censored primary (fast) is a refusal for
+    llm_generate — the preamble rung runs, then the uncensored rung serves the answer — and for llm_stream: judged at the
+    early verdict (the offer is in the first 400 chars), never yielded, the next rung's answer is"""
+    S = ctx["server"]
+    real = S.MM
+    story = "The rain drummed on the cabin roof as the two of them, both in their thirties, finally stopped talking."
+    try:
+        S.MM = fake = FakeMM([FIX4_ORNITH_A5, FIX4_ORNITH_A5, story], served="llm_fast")
+        out = await S.llm_generate("SYS", [{"role": "user", "content": "x"}], kind="text", label="fix4")
+        assert out == story and [c[0] for c in fake.calls] == ["llm", "llm", "llm_default"], fake.calls
+        assert S.REFUSALS["last"]["from"] == "preamble" and S.REFUSALS["last"]["to"] == "llm_uncensored"
+        events = []
+
+        async def on_fallback(frm, to, why):
+            events.append((frm, to, why))
+        import contextlib
+        S.MM = fake = FakeMM([FIX4_ORNITH_A5, story], served="llm_fast")
+        got = []
+        async with contextlib.aclosing(S.llm_stream("SYS", [{"role": "user", "content": "x"}], kind="text",
+                                                    on_fallback=on_fallback)) as gen:
+            async for d in gen:
+                got.append(d)
+        assert "".join(got) == story and events and events[0][:2] == ("llm_fast", "preamble") and "en_cant" in events[0][2], events
+        assert fake.pulled[0] <= 9, f"pulled {fake.pulled[0]} chunks (the early verdict is at 400 chars)"
+    finally:
+        S.MM = real
+    return "generate: fast's refusal + offer -> preamble -> llm_uncensored serves; stream: judged at the early verdict, next rung yielded"
+
+
+@run_test("r88_fix4_nor_lists", ["R86", "R88"])
+async def t_r88_fix4_nor(ctx):
+    """[R88 fix round 4, 2] "neither … nor" / "weder … noch" lists of bridge words and under-18 words are negated: every
+    FIX4_NOR_PASS text (the brief's "nude woman, neither minors nor anyone under 18" verbatim, a comma before nor, a bridge
+    word between two under-18 words, German weder … noch) passes with a term, with the adult flag and in a picture edit;
+    every FIX4_NOR_FIRE text fires (a clause break, a number, a tagged item, no negation, "noch" = still); the known limits
+    fire (FIX4_NOR_KNOWN_FIRE); every earlier must-fire / must-pass probe and the kernel's prompts hold; the 25+ check's
+    teen rewrite reads no "nor" (a teen word never reaches the picture); the bridge lists every word once (the duplicate
+    "anybody" was exponential) and long runs stay milliseconds"""
+    R = refusal_module()
+    sys.path.insert(0, str(REPO / "kernel"))
+    import prompts as P
+    assert R.minor_block("nude woman, neither minors nor anyone under 18") == (False, "")
+    wrong = [(p, R.minor_block(p)[1] or R.minor_block(p, adult=True)[1] or R.minor_age(p)[1]) for p in FIX4_NOR_PASS
+             if R.minor_block(p)[0] or R.minor_block(p, adult=True)[0] or R.minor_age(p)[0]]
+    assert not wrong, f"a negated nor-list fired: {wrong}"
+    missed = [p for p in FIX4_NOR_FIRE + FIX4_NOR_KNOWN_FIRE if not (R.minor_block(p)[0] and R.minor_block(p, adult=True)[0])]
+    assert not missed, f"not fired: {missed}"
+    fire = (BLOCK_FIRE + R4B_FIRE + R4C_K1_FIRE + R4C_K2_AGES + FIX_COMPOUND_FIRE + FIX_TEEN_FIRE + FIX3_LIST_FIRE)
+    assert all(R.minor_block(p)[0] and R.minor_block(p, adult=True)[0] for p in fire), "an earlier must-fire probe passes"
+    assert all(R.minor_block(p, adult=True)[0] for p in FIX2_ADULT_FIRE + FIX3_LIST_FLAG_FIRE), "an earlier flag probe passes"
+    passing = BLOCK_PASS + R4C_K1_GATES + R4C_K2_COUNTS + R4C_K4_ECHOES + FIX_COMPOUND_PASS + FIX_TEEN_PASS + FIX3_LIST_PASS
+    assert not [p for p in passing if R.minor_block(p)[0]], "an earlier must-pass probe fires"
+    assert not [p for p in FIX2_ADULT_PASS + FIX3_LIST_PASS if R.minor_block(p, adult=True)[0]], "an earlier flag must-pass fires"
+    own = [k for k, v in vars(P).items() if isinstance(v, str) and not k.startswith("__") and R.minor_block(v, adult=True)[0]]
+    assert not own, f"the kernel's own prompts fire: {own}"
+    # the 25+ check's teen rewrite keeps its bridge without "nor": a teen word never reaches the image model
+    assert R.adult_ages("nude, neither minors nor teen girls")[0] == "nude, neither minors nor adult women aged 30"
+    words = R._NEG_WORDS.split("|")
+    assert len(words) == len(set(words)), [w for w in words if words.count(w) > 1]
+    t0 = time.time()
+    for big in ("nude, no " + "anybody " * 60 + "x", "nude, neither " + "minors nor " * 9000 + "x", "nackt, weder " + "kinder noch " * 8000
+                + "x", "nude, nobody underage " + "nor minors " * 9000 + "x", "nackt, weder minderjährige " + "noch minderjährige " * 6000):
+        R.minor_block(big), R.minor_block(big, adult=True), R.adult_ages(big[:20000] + " teen girl")
+    dt = time.time() - t0
+    assert dt < 2.0, f"long nor-runs took {dt:.2f} s"
+    return (f"{len(FIX4_NOR_PASS)} nor/noch lists pass (term + flag + picture edit, EN + DE), {len(FIX4_NOR_FIRE)} fire, "
+            f"{len(FIX4_NOR_KNOWN_FIRE)} known limits fire; {len(fire)} earlier must-fire, {len(passing)} must-pass + kernel prompts "
+            f"hold; bridge words unique; 5 long runs in {dt:.2f} s")
+
+
+@run_test("r88_fix4_nor_lists_at_the_sd_floor", ["R86", "R88"], needs="kernel")
+async def t_r88_fix4_floor(ctx):
+    """[R88 fix round 4, 2] through the REAL MM.sd_batch (renderer stubbed): an ADULT job whose final prompt carries a
+    "neither … nor" / "weder … noch" disclaimer renders unchanged; one whose scope has ended is blocked"""
+    S = ctx["server"]
+    mm = S.MM
+    rendered = []
+
+    async def fake_render(kind, jobs):
+        rendered.append([j["prompt"] for j in jobs])
+        return [{"ok": True, "path": "x", "error": None, "seed": 1, "engine": "stub"} for _ in jobs]
+    saved = mm._sd_batch_render
+    mm._sd_batch_render = fake_render
+    b0 = S.REFUSALS["blocked"]
+    try:
+        jobs = [{"prompt": "nude woman, neither minors nor anyone under 18", "out": Path("/x/n1.png"), "adult": True},
+                {"prompt": "Aktfoto, weder Kinder noch Jugendliche unter 18", "out": Path("/x/n2.png"), "adult": True},
+                {"prompt": "nude, neither minors nor anyone under 18. she is underage", "out": Path("/x/n3.png"), "adult": True}]
+        res = await mm.sd_batch("image", jobs)
+        assert [r["ok"] for r in res] == [True, True, False] and res[2]["blocked"] is True, res
+        assert rendered == [["nude woman, neither minors nor anyone under 18", "Aktfoto, weder Kinder noch Jugendliche unter 18"]], rendered
+        assert S.REFUSALS["blocked"] == b0 + 1
+    finally:
+        mm._sd_batch_render = saved
+    return "floor: EN + DE nor-lists render unchanged with the adult flag; an ended scope is blocked"
 
 
 @run_test("refusal_manifests_round4", ["R86", "R47"])
@@ -2172,14 +3101,15 @@ async def t_c12_limits(ctx):
 @run_test("refusal_e2e_status_and_models_shape", ["R86", "R80"], needs="http")
 async def t_c10_shape(ctx):
     """/api/status: last_fallback {at, from, to, kind, reason, prompt} and refusal_fallback {ladder, expander_ladder,
-    uncensored{available, reason, section, download_key}, count, blocked, last}; /api/models carries refusal_fallback
+    uncensored{available, reason, section, download_key}, count, blocked, aged_up [R88], last}; /api/models carries refusal_fallback
     and the round-4 note; POST /api/models/download {"model": "uncensored"} is still the baked image, {"model":
     "llm_uncensored"} is not a download on this tier"""
     s = await status(ctx)
     lf = s["last_fallback"]
     assert set(lf) == {"at", "from", "to", "kind", "reason", "prompt"} and lf["at"] > 1_700_000_000, lf
     rf = s["refusal_fallback"]
-    assert set(rf) == {"ladder", "expander_ladder", "uncensored", "count", "blocked", "last"} and rf["last"] == lf
+    assert set(rf) == {"ladder", "expander_ladder", "uncensored", "count", "blocked", "aged_up", "last"} and rf["last"] == lf
+    assert isinstance(rf["aged_up"], int) and rf["aged_up"] >= 0, rf["aged_up"]     # [R88] the 25+ check's counter
     assert rf["ladder"] == ["preamble", "llm_uncensored"] and rf["expander_ladder"] == ["preamble", "encoder"] and rf["count"] >= 6 and rf["blocked"] >= 14
     assert rf["uncensored"] == {"available": True, "reason": None, "section": "llm", "download_key": None}
     assert s["gpu"]["kind"] in ("llm", "llm_fast", "none", "image")

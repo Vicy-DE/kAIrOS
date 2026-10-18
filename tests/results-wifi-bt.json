@@ -1,5 +1,5 @@
 {
- "at": "2026-10-16 20:47:16",
+ "at": "2026-10-18 02:19:22",
  "tests": {
   "wifi_nmcli_escapes_roundtrip": {
    "reqs": [

@@ -1,5 +1,5 @@
 {
- "at": "2026-10-16 20:46:38",
+ "at": "2026-10-18 02:18:42",
  "tests": {
   "imaging_cursor_hw_on_amdgpu_conf": {
    "reqs": [
@@ -130,7 +130,7 @@
     "R42"
    ],
    "status": "pass",
-   "detail": "batch 1 0.72 s, batch 2 joined (1 launch); ask closed the window (waiter), picture behind it after the answer (new session); safe = own session; LLM started only by the ask"
+   "detail": "batch 1 0.71 s, batch 2 joined (1 launch); ask closed the window (waiter), picture behind it after the answer (new session); safe = own session; LLM started only by the ask"
   },
   "imaging_e2e_menubar_gpu_model": {
    "reqs": [

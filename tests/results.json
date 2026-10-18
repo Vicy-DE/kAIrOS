@@ -1,5 +1,5 @@
 {
- "at": "2026-10-16 20:41:35",
+ "at": "2026-10-18 02:13:34",
  "base": "http://127.0.0.1:1338",
  "tests": {
   "unit_prompts_style_mandate": {
@@ -100,7 +100,7 @@
     "R3"
    ],
    "status": "pass",
-   "detail": "tier=8gb llm=Gemma 4 26B-A4B-it ultra-uncensored heretic (i1-IQ4_XS, MoE, experts partly in RAM) engine=cpu"
+   "detail": "tier=8gb llm=Gemma 4 26B-A4B-it ultra-uncensored heretic (i1-IQ4_XS, MoE, experts partly in RAM) engine=cuda"
   },
   "http_app_generate": {
    "reqs": [
@@ -124,7 +124,7 @@
     "R5"
    ],
    "status": "pass",
-   "detail": "host page 37207 bytes, sandbox intact, bridge identical (97 call sites), 404 for unknown"
+   "detail": "host page 38546 bytes, sandbox intact, bridge identical (99 call sites), 404 for unknown"
   },
   "http_app_evolves_on_improve_only": {
    "reqs": [
@@ -163,14 +163,14 @@
     "R22"
    ],
    "status": "pass",
-   "detail": "2 Krea-2 images generated, seeds differ (1815085504 vs 1482670118); engine crash -> error + idle"
+   "detail": "2 Krea-2 images generated, seeds differ (971573189 vs 2132740766); engine crash -> error + idle"
   },
   "http_video": {
    "reqs": [
     "R6"
    ],
    "status": "pass",
-   "detail": "mp4 produced and served: /files/videos/efbd1208e09b.mp4"
+   "detail": "mp4 produced and served: /files/videos/5df518e55985.mp4"
   },
   "unit_finish_video_drops_intermediate": {
    "reqs": [
@@ -214,7 +214,7 @@
     "R14"
    ],
    "status": "pass",
-   "detail": "19080 bytes of self-documentation served"
+   "detail": "20234 bytes of self-documentation served"
   },
   "http_search_offline_mode": {
    "reqs": [
@@ -294,7 +294,7 @@
     "R31"
    ],
    "status": "pass",
-   "detail": "ace-lm -> request0.json -> ace-synth (turbo DiT, wav) served: /files/music/dca06aca1369.wav"
+   "detail": "ace-lm -> request0.json -> ace-synth (turbo DiT, wav) served: /files/music/80b0f3ce4010.wav"
   },
   "unit_music_language_default_en": {
    "reqs": [
@@ -552,7 +552,7 @@
     "R44"
    ],
    "status": "pass",
-   "detail": "3 session-painted wallpapers; random keep/discard differs per run (e.g. 4 fragments kept)"
+   "detail": "3 session-painted wallpapers; random keep/discard differs per run (e.g. 1 fragments kept)"
   },
   "http_remote_needs_token": {
    "reqs": [
@@ -729,7 +729,7 @@
     "R62"
    ],
    "status": "pass",
-   "detail": "SIGTERM with 2 open SSE streams -> exit 0 in 1.63 s, no traceback, app told, engine gone"
+   "detail": "SIGTERM with 2 open SSE streams -> exit 0 in 1.37 s, no traceback, app told, engine gone"
   },
   "unit_r68_fixes_static": {
    "reqs": [
@@ -753,7 +753,7 @@
     "R26"
    ],
    "status": "pass",
-   "detail": "87 requirements, no holes, all cited ids documented, 18 without a test so far this run"
+   "detail": "88 requirements, no holes, all cited ids documented, 19 without a test so far this run"
   },
   "unit_game_launch_gate_mapped_window": {
    "reqs": [

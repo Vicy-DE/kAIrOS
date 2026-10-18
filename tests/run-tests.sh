@@ -164,7 +164,8 @@ python3 "$REPO/tests/test_imaging_workflow.py" || RC=1
 echo "== running tests/test_wifi_bt.py =="
 python3 "$REPO/tests/test_wifi_bt.py" || RC=1
 
-# the refusal fallback [R86]: the detector (EN/DE/FR/ES/IT + false-positive guards), the narrow minors block (round 4), and a
+# the refusal fallback [R86]: the detector (EN/DE/FR/ES/IT + false-positive guards), the narrow minors block (round 4) + the
+# 25+ check on adult picture prompts [R88], and a
 # kernel of its own (:1366) with the mock llama-server's refusal tokens — preamble rung, the llm_uncensored
 # swap, the exhausted ladder (nothing cached), cached refusal pages regenerating, the streaming `refusal`
 # event, the expander's encoder rung / raw prompt, llm_model=uncensored, the image entry points blocked
@@ -186,13 +187,15 @@ python3 "$REPO/tests/test_games_windows.py" || RC=1
 # ✨ improve a picture [R85]: the `image_edit` manifest section, the editor's argv (--llm_vision, its own schedule) and the
 # reference picture through the mock sd-server (own port :8151), the version chain + revert + whole-chain eviction, the
 # entry checks (the minors block, the add-on missing), the translation hop, the sd floor; the e2e part (the picture viewer,
-# the version strip, the quick viewer, Imagine, the wallpaper ✨) needs Chromium and skips without it (KAIROS_SHOTS=<dir>)
+# the version strip, the quick viewer, Imagine, the wallpaper ✨, an app's vibe.image.improve [R88]) needs Chromium and skips
+# without it (KAIROS_SHOTS=<dir>)
 echo "== running tests/test_picture_edit.py =="
 python3 "$REPO/tests/test_picture_edit.py" || RC=1
 
 # the public images [R87]: the build-time profile (private = untouched, public = Z-Image default), the first-boot downloads
 # (aria2c against a local mock: pause, offline, Range resume, sha256), Muse with the user's civitai key (mock civitai + CDN:
-# the key reaches civitai's origin only), the licences + the panel (Chromium; skips without), the image prep script
+# the key reaches civitai's origin only), the licences + the panel (Chromium; skips without), the image prep script and its
+# raw-byte scrub on a planted GPT image (needs e2fsprogs / dosfstools / mtools / sfdisk; skips without them)
 echo "== running tests/test_public_profile.py =="
 python3 "$REPO/tests/test_public_profile.py" || RC=1
 

@@ -1,5 +1,5 @@
 {
- "at": "2026-10-16 20:49:40",
+ "at": "2026-10-18 02:21:55",
  "tests": {
   "pe_manifest_image_edit": {
    "reqs": [
@@ -72,6 +72,16 @@
    ],
    "status": "pass",
    "detail": "viewer \u2728 \u2192 note \u2192 veil \u2192 v1 (strip v0 v1) \u2192 v2 \u2192 v0 revert; quick viewer + Imagine open the viewer; wallpaper \u2728 \u2192 v1 = wallpaper"
+  },
+  "pe_r88_app_bridge_improve": {
+   "reqs": [
+    "R88",
+    "R85",
+    "R86",
+    "R46"
+   ],
+   "status": "pass",
+   "detail": "app: improve(<img>) -> v1 (reads as its URL, img.src = v), edit(v) -> v2 from 1, versions = 3; minors block rejects (no job); data: URL refused; late /genimg/ waited (404 -> ?_r asks -> v1); failed render -> error"
   }
  }
 }

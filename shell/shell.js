@@ -325,11 +325,28 @@ const BRIDGE_SRC = `
   const load = Object.assign((key) => call("load", key), { get: (key) => call("load", key) });
   const battery = Object.assign(() => call("hw", { device: "battery" }),
                                 { get: () => call("hw", { device: "battery" }), status: () => call("hw", { device: "battery" }) });
+  /* [R88] the OS picture editor (the desktop's ✨, R85) for apps: picture = a picture the OS painted — a vibe.image() /
+     vibe.images() URL, a /genimg/ URL, or the <img> showing one (never a canvas or an upload). improve() resolves to
+     the new version {url, version, root, from, versions, model, ms}, which also reads as its URL:
+     img.src = await vibe.image.improve(img, "make it a snowy night"). versions() = the picture's chain. */
+  const picUrl = (p) => String((p && typeof p === "object") ? (p.currentSrc || p.src || p.url || "") : (p == null ? "" : p));
+  const asVersion = (r) => {
+    if (r && typeof r === "object" && typeof r.url === "string") {
+      try { Object.defineProperty(r, "toString", { value: () => r.url, configurable: true }); } catch (e) {}
+    }
+    return r;
+  };
+  const improve = (picture, instruction) =>
+    call("imageImprove", picUrl(picture), instruction == null ? "" : String(instruction)).then(asVersion);
+  const image = Object.assign((prompt, w, h) => call("image", prompt, dim(w), dim(h)), {
+    improve, edit: improve,                                          // edit: the name the models reach for
+    versions: (picture) => call("imageVersions", picUrl(picture)),
+  });
   const api = {
     ask: (prompt) => call("ask", prompt),
     search: (query, limit) => call("search", query, limit),
     browse: (address, fresh) => call("browse", address, fresh),
-    image: (prompt, w, h) => call("image", prompt, dim(w), dim(h)),
+    image,
     // several pictures with ONE model load: vibe.images(["a", "b", "c"]) or vibe.images("a", 3);
     // opts {count, width, height, model, adult, expand} -> array of URLs (null = that one failed)
     images: (prompts, opts) => {
@@ -463,7 +480,7 @@ const BRIDGE_SRC = `
       return missing(path + "." + p, path + " has: " + Object.keys(t).join(", "));
     },
   });
-  for (const ns of ["fs", "settings", "system"]) api[ns] = guard(api[ns], "vibe." + ns);
+  for (const ns of ["fs", "settings", "system", "image"]) api[ns] = guard(api[ns], "vibe." + ns);
   for (const dev of Object.keys(api.hw)) if (typeof api.hw[dev] === "object") api.hw[dev] = guard(api.hw[dev], "vibe.hw." + dev);
   api.hw = guard(api.hw, "vibe.hw");
   window.vibe = guard(api, "vibe");
@@ -792,14 +809,60 @@ function injectBridge(html, seed) {
   return bridge + html;
 }
 
-async function pollJob(jobId, why) {
+async function pollJobRecord(jobId, why) {      // the finished job's whole record (pollJob: its result)
   if (!jobId) throw new Error(why || "no job was started");     // [2026-10-14] e.g. a 503: the engine is not installed
   for (;;) {
     const r = await fetch(`/api/job/${jobId}`).then((r) => r.json());
-    if (r.status === "done") return r.result;
+    if (r.status === "done") return r;
     if (r.status === "error") throw new Error(r.error);
     if (!r.status && r.error) throw new Error(r.error);   // "unknown job" (the kernel restarted)
     await new Promise((res) => setTimeout(res, 1500));
+  }
+}
+async function pollJob(jobId, why) { return (await pollJobRecord(jobId, why)).result; }
+
+/* [R88] vibe.image.improve(picture, instruction) — ✨ for apps: POST /api/image/improve, the desktop viewer's route (R85)
+   with all its rules: only pictures the OS painted, R86's minors floor on the words as typed and on the final prompt, the
+   25+ check, the editor add-on (409 + its download key in the message), the GPU queue; the job is polled without a time
+   limit. A /genimg/ picture still being painted (the kernel's 404) is waited for the late-picture way (SD run
+   2026-10-13): ?_r=n asks, answered at once (an ask also queues a picture nobody asked for yet), at once and then after
+   2, 3, 4.5 … s up to every 15 s, for at most an hour; a final placeholder (an even width: a failed render or the minors
+   block) ends the wait with an error. shell/bench/host.js carries the same three functions (its D3 parity). */
+function appPictureUrl(p) {
+  let u = null;
+  try { u = new URL(String(p ?? ""), location.href); } catch (e) { /* not a URL */ }
+  if (!u || u.origin !== location.origin || !/^\/(?:files\/images\/|genimg\/)/.test(u.pathname))
+    throw new Error("vibe.image: only a picture the OS painted — a vibe.image() URL (/files/images/…), a /genimg/… URL " +
+                    "or the <img> showing one");
+  u.searchParams.delete("_r");
+  return u.pathname + u.search;
+}
+async function genimgPainted(pic, t0) {
+  for (let n = 1; Date.now() - t0 < 3600000; n++) {
+    if (n > 1) await new Promise((res) => setTimeout(res, Math.min(15000, 2000 * Math.pow(1.5, n - 2))));
+    const u = new URL(pic, location.href);
+    u.searchParams.set("_r", String(n));
+    const res = await fetch(u.pathname + u.search);
+    if ((res.headers.get("Content-Type") || "").startsWith("image/png")) return;           // painted
+    const w = +(((await res.text()).match(/width='(\d+)'/) || [])[1] || 0);
+    if (w % 2 === 0) throw new Error("this picture could not be painted (the render failed or was refused), so it cannot be improved");
+  }
+  throw new Error("the picture was still being painted after an hour");
+}
+async function appImprovePicture(picture, instruction) {
+  const pic = appPictureUrl(picture), note = String(instruction ?? "").trim().slice(0, 1000);
+  toast("✨ improving a picture" + (note ? ": " + note.slice(0, 50) : "") + "…");
+  const t0 = Date.now();
+  for (;;) {
+    const res = await fetch("/api/image/improve", { method: "POST", headers: apiHeaders(),
+      body: JSON.stringify({ picture: pic, instruction: note }) });
+    const r = await res.json().catch(() => ({ error: "the kernel answered " + res.status }));
+    if (res.status === 404 && pic.startsWith("/genimg/")) { await genimgPainted(pic, t0); continue; }
+    if (!r.job) throw new Error(r.error || "the picture could not be improved");
+    const j = await pollJobRecord(r.job);
+    toast("✦ picture improved to v" + j.version + " (" + Math.round((Date.now() - t0) / 1000) + " s)");
+    return { url: j.result, version: j.version, root: r.root, from: r.from_version, versions: j.versions || [],
+             model: j.model || r.model || null, ms: j.ms ?? null };
   }
 }
 
@@ -816,6 +879,12 @@ async function handleBridge(win, d) {
     const r = await fetch("/api/image", { method: "POST", headers: apiHeaders(),
       body: JSON.stringify({ prompt: args[0], width: args[1], height: args[2] }) }).then((r) => r.json());
     return await pollJob(r.job, r.error);   // [R87] no job: the kernel's own sentence ("… is downloading (n %)")
+  }
+  if (method === "imageImprove") return await appImprovePicture(args[0], args[1]);   // [R88] ✨ for apps
+  if (method === "imageVersions") {                                                   // [R88] the picture's chain
+    const r = await fetch("/api/image/versions?picture=" + encodeURIComponent(appPictureUrl(args[0]))).then((r) => r.json());
+    if (r.error) throw new Error(r.error);
+    return r;
   }
   if (method === "images") {
     // one model load for the whole list (kernel /api/images → sd-server session)

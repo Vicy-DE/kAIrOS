@@ -1,5 +1,5 @@
 {
- "at": "2026-10-16 20:50:00",
+ "at": "2026-10-18 02:22:15",
  "tests": {
   "pp_static_overlay_and_wiring": {
    "reqs": [
@@ -86,13 +86,36 @@
    "status": "pass",
    "detail": "no key 409, bad 400, wrong 401 (no echo), 0600/0700, licence 409, query ?token -> civitai only, pause/Range resume, sha ok, Muse default; key in no log/response/file"
   },
+  "pp_r88_download_sentences_grammar": {
+   "reqs": [
+    "R87"
+   ],
+   "status": "pass",
+   "detail": "6 essentials \u00d7 7 states = 42 sentences agree (label verb, feature verb, it/they); note() uses them"
+  },
   "pp_prep_verify_planted_then_clean_idempotent": {
    "reqs": [
     "R87",
     "R66"
    ],
    "status": "pass",
-   "detail": "verify: 51 FAIL lines incl. 37 categories + repo text WARN; prepare -> PASS, kept files; 2nd run 0 changes; unfixable stays FAIL"
+   "detail": "verify: 52 FAIL lines incl. 37 categories + repo text WARN; prepare -> PASS, kept files; 2nd run 0 changes; unfixable stays FAIL"
+  },
+  "pp_r88_runtime_ships_no_tests": {
+   "reqs": [
+    "R87",
+    "R47"
+   ],
+   "status": "pass",
+   "detail": "build-iso / sync-guest / prep: the same 5 dirs, the rest removed, no *.bak* / __pycache__; kernel + shell (29 files) read nothing under tests/"
+  },
+  "pp_r88_raw_scrub_planted_image": {
+   "reqs": [
+    "R87",
+    "R66"
+   ],
+   "status": "skip",
+   "detail": "needs e2fsprogs, dosfstools, mtools, sfdisk: missing mke2fs, debugfs, e2fsck, mkfs.vfat, fsck.vfat, mcopy, mdel, mmd, mtype, sfdisk"
   },
   "pp_fetch_licence_sources_mock": {
    "reqs": [

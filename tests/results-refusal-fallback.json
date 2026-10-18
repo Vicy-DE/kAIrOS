@@ -1,19 +1,19 @@
 {
- "at": "2026-10-16 20:47:48",
+ "at": "2026-10-18 02:19:53",
  "tests": {
   "refusal_detector_real_refusals": {
    "reqs": [
     "R86"
    ],
    "status": "pass",
-   "detail": "51 refusals detected: 9 real (screen) + 9 review I2 + 33 forms; reason e.g. \"en_cant: 'I cannot fulfill' (visible 180 chars, 0 tags)\""
+   "detail": "71 refusals detected: 9 real (screen) + 9 review I2 + 33 forms + 20 with an offer; reason e.g. \"en_cant: 'I cannot fulfill' (visible 180 chars, 0 tags)\""
   },
   "refusal_detector_normal_answers_pass": {
    "reqs": [
     "R86"
    ],
    "status": "pass",
-   "detail": "76 normal answers pass (review S1 / Y2 / \u00a7I, limitations followed by help, quoted sign, mock page/app/forge)"
+   "detail": "96 normal answers pass (review S1 / Y2 / \u00a7I, limitations followed by help, quoted sign, mock page/app/forge, 20 limitations + help with an offer word)"
   },
   "refusal_detector_per_kind": {
    "reqs": [
@@ -41,7 +41,7 @@
     "R86"
    ],
    "status": "pass",
-   "detail": "8MB plain 8 ms; 8MB nfkc 87 ms; 1MB mixed 13 ms; 50k words 10 ms; 50k \u00e9 4 ms; 50k jp 5 ms; 50k combining 5 ms; 50k 1a 4 ms; parts/dict/bytes judged as text"
+   "detail": "8MB plain 9 ms; 8MB nfkc 98 ms; 1MB mixed 15 ms; 50k words 12 ms; 50k \u00e9 4 ms; 50k jp 6 ms; 50k combining 5 ms; 50k 1a 4 ms; parts/dict/bytes judged as text"
   },
   "refusal_r4b_block_lists": {
    "reqs": [
@@ -62,7 +62,7 @@
     "R86"
    ],
    "status": "pass",
-   "detail": "4010 samples identical to the regex forms; pathological shapes <think> x8000 9 ms, <script> x8000 6 ms, <a x30000 4 ms, <!-- x8000 4 ms"
+   "detail": "4010 samples identical to the regex forms; pathological shapes <think> x8000 10 ms, <script> x8000 7 ms, <a x30000 5 ms, <!-- x8000 5 ms"
   },
   "refusal_r4c_block_k1_k2_k4": {
    "reqs": [
@@ -85,6 +85,119 @@
    ],
    "status": "pass",
    "detail": "rule in 7 prompts + the repair clause; conditional, brand kept, 25+, no minors, no real people, SFW sentence; none in wallpaper/vision/expander; minors block silent; personas intact"
+  },
+  "r88_adult_ages_table_and_invariants": {
+   "reqs": [
+    "R88",
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "22 rewrites exact (block verdict unchanged, idempotent), 18 kept, 135 under-18 probes untouched, kernel prompts untouched, 50 KB in 0.04 s"
+  },
+  "r88_adult_ages_at_the_sd_floor": {
+   "reqs": [
+    "R88",
+    "R86",
+    "R85"
+   ],
+   "status": "pass",
+   "detail": "sd floor: adult term / adult flag rewritten, SFW untouched, minors still blocked; editor kind; render_images reports it; expander output caught for adult only; counter in status"
+  },
+  "r88_fix_compound_ages_and_teen_decades": {
+   "reqs": [
+    "R86",
+    "R88"
+   ],
+   "status": "pass",
+   "detail": "compounds: 20 + 576 EN + 144 DE sweep pass, 8 + 27 under-18 fire; decades: 19 fire, 19 ambiguous / era / negated pass; edit fires on the decade alone; 25+ check never ages early / mid teens up"
+  },
+  "r88_fix_teen_decades_at_the_sd_floor": {
+   "reqs": [
+    "R86",
+    "R88"
+   ],
+   "status": "pass",
+   "detail": "floor: early / mid teens + term blocked (EN + DE, never aged up); late teens aged up; twenty-two-year-old rendered as thirty"
+  },
+  "r88_fix2_adult_flag_block": {
+   "reqs": [
+    "R86",
+    "R88"
+   ],
+   "status": "pass",
+   "detail": "14 fire with the flag / pass without (EN + DE, the scotch cost), 18 pass with it; 131 R86 must-fire still fire; 80 gates / counts / echoes / adult ages + kernel prompts pass (the round-2 two-word negation echo passes since fix round 3)"
+  },
+  "r88_fix2_teen_words_adult_wording": {
+   "reqs": [
+    "R88",
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "20 rewrites exact (adult block passes, idempotent, no teen word left), 12 kept (titles, names, negations, decades), 7 blocked texts unchanged, DE pinned, 50 KB in 0.04 s"
+  },
+  "r88_fix2_adult_flag_at_the_sd_floor": {
+   "reqs": [
+    "R86",
+    "R88"
+   ],
+   "status": "pass",
+   "detail": "floor: adult flag + age / decade alone blocked (EN + DE), SFW scotch renders, adult scotch blocked, adult teen girl -> adult woman aged 30, SFW teen untouched; render_images: adult request blocked before the expander, expander output caught (flag / term in the request); video floor reads the flag; h"
+  },
+  "r88_fix3_negated_lists": {
+   "reqs": [
+    "R86",
+    "R88"
+   ],
+   "status": "pass",
+   "detail": "19 negated lists pass (term + flag + picture edit, EN + DE), 18 fire, 4 fire with the flag only; 131 earlier must-fire still fire, 171 must-pass + kernel prompts pass; the bare-number case pinned as known; 4 dense 100 KB lists x2 in 0.26 s"
+  },
+  "r88_fix3_teen_title_rule": {
+   "reqs": [
+    "R88",
+    "R86"
+   ],
+   "status": "pass",
+   "detail": "13 rewrites exact (lowercase never a title, unlisted titles, person nouns), 13 listed titles / negations kept; round 2's 20 + 12 + 7 still hold"
+  },
+  "r88_fix3_at_the_sd_floor": {
+   "reqs": [
+    "R86",
+    "R88"
+   ],
+   "status": "pass",
+   "detail": "floor: negated lists render unchanged (EN + DE, flag / SFW), an ended scope + a not-negated pair blocked; adult 'nude teen Latina' -> 'nude adult Latina', a listed title + a SFW teen prompt untouched"
+  },
+  "r88_fix4_refusal_offers": {
+   "reqs": [
+    "R86",
+    "R88"
+   ],
+   "status": "pass",
+   "detail": "brief repro + Ornith A5 (text, html); 20 refusals with an offer detected (+ text as html), 20 limitations + help pass (+ as html); bare needs a watered-down offer; rich page; prompt rewrite; 3 long shapes x3 kinds in 0.02 s"
+  },
+  "r88_fix4_offer_climbs_the_ladder": {
+   "reqs": [
+    "R86",
+    "R88"
+   ],
+   "status": "pass",
+   "detail": "generate: fast's refusal + offer -> preamble -> llm_uncensored serves; stream: judged at the early verdict, next rung yielded"
+  },
+  "r88_fix4_nor_lists": {
+   "reqs": [
+    "R86",
+    "R88"
+   ],
+   "status": "pass",
+   "detail": "16 nor/noch lists pass (term + flag + picture edit, EN + DE), 8 fire, 3 known limits fire; 149 earlier must-fire, 190 must-pass + kernel prompts hold; bridge words unique; 5 long runs in 0.39 s"
+  },
+  "r88_fix4_nor_lists_at_the_sd_floor": {
+   "reqs": [
+    "R86",
+    "R88"
+   ],
+   "status": "pass",
+   "detail": "floor: EN + DE nor-lists render unchanged with the adult flag; an ended scope is blocked"
   },
   "refusal_manifests_round4": {
    "reqs": [
@@ -262,7 +375,7 @@
     "R80"
    ],
    "status": "pass",
-   "detail": "status + models shapes; 23 fallbacks, 18 blocked in this run"
+   "detail": "status + models shapes; 24 fallbacks, 18 blocked in this run"
   }
  }
 }
