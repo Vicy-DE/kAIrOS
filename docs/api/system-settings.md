@@ -16,26 +16,26 @@ const hw = await vibe.hw.get();   // ONE call: {wifi, battery, brightness, volum
 memEl.textContent = `${Math.round(hw.memory_mb.total / 1024)} GB RAM`;  battEl.textContent = hw.battery.available ? `${hw.battery.percent}%` : hw.battery.reason;
 ```
 
-**The coder LLM** (an "AI" section, fast mode): `const m = await vibe.models();` → `m.llm` =
-`[{key:"default"|"fast"(|"uncensored"), name, present, addon, download_gb, download_key, active, selected}]`,
-`m.llm_setting` = `{setting, effective, fallback, modes}`. Render the picker FROM `m.llm` (not a static list — fetch
-`vibe.models()` BEFORE filling it); `vibe.settings.set("llm_model", entry.key)` switches — default = the tier's
-brain (on 8/16 GB the uncensored heretic Gemma 4: the best apps, minutes per app, answers adult requests itself), fast =
-Qwen2.5-Coder-7B (≈ 40 s per app, simpler); an `uncensored` entry exists only on a tier with that add-on [R86]. An add-on
-with `present:false` → a "⬇ Download (N GB)" button calling `vibe.models.download(entry.download_key)` ("fast"; never
-the bare "uncensored" — that is the image model), else the default keeps serving (`m.llm_setting.fallback` says so —
-show it). `m.refusal_fallback.last`
+**The coder LLM** (an "AI" section): `const m = await vibe.models();` → `m.llm` =
+`[{key, name, present, addon, download_gb, download_key, active, selected}]`, `m.llm_setting` = `{setting, effective,
+fallback, modes}`. Render FROM `m.llm` (fetch `vibe.models()` first): on 8/16 GB it holds ONE entry, `default` = the
+uncensored heretic Gemma 4 (the best apps, minutes per app, answers adult requests itself) — show its name, no picker.
+There is no separate fast model [R89]: `llm_model` "fast" serves the same model. A picker only when `m.llm` lists more
+than one entry (`vibe.settings.set("llm_model", entry.key)`); an entry with `present:false` → "⬇ Download (N GB)" =
+`vibe.models.download(entry.download_key)` (never the bare "uncensored" — that is the image model). Show
+`m.llm_setting.fallback` when set. `m.refusal_fallback.last`
 (`{at, from, to, kind, prompt}`) = the last refusal fallback — show it as one line in this section.
 
 **Language & translation** (a "Language" section) [R71]: `m.translation` = `{enabled, language,
 languages: ["en","de","es","fr","it","ja","ru"], names: {de: "German", …}, quality: "fast"|"quality", effective,
-fallback, present: {fast, quality}, running, cache}`. A `<select>` over `m.translation.languages` (label
-`names[code]`, selected = `language`) → `vibe.settings.set("language", code)`; a switch → `vibe.settings.set
-("translation", "on"|"off")`; fast/quality → `vibe.settings.set("translation_quality", …)`. Off = nothing is
-translated. The fast model is built in (no download needed); the 9B behind `quality` is optional: `m.extras` lists
-`translation` with `present` (true = works — never "not downloaded" then), `present_modes: {fast, quality}` (per
-file), `missing_gb` (what the download still fetches) and `download_gb` (the whole add-on); `present_modes.quality`
-false → a "⬇ Download quality (missing_gb GB)" button calling `vibe.models.download("translation")`. Any app: `await vibe.translate
+fallback, quality_llm, model: {fast, quality}, present: {fast, quality}, running, cache}`. A `<select>` over
+`m.translation.languages` (label `names[code]`, selected = `language`) → `vibe.settings.set("language", code)`; a
+switch → `vibe.settings.set("translation", "on"|"off")`; fast/quality → `vibe.settings.set("translation_quality", …)`
+— label them "Fast (small CPU model)" and "Quality (" + `model.quality` + ")": `quality_llm` true (8 GB) = the loaded
+LLM translates itself, no download. Off = nothing is translated. The fast model is built in; `m.extras` lists
+`translation` with `present` (true = works — never "not downloaded" then), `present_modes: {fast, quality}` and
+`missing_gb` (what the download still fetches): `missing_gb` > 0 → a "⬇ Download (missing_gb GB)" button calling
+`vibe.models.download("translation")`. Any app: `await vibe.translate
 ("text")` → string in the OS language, `vibe.translate(["a", "b"], "en")` → array into a named language; it
 rejects while translation is off. Two more add-ons in `m.extras` (render a download button each while
 `present` is false): `dictionaries` (kind `dictionary`, 0.12 GB, `pairs`) powers `vibe.dict(word, from?, to?)` →

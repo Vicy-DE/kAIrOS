@@ -247,23 +247,24 @@ value) is rejected — `POST /api/settings` answers `400 {"error": <the rule>, "
 bridge promise rejects with that message; nothing is stored. Unknown keys are allowed (≤ 64 KB
 of JSON each) — use them as a system-wide preference store.
 
-### The coder LLM — default brain or fast mode
+### The coder LLM — one model, no fast mode
 
-The OS writes apps, pages and games with its coder LLM. On the 8 GB and 16 GB tiers the
-default is **Gemma 4 26B-A4B-it** — since 2026-10-10 its uncensored *heretic* edition, marked
+The OS writes apps, pages and games with its coder LLM. On the 8 GB and 16 GB tiers it is
+**Gemma 4 26B-A4B-it** — since 2026-10-10 its uncensored *heretic* edition, marked
 `"uncensored": true` (the feature test was measured on the stock model of the same architecture:
-36/37 functional items; 3–5 min per app on an 8 GB card). **Fast mode** switches to the
-small **Qwen2.5-Coder-7B** (≈ 40 s per app, simpler and less reliable results), a
-downloadable add-on (4.7 GB):
+36/37 functional items; 3–5 min per app on an 8 GB card). **There is no separate fast model any
+more** [R89, 2026-10-18]: the old fast-mode add-on (Qwen2.5-Coder-7B, ≈ 40 s per app) produced
+11/37 working app features against Gemma's 26–30/37 in the GPU benchmark
+(`docs/FAST-MODELS-2026-10-17.md`), so it left the tiers; `llm_model = "fast"` serves Gemma.
 
 | settings key | values | effect |
 |---|---|---|
-| `llm_model` | `default` (the tier's brain — on 8/16 GB the uncensored heretic Gemma 4 26B-A4B itself since 2026-10-10 [R86 round 4]) · `fast` (the `llm_fast` add-on) · `uncensored` (only on a tier with an `llm_uncensored` add-on section [R86]) | which model answers `vibe.ask()`, writes apps (`/api/app`), pages (`/web/…`) and games. The kernel restarts its language model on the next request after a change. A `fast` / `uncensored` choice whose add-on is not downloaded keeps serving the default — `vibe.models()` → `llm_setting.fallback` says so |
+| `llm_model` | `default` (the tier's brain — on 8/16 GB the uncensored heretic Gemma 4 26B-A4B itself since 2026-10-10 [R86 round 4]) · `fast` (a tier's `llm_fast` add-on — no shipped tier has one since R89: the default serves) · `uncensored` (only on a tier with an `llm_uncensored` add-on section [R86]) | which model answers `vibe.ask()`, writes apps (`/api/app`), pages (`/web/…`) and games. The kernel restarts its language model on the next request after a change. A `fast` / `uncensored` choice the tier has no section for, or whose add-on is not downloaded, keeps serving the default — `vibe.models()` → `llm_setting.fallback` says so |
 
-`vibe.models()` → `llm: [{key: "default"|"fast"(|"uncensored"), name, present, addon, download_gb,
-download_key, downloading, selected, active}]` + `llm_setting: {setting, effective, fallback, modes}` (`modes` lists
-only what the tier has: `["default", "fast"]` on 8/16 GB); `vibe.models.download(entry.download_key)` fetches an
-add-on — `"fast"` for the fast coder, `"llm_uncensored"` where a tier has that section (the bare key `"uncensored"`
+`vibe.models()` → `llm: [{key, name, present, addon, download_gb, download_key, downloading, selected, active}]`
+(on 8/16 GB one entry, `default`) + `llm_setting: {setting, effective, fallback, modes}` (`modes` lists only what the
+tier has: `["default"]` on 8/16 GB); `vibe.models.download(entry.download_key)` fetches an add-on — `"fast"` where a
+tier has an `llm_fast` section, `"llm_uncensored"` where it has that one (the bare key `"uncensored"`
 names the baked image model, see *Uncensored image model*); `GET /api/status` → `llm` (the effective
 model's name) and `llm_options`. [R80] `GET /api/status` → `gpu: {kind, key, name, full_name, since, loading}` =
 what is resident on the GPU right now (`kind` llm | llm_fast | llm_uncensored | expander | vision | translation |
@@ -275,7 +276,7 @@ request ("I cannot fulfill this request…") instead of answering, the kernel ne
 retries on the ladder of the tier manifest's `refusal_fallback.ladder` — `preamble` (the same model with the
 18+ system preamble, no swap), then `llm_uncensored` (the uncensored LLM: a tier's `llm_uncensored` add-on section, else
 the default itself when the manifest flags it `"uncensored": true` — the heretic Gemma 4 on 8/16 GB, so this rung serves
-fast mode and is skipped when the model that declined IS that model) — and only when every rung declined is the request
+a censored primary (a tier's `llm_fast`, none shipped since R89) and is skipped when the model that declined IS that model) — and only when every rung declined is the request
 DECLINED, never a 502: `vibe.ask()` rejects / `POST /api/ask` → `422 {"error": "the model declined this request …
 — rephrase the request, or ✨ improve the result"}`, `/web/…` shows its error page (nothing cached), `/api/browse`
 → `422 {"error", "address"}`, `/api/app` sends `event: error`. While an app streams, a refusal restarts the
@@ -343,21 +344,27 @@ searches) is turned into English on the way. Languages: `en de es fr it ja ru`.
 |---|---|---|
 | `translation` | `off` (default) · `on` | the switch. Off = zero change: no model started, prompts untouched, nothing in the DOM |
 | `language` | `en` (default) · `de` · `es` · `fr` · `it` · `ja` · `ru` | the user's language; `en` with translation on = nothing to translate |
-| `translation_quality` | `fast` (default) · `quality` | `fast` = the 2B model on the CPU (its own server: never evicts the GPU model, starts on first use, stops when switched off) · `quality` = the 9B model on the GPU (takes the coder LLM's slot like vision; falls back to `fast` while its file is missing) |
+| `translation_quality` | `fast` (default) · `quality` | `fast` = the 2B model on the CPU (its own server: never evicts the GPU model, starts on first use, stops when switched off) · `quality` = **on the 8 GB tier the loaded LLM itself** [R89] (Gemma 4: no download, no model swap — one translation at a time on one of its two slots, so an app generation keeps the other); on 16 GB and up the 9B model on the GPU (takes the coder LLM's slot like vision; falls back to `fast` while its file is missing) |
 
 The models are the `translation` add-on. The fast 2B is **built into the shipped OS** (image
-v7.3+), the quality 9B is the optional download: `vibe.models()` → `extras[translation]` =
+v7.3+). Quality on the 8 GB tier needs nothing more: the GPU benchmark (`docs/FAST-MODELS-2026-10-17.md`)
+measured the heretic Gemma at COMET-22 0.8684 against 0.8706 for the 9B it replaced (inside the 0.005 rule), with a
+2.9–3.0 s cycle (a translation + the next answer) instead of 11.9–12.6 s with the model swap. On 16 GB and up the 9B
+stays the optional download (that tier was not measured). `vibe.models()` → `extras[translation]` =
 `{present, present_modes: {fast, quality}, missing_gb, download_gb, available, downloading}` —
-`present` is true as soon as the layer can translate (one of the two files is there: the baked
-fast one), `present_modes` says which file is on disk, `missing_gb` what
-`vibe.models.download("translation")` still fetches (the 9B: 5.8 GB on the 8 GB tier; 0 when
-both are there) and `download_gb` the whole add-on (7.1 GB). A settings app shows translation as
-installed while `present` is true and offers the quality model while `present_modes.quality` is
-false. `vibe.models()` → `translation` = `{enabled, language, languages, names, quality,
-effective, fallback, present: {fast, quality}, running, cache}` (its `present` is the per-file
-object, the same as `present_modes`). API: `POST /api/translate` — body `{"text": "…"}`
+`present` is true as soon as the layer can translate (the baked fast file, or the LLM), `present_modes` says which
+translator is there (8 GB: `quality` = the LLM's file), `missing_gb` what `vibe.models.download("translation")` still
+fetches (0 on the shipped 8 GB OS; the 9B's 9.8 GB on 16 GB+ until downloaded) and `download_gb` the whole add-on
+(1.3 GB on 8 GB, 11.1 GB above). A settings app shows translation as installed while `present` is true and offers a
+download only while `missing_gb` > 0. `vibe.models()` → `translation` = `{enabled, language, languages, names, quality,
+effective, fallback, quality_llm, model: {fast, quality}, present: {fast, quality}, running, cache}` (`quality_llm` true =
+quality is the loaded LLM, `model.quality` = "<its name> (the loaded LLM)" — label the choice with it; `present` is the
+per-translator object, the same as `present_modes`). API: `POST /api/translate` — body `{"text": "…"}`
 or `{"texts": ["…", …]}` (≤ 200 texts, ≤ 4000 chars each) + optional `to` / `from` (language
-codes; `to` defaults to `language`) → `{"text" | "texts", to, from, model, calls, cached, ms}`.
+codes; `to` defaults to `language`) → `{"text" | "texts", to, from, model, via, calls, cached, ms}` (`via`: `llm` =
+the loaded LLM translated, `mt` = a translation model). Where the LLM translates, R86 applies as to any text request:
+an uncensored LLM's input is checked by the narrow minors block first (`400 {"error"}`, no model call); a sentence the
+LLM declines goes to the fast model, and if that declines too it comes back as typed (never cached).
 Repeats come from a persistent per-language cache (no model call). `400 {"error"}` while
 translation is off (the message names the setting) or the add-on is missing (it names the
 download). `GET /api/translate/status` (and `GET /api/status` → `translation`) → the object above.

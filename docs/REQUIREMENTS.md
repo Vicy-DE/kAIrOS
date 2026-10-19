@@ -1046,6 +1046,9 @@ naming the superseding ID. `update-progress.py` copies these notes into PROGRESS
   (caps 6200/11800). Tests: `unit_p3_dictionaries_wiktionary_manifests`, `http_dict_lookup_fixtures_and_addon`,
   `http_translation_dom_batches_fast_and_cache_ram`, `unit_knowledge_multi_zim_sources`,
   `unit_p3_dict_wiktionary_docs_bridge_static`. Open: the EN↔X model benchmark.
+  - **Status note (2026-10-18): R89 changed `quality` on the 8 GB tier** — the GPU benchmark
+    (`docs/FAST-MODELS-2026-10-17.md`) closed the open EN↔X question for 8 GB: quality = the loaded LLM (no 9B, no swap);
+    16 GB and up keep the 9B Q8_0. See R89.
   - **Status note (2026-10-07): P3 proven on the CPU, no GPU** — the log's "P3 + fixes" section: suite **128/128** (123 + the
     5 P3 tests) + `test_llm_parallel.py` 29/29, bridge-test 20/20, `BRIDGE_SRC` parses; the real kernel in
     `kairos-cudarun-next:local` without `--gpus` with the 38 verified dictionary archives, the real Wikipedia + Wiktionary
@@ -1724,3 +1727,48 @@ numbers are listed by title only — each gets its real entry when it is built (
     82/82, must-pass 134/134, 0 item differences; in the detector probes exactly two items moved, both a refusal plus an
     offer (now detected); 0 false refusals on 166 real screen answers and 287 cached pages / apps / games.
 
+
+## Translation via the loaded LLM, no fast mode (owner, 2026-10-18)
+- **R89 — quality translation by the resident LLM + drop the fast-mode add-on**: owner (2026-10-18), on the GPU
+  benchmark `docs/FAST-MODELS-2026-10-17.md`: *"Translation via Gemma"* and *"Drop fast mode"*. (a) **Quality
+  translation (8 GB tier)**: `tier-8gb.json` `translation.quality` = `{"use": "llm"}` — no file, no download (the
+  Index-Translate-9B Q4_K_M, 5.78 GB, left the tier). `translation_quality = quality` then runs on the LLM that serves the
+  coder role (`llm_choice()`; the heretic Gemma 4) with exactly the benchmark's body (COMET-22 0.8684 vs 0.8710 Hy-MT2-7B /
+  0.8706 Index-9B, inside the 0.005 rule; a 2.9–3.0 s cycle vs 11.9–12.6 s with a swap): `TRANSLATE_PROMPT` as the one user
+  message, no system prompt, temperature 0 (the translation section's sampling — the LLM's vendor sampling is left out,
+  `MM.chat(vendor_sampling=False)`), thinking off (the LLM's `chat_template_kwargs`), max_tokens `min(2048, 64 + 3·len)`.
+  No swap, no translation llama-server; the key "translation" resolves to the coder LLM's section on such a tier.
+  `TranslationService.llm_chat` sends one such request at a time (`TRANSLATE_LLM_PARALLEL = 1`): a batch holds one of the
+  LLM's two slots, so an app generation that arrives mid-batch gets the other one at once (FIFO: at worst it waits for one
+  text, never for the batch). R86: an uncensored primary's translation input is checked at the entry (check point 4: a
+  batch with a hit is a 400, no model call, nothing cached); a refusal by the LLM is checked (point 3, the text as typed)
+  and that text goes to the fast CPU translator; both declining = the text as typed, never cached (the simpler option:
+  no ladder rung, no swap, no preamble that would change the benchmark's body). The fast path (Index-Translate-2B on the
+  CPU, port 8085, UI batches always fast) is unchanged; the 16 GB tier and up keep their dedicated 9B Q8_0 (the benchmark
+  left 16 GB open: Hy-MT2-30B-A3B leads on quality, no 16 GB swap was measured). `/api/translate` answers `via: llm|mt`;
+  the status carries `quality_llm` and `model.quality` = "<LLM> (the loaded LLM)". (b) **Fast mode dropped**: the
+  `llm_fast` section (Qwen2.5-Coder-7B: 11/37 functional items vs Gemma's 26–30) left `tier-8gb.json`, `tier-16gb.json`
+  and the three 8 GB test variants; `llm_model = "fast"` stays a valid value and serves the default with a status line
+  ("this tier has no separate fast LLM … serving the default"); `/api/models` lists only `default` there; the kernel's
+  llm_fast paths stay for a manifest that has the section (`tests/fixture-llm-fast.json` keeps it for the tests). The
+  Settings sheet and recipe (`docs/api/system-settings.md`, `docs/wiki/settings-app.md`), the dock's Settings prompt and
+  `docs/API.md` say so: one coder LLM (no picker), quality labelled with `m.translation.model.quality`. The licence index
+  keeps the coder's and the 9B's entries for files already on disk. Tests: `unit_translation_manifest_and_specs`,
+  `http_translate_api_cache_and_addon`, `http_translation_present_modes_fast_baked`,
+  `http_translation_dom_batches_fast_and_cache_ram`, `http_r89_quality_translation_via_llm`, `http_llm_fast_mode`,
+  `unit_manifests_gemma4_and_fast_mode`, `unit_r89_docs_and_sheets_static` (test_kernel.py);
+  `unit_parallel_translation_key_swap_and_unload`, `e2e_translation_quality_via_llm_shares_slots`
+  (test_llm_parallel.py); `refusal_e2e_quality_translation_via_llm` (test_refusal_fallback.py). Docs:
+  `docs/FAST-MODELS-2026-10-17.md` (the benchmark), `docs/TRANSLATION-LAYER-2026-10-06.md` (R89 addendum).
+  - **Status note (2026-10-18): implemented and mock-proven** — the full offline suite (kairos-fix-x11:local, `--network
+    none`, the standard data mounts): 362 passed / 0 failed / 7 skipped (the 7 environment skips of R88); JS checks
+    (node --check 6/6, `BRIDGE_SRC` parses, bridge-test 21/21).
+  - **Status note (2026-10-18): GPU-checked on the RTX 4070** — the real kernel with today's `tier-8gb.json` (a private
+    VIBEOS_DIR, the stamped engines, `--network none`): `translation_quality = quality` translated en→de, en→ja and
+    de→en on the resident heretic Gemma (`via: llm`, correct output), each followed by a Gemma answer; the engine log
+    shows ONE llama-server launch for the whole session (Gemma, `--port 8081`, 2 slots), no Index-Translate and no
+    `:8085` launch, `loaded` = llm throughout, VRAM peak 6738 MiB. Cycle (translation + the next answer) 1.56 / 1.39 /
+    1.13 s (translation 0.81–1.07 s), measured on USB-C PD power (ACAD 1, the PD source online; cores at 2.4–4.4 GHz
+    in that window — no 1.1 GHz throttle during the short run). Functional check only: the timing decision came from
+    the benchmark. Not checked on hardware: a refusal while translating, the minors block on translation input, an app
+    generation sharing the slots with a batch (all mock-proven).

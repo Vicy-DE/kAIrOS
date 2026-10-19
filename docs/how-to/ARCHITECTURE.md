@@ -68,7 +68,7 @@ key-only. The shell draws its own confirmation for destructive bridge calls (`vi
 ## Models and manifests
 
 `manifests/tier-<vram>.json` declares, per VRAM class, every model (file, URL, size, sha256,
-serve/gen args) in sections: `llm`, `llm_fast` (add-on), `image` (+ `image_safe`, the same files
+serve/gen args) in sections: `llm` (an `llm_fast` add-on is still understood; no tier ships one since R89), `image` (+ `image_safe`, the same files
 with SFW prompt rules, and the `image_qwen`, `image_classic`, `image_chroma` add-ons), `video`,
 `music`, `vision`, `translation`, `dictionaries`, Wiktionary ZIM add-ons, and `knowledge` (the
 Wikipedia ZIM). `"addon": true` sections download in-OS on demand; `"bake": true` ships an add-on

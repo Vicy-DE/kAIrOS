@@ -1,4 +1,5 @@
-Qwen2.5-Coder-7B-Instruct (Q4_K_M GGUF) — the `fast` coder add-on (downloaded on request)
+Qwen2.5-Coder-7B-Instruct (Q4_K_M GGUF) — the former `fast` coder add-on (downloaded on request until fast
+mode was retired on 2026-10-18; listed while the file is on disk)
 
 File:  /opt/vibeos/models/llm/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf
 Qwen2.5-Coder (c) Alibaba Cloud (Qwen Team), Apache License 2.0 (LICENSE): https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct

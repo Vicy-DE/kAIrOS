@@ -771,14 +771,16 @@ SETTINGS_DEFAULTS = {"wallpaper": None, "accent": "#7c5cff", "accent2": "#41e2ff
                      # "expander_model", else llm (docs/IMAGING-WORKFLOW-V75-1.md)
                      "image_expander": "auto",
                      # which coder LLM serves apps/pages/games (docs/FIXES-2026-09-28.md A2):
-                     # default = the tier's `llm` (Gemma 4 on 8/16 GB), fast = the `llm_fast`
-                     # add-on (Qwen2.5-Coder-7B) — unavailable add-on -> default, with a status
+                     # default = the tier's `llm` (Gemma 4 on 8/16 GB), fast = a tier's `llm_fast`
+                     # add-on — [R89] no shipped tier has one any more (docs/FAST-MODELS-2026-10-17.md):
+                     # "fast" then serves the default, with a status line saying so
                      "llm_model": "default",
                      # translation layer [R71] (docs/TRANSLATION-LAYER-2026-10-06.md): off = zero
                      # behaviour change (no model started, no prompt changes, no DOM work); on +
                      # a `language` other than en = the shell, the apps, the coder LLM's output and
-                     # the English-only models' prompts follow `language`. quality = the 9B model
-                     # through the GPU swap path (like vision); fast = the 2B on the CPU.
+                     # the English-only models' prompts follow `language`. fast = the 2B on the CPU;
+                     # quality = [R89] the loaded LLM itself where the tier says {"use": "llm"} (8 GB:
+                     # no swap, no extra model), else the tier's 9B through the GPU swap path (like vision).
                      "translation": "off",            # off | on
                      "language": "en",                # en | de | es | fr | it | ja | ru
                      "translation_quality": "fast"}   # fast | quality
@@ -805,7 +807,10 @@ if PROFILE.public:                  # [R87] Muse as the civitai-key download (se
 # → the default serves, like `fast`. Its download key is the section name (vibe.models.download
 # ('llm_uncensored')): the alias "uncensored" already names the baked image model for downloads [R76].
 # [R86 round 4] the 8/16 GB tiers have no such section any more: their default `llm` IS the uncensored heretic
-# Gemma 4 ("uncensored": true on the section) — llm_modes() then offers default and fast only.
+# Gemma 4 ("uncensored": true on the section). [R89] nor an `llm_fast` (the owner, 2026-10-18: "Drop fast mode" —
+# coder7b 11/37 functional items vs Gemma's 26–30, docs/FAST-MODELS-2026-10-17.md): llm_modes() offers only
+# default there; the value "fast" stays valid and serves the default (llm_choice says why). The aliases stay for
+# a manifest that still carries the sections (the tests' fixtures, a future tier).
 LLM_MODEL_KEYS = {"default": "llm", "fast": "llm_fast", "uncensored": "llm_uncensored"}
 
 
@@ -2039,6 +2044,10 @@ class ModelManager:
                 raise RuntimeError("this tier has no vision model")
             return key, spec
         if key == "translation":            # the quality MT model: the GPU swap path, like vision [R71]
+            if translation_quality_llm(self.manifest):
+                # [R89] quality = the loaded LLM on this tier: the key resolves to the coder LLM's section, so
+                # nothing can swap a translation model in (translate_texts calls key "llm" itself)
+                return self.llm_spec("llm")
             spec = translation_llm_spec("quality", self.manifest) or translation_llm_spec("fast", self.manifest)
             if not spec:
                 raise RuntimeError("this tier has no translation model")
@@ -2076,6 +2085,9 @@ class ModelManager:
             if not spec or "file" not in spec:
                 if want == "uncensored" and self.manifest.get("llm", {}).get("uncensored"):   # [R86 round 4]
                     fallback = "the default LLM is the uncensored one already — serving it"
+                elif want == "fast":                                                        # [R89] fast mode dropped
+                    fallback = ("this tier has no separate fast LLM (the default LLM is the fast one too, "
+                                "docs/FAST-MODELS-2026-10-17.md) — serving the default")
                 else:
                     fallback = f"this tier has no '{want}' LLM — serving the default"
             elif spec.get("addon") and not section_present(spec):
@@ -2340,7 +2352,8 @@ class ModelManager:
         return aiohttp.ClientTimeout(total=LLM_REQUEST_TIMEOUT * n,
                                      sock_read=LLM_REQUEST_TIMEOUT if stream else None)
 
-    def chat_payload(self, key, system, messages, max_tokens, temperature, stream, sampling=None, spec=None) -> dict:
+    def chat_payload(self, key, system, messages, max_tokens, temperature, stream, sampling=None, spec=None,
+                     vendor_sampling=True) -> dict:
         """The /v1/chat/completions body. `spec` = the section the request is HELD on — chat /
         chat_stream pass the one _llm_hold resolved, so the body's chat_template_kwargs and
         sampling are the serving model's even when llm_model flips while that server loads
@@ -2358,7 +2371,10 @@ class ModelManager:
         top (the prompt expander's). Absent = the body the kernel always sent, so the
         shipped manifests behave exactly as before. `system` None = no system message at all
         (the MT model's single user turn [R71]); otherwise the user-facing generation prompts
-        get the translation layer's one added line while it is on (language_instruction)."""
+        get the translation layer's one added line while it is on (language_instruction).
+        `vendor_sampling` False [R89] leaves the section's `sampling` out (its chat_template_kwargs
+        stay): the resident LLM translating gets exactly the benchmark's body — temperature 0 from
+        the translation section, never Gemma's temp 1.0 / top_k / top_p."""
         if system is not None:
             system += language_instruction(system, key)          # "" unless translation is on [R71]
         payload = {"messages": ([{"role": "system", "content": system}] if system is not None else []) + list(messages),
@@ -2368,14 +2384,16 @@ class ModelManager:
         kwargs = spec.get("chat_template_kwargs")
         if isinstance(kwargs, dict) and kwargs:
             payload["chat_template_kwargs"] = kwargs
-        for extra in (spec.get("sampling"), sampling):
+        for extra in ((spec.get("sampling") if vendor_sampling else None), sampling):
             if isinstance(extra, dict):
                 payload.update({k: v for k, v in extra.items() if isinstance(k, str) and k not in ("messages", "stream")})
         return payload
 
-    async def chat(self, system, messages, key="llm", max_tokens=16384, temperature=0.7, sampling=None, gen_info=None):
+    async def chat(self, system, messages, key="llm", max_tokens=16384, temperature=0.7, sampling=None, gen_info=None,
+                   vendor_sampling=True):
         """Non-streaming chat completion. Returns full text. `gen_info` (a dict) receives how the
-        generation ended — finish_info(): {"finish", "tokens", "length"} [2026-10-14]."""
+        generation ended — finish_info(): {"finish", "tokens", "length"} [2026-10-14].
+        `vendor_sampling` [R89]: see chat_payload (False = the section's sampling stays out)."""
         # [R72] a SHARED hold on the resolved model key (_llm_hold): up to `parallel` requests on
         # the loaded model run at once; everything else (another model, an image job) waits for
         # the group to drain, in FIFO order. The state goes back to "idle" with the LAST holder,
@@ -2385,7 +2403,8 @@ class ModelManager:
             self.state = "llm"
             await self._ensure_llama_resolved(rkey, spec)
             system = uncensored_system(system, rkey)          # [R86 r2, B2] the decensored model never runs without the limits
-            payload = self.chat_payload(key, system, messages, max_tokens, temperature, False, sampling, spec=spec)
+            payload = self.chat_payload(key, system, messages, max_tokens, temperature, False, sampling, spec=spec,
+                                        vendor_sampling=vendor_sampling)
             async with aiohttp.ClientSession() as s:
                 async with s.post(f"http://127.0.0.1:{LLAMA_PORT}/v1/chat/completions",
                                   json=payload, timeout=self._request_timeout(spec)) as r:
@@ -6271,10 +6290,11 @@ async def h_models(request):
         "llm": MM.llm_options(),
         "llm_setting": {"setting": llm_choice["setting"], "effective": llm_choice["effective"],
                         "fallback": llm_choice["fallback"], "modes": llm_modes(),   # [R86 r2, N2] only what this tier has
-                        "note": "vibe.settings.set('llm_model', 'fast') switches to the small fast coder LLM "
-                                "(an add-on: vibe.models.download('fast') first); 'default' = the tier's brain — on the "
-                                "8/16 GB tiers the uncensored heretic Gemma 4 itself [R86 round 4]; 'uncensored' exists only "
-                                "on a tier with an llm_uncensored add-on section (vibe.models.download('llm_uncensored') first)"},
+                        "note": "'default' = the tier's brain — on the 8/16 GB tiers the uncensored heretic Gemma 4 "
+                                "itself [R86 round 4] and the only choice: no separate fast model since 2026-10-18 [R89], "
+                                "'fast' serves the default too; offer only what `modes` lists — 'fast' exists only on a tier "
+                                "with an llm_fast add-on section (vibe.models.download('fast') first), 'uncensored' only on "
+                                "one with an llm_uncensored add-on section (vibe.models.download('llm_uncensored') first)"},
         # [R86] the refusal fallback: the ladder, whether the uncensored rung can run, the last fallback
         "refusal_fallback": refusal_fallback_status(),
         "overrides": {k: s.get(k) for k in
@@ -6631,7 +6651,18 @@ async def h_vision(request):
 # swapped out and comes back lazily on the next LLM request). Everything of the layer lives
 # here (TranslationService + the functions below) — ModelManager only resolves the section in
 # llm_spec("translation") and lets chat_payload() send no system message (system=None).
+# [R89, 2026-10-18 — the owner: "Translation via Gemma", docs/FAST-MODELS-2026-10-17.md §2] a tier whose
+# `translation.quality` is {"use": "llm"} (the 8 GB tier) has no quality MT model: `quality` is the LOADED
+# LLM — the one serving the coder role (llm_choice) — with TRANSLATE_PROMPT as one user message, no system
+# prompt, temperature 0, thinking off and the same max_tokens (exactly the benchmark's 0.8684 COMET-22 body:
+# TR.llm_chat, MM.chat(vendor_sampling=False)). No swap, no translation server. One such request at a time
+# (TRANSLATE_LLM_PARALLEL): a batch holds ONE of the LLM's slots, so an app generation always finds the other
+# (or the next freed one) instead of queueing behind the whole batch. R86 applies as to any text request: the
+# narrow minors block checks every text at the entry when that LLM is uncensored (check point 4); an LLM
+# refusal is checked (point 3) and the text goes to the fast CPU translator; a second refusal = the text as
+# typed, never cached. The 16 GB tier and up keep their dedicated 9B through the swap path (not measured).
 TRANSLATE_PARALLEL = 4            # concurrent requests to the fast MT server (= its -np slots)
+TRANSLATE_LLM_PARALLEL = 1        # [R89] concurrent quality translations on the resident LLM (of its `parallel` slots)
 TRANSLATE_TEXT_MAX = 4000         # chars per text handed to the MT model
 TRANSLATE_BATCH_MAX = 200         # texts per /api/translate call
 TRANSLATE_CACHE_MAX = 5000        # entries per language cache file — bounded like R67's caches, oldest first
@@ -6679,7 +6710,29 @@ def translation_llm_spec(mode: str, manifest=None):
             "parallel": e.get("parallel", 1)}          # one llama-server key more: 1 slot unless measured [R72]
 
 
+def translation_quality_llm(manifest=None) -> bool:
+    """[R89] the tier's `quality` translator is the resident LLM: translation.quality = {"use": "llm"}"""
+    m = manifest if manifest is not None else MANIFEST
+    sec = m.get("translation") if isinstance(m, dict) else None
+    q = sec.get("quality") if isinstance(sec, dict) else None
+    return isinstance(q, dict) and q.get("use") == "llm"
+
+
+def quality_llm_section() -> tuple:
+    """[R89] (section, spec) of the LLM a quality translation runs on: the one serving the coder role"""
+    section = MM.llm_choice()["section"]
+    return section, MM.manifest[section]
+
+
 def translation_mode_present(mode: str, manifest=None) -> bool:
+    if mode == "quality" and translation_quality_llm(manifest):
+        # [R89] the loaded LLM translates: present = its file is on disk (a public image may still be fetching it)
+        try:
+            spec = (manifest or {}).get("llm") if manifest is not None else quality_llm_section()[1]
+            f = MODELS_DIR / spec["file"]
+        except Exception:
+            return False
+        return f.exists() and not f.with_name(f.name + ".aria2").exists()
     spec = translation_llm_spec(mode, manifest)
     if not spec:
         return False
@@ -6696,11 +6749,12 @@ def translation_presence() -> dict:
     complete). section_present() keeps meaning "every file of the section" for every other add-on
     (llm_fast's fallback in llm_choice(), vision, the image models) and for the download endpoint,
     which therefore still fetches the 9B when only the fast file exists (download_entries skips
-    files already on disk)."""
+    files already on disk). [R89] on a tier whose quality is the loaded LLM ({"use": "llm"}) the add-on is
+    the fast file alone: present_modes.quality = the LLM's file, never part of missing_gb / the download."""
     sec = MANIFEST.get("translation") if isinstance(MANIFEST.get("translation"), dict) else {}
     modes = {m: translation_mode_present(m) for m in TRANSLATION_QUALITY}
     missing = sum(sec[m].get("size_gb", 0) for m in TRANSLATION_QUALITY
-                  if not modes[m] and isinstance(sec.get(m), dict))
+                  if not modes[m] and isinstance(sec.get(m), dict) and "file" in sec[m])
     return {"present": any(modes.values()), "present_modes": modes, "missing_gb": round(missing, 2)}
 
 
@@ -6712,7 +6766,12 @@ def translation_choice(settings=None) -> dict:
     other = "fast" if want == "quality" else "quality"
     fallback = None
     if not translation_mode_present(want) and translation_mode_present(other):
-        if translation_llm_spec(want):
+        if want == "quality" and translation_quality_llm():          # [R89] the LLM is the quality translator
+            fallback = "the language model isn't on disk yet — using the fast translation model"
+        elif other == "quality" and translation_quality_llm():
+            fallback = ("the fast translation model isn't installed — the loaded LLM translates "
+                        "(vibe.models.download('translation') fetches the fast one)")
+        elif translation_llm_spec(want):
             fallback = (f"the {want} translation model isn't downloaded — using the {other} one "
                         "(vibe.models.download('translation') fetches both)")
         else:
@@ -6800,12 +6859,27 @@ class TranslationService:
     evicts the coder LLM or an image job under strategy swap. The `quality` model goes
     through the GPU path with the public MM.chat(key="translation") (llm_spec resolves the
     section like vision) — no lock or queue of its own around it. Concurrency to the fast
-    server = its -np slots (TRANSLATE_PARALLEL)."""
+    server = its -np slots (TRANSLATE_PARALLEL). [R89] Where the quality translator is the loaded
+    LLM, llm_chat() sends it TRANSLATE_LLM_PARALLEL requests at a time (llm_sem)."""
 
     def __init__(self):
         self.proc = None
         self.lock = asyncio.Lock()
         self.sem = asyncio.Semaphore(TRANSLATE_PARALLEL)
+        self.llm_sem = asyncio.Semaphore(TRANSLATE_LLM_PARALLEL)     # [R89]
+
+    async def llm_chat(self, messages, max_tokens) -> str:
+        """[R89] one quality translation on the loaded LLM (the coder role's section, key "llm"): the
+        benchmark's body — the single user turn (no system message), the LLM's own chat_template_kwargs
+        (thinking off), the translation section's sampling (temperature 0) and NOT the LLM's vendor
+        sampling, the caller's max_tokens. llm_sem keeps a batch on ONE of the LLM's slots: the MM.chat
+        hold is released (and the next waiter in the GPU queue — an app generation — dispatched) before
+        the next text of the batch asks for a slot, so an app waits at most for one translation."""
+        sec = MM.manifest.get("translation") if isinstance(MM.manifest.get("translation"), dict) else {}
+        sampling = sec.get("sampling") if isinstance(sec.get("sampling"), dict) else {"temperature": 0}
+        async with self.llm_sem:
+            return await MM.chat(None, messages, key="llm", max_tokens=max_tokens, temperature=0,
+                                 sampling=sampling, vendor_sampling=False)
 
     def running(self) -> bool:
         return bool(self.proc and self.proc.returncode is None)
@@ -6892,7 +6966,9 @@ class TranslationService:
         with system=None: the Index-Translate model card's single user turn)."""
         async with self.sem:
             await self.ensure()
-            payload = MM.chat_payload("translation", None, messages, max_tokens, 0, False)
+            # the fast spec itself (the section's thinking off + temperature 0): [R89] on a tier whose quality is the
+            # loaded LLM the key "translation" resolves to that LLM, whose vendor sampling must never reach the 2B
+            payload = MM.chat_payload("translation", None, messages, max_tokens, 0, False, spec=translation_llm_spec("fast"))
             async with aiohttp.ClientSession() as s:
                 async with s.post(f"http://127.0.0.1:{TRANSLATE_PORT}/v1/chat/completions",
                                   json=payload, timeout=aiohttp.ClientTimeout(total=900)) as r:
@@ -6939,12 +7015,15 @@ async def translate_texts(texts: list, to: str, frm=None, settings=None, prefer=
     the source itself. Cache first (TR_CACHE), then the MT model — the `fast` server (CPU, its
     own process) or `quality` (ModelManager.chat key="translation", GPU swap) per the settings;
     `prefer="fast"` keeps the kernel's own helper calls (a search query, an image prompt) off
-    the GPU when the fast file is there. Returns (translations, {"model", "calls", "cached",
-    "ms"}). Raises RuntimeError with a clean sentence when no model can run."""
+    the GPU when the fast file is there. Returns (translations, {"model", "via", "calls", "cached",
+    "ms"}) — `via` = "llm" when the loaded LLM translated [R89], "mt" for a translation model, None
+    when nothing ran. Raises RuntimeError with a clean sentence when no model can run, and
+    MinorBlockError [R89, R86 check points 4/3] when the narrow minors block hits a text the LLM
+    would translate."""
     t0 = time.monotonic()
     s = settings if settings is not None else load_settings()
     out, todo = [None] * len(texts), {}
-    info = {"model": None, "calls": 0, "cached": 0}
+    info = {"model": None, "via": None, "calls": 0, "cached": 0}
     for i, text in enumerate(texts):
         if frm == to or not needs_translation(text, to):
             out[i] = text
@@ -6959,8 +7038,14 @@ async def translate_texts(texts: list, to: str, frm=None, settings=None, prefer=
         mode = translation_choice(s)["effective"]
         if prefer == "fast" and translation_mode_present("fast"):
             mode = "fast"
-        info["model"] = mode
+        via_llm = mode == "quality" and translation_quality_llm()  # [R89] the loaded LLM is the quality translator
+        info["model"], info["via"] = mode, ("llm" if via_llm else "mt")
         language = LANGUAGES[to]
+        if via_llm:
+            # [R89, R86 check point 4] a text request to the LLM like any other: with an uncensored primary every
+            # text is checked at the entry — milliseconds, before any model call; a hit fails the whole call
+            for text in todo:
+                block_check_primary("translate", text, "llm", label=f"translate: {text[:40]}")
 
         async def one(text):
             user = TRANSLATE_PROMPT.format(language=language, text=text)
@@ -6968,12 +7053,27 @@ async def translate_texts(texts: list, to: str, frm=None, settings=None, prefer=
             max_tokens = min(2048, 64 + 3 * len(text))
             if mode == "fast":
                 answer = await TR.chat(messages, max_tokens)
+            elif via_llm:
+                answer = await TR.llm_chat(messages, max_tokens)    # [R89] no swap, no translation server
             else:
                 answer = await MM.chat(None, messages, key="translation", max_tokens=max_tokens, temperature=0)
             answer = strip_thinking(answer or "").strip()
             hit, why = refusal.is_refusal(answer, "prompt")
             if hit and not refusal.is_refusal(text, "prompt")[0]:   # [R86 r2 S7 / r3 Y5] an MT model that declines the sentence: the
                 # text as typed, NOT cached — unless the SOURCE is refusal-shaped itself ("I cannot write the report today" translates to one)
+                if via_llm:
+                    # [R89] the LLM declined: R86 check point 3 on the text (as typed), then the fast CPU translator
+                    # (an MT model, no ladder: no swap, no preamble prompt that would change the benchmark's body)
+                    block_check("translate", text, f"translate: {text[:40]}")
+                    note_fallback("translate", _served_name("llm"), "fast", why, text)
+                    if translation_mode_present("fast"):
+                        try:
+                            answer = strip_thinking(await TR.chat(messages, max_tokens) or "").strip()
+                        except Exception as e:
+                            print(f"[kernel] translation: the fast fallback failed: {str(e)[:120]}", flush=True)
+                            answer = ""
+                        if answer and not refusal.is_refusal(answer, "prompt")[0]:
+                            return answer
                 print(f"[kernel] translation declined ({why[:60]}) — using the text as typed: {text[:60]!r}", flush=True)
                 return None
             return answer or text                                   # an empty answer: the text as it was
@@ -7064,12 +7164,20 @@ def translation_status() -> dict:
     """What /api/status, /api/models and /api/translate/status show (the settings app renders it)."""
     s = load_settings()
     ts, choice = translation_settings(s), translation_choice(s)
+    model = {m: (translation_llm_spec(m) or {}).get("name") for m in TRANSLATION_QUALITY}
+    qllm = translation_quality_llm()
+    if qllm:                       # [R89] quality = the loaded LLM: its name; `running.quality` stays false (nothing extra runs)
+        try:
+            model["quality"] = f"{short_model_name(quality_llm_section()[1].get('name'))} (the loaded LLM)"
+        except Exception:
+            model["quality"] = "the loaded LLM"
     return {"enabled": ts["enabled"], "language": ts["language"], "language_name": LANGUAGES[ts["language"]],
             "active": translation_active(s), "languages": list(LANGUAGES), "names": dict(LANGUAGES),
             "quality": ts["quality"], "effective": choice["effective"], "fallback": choice["fallback"],
             "modes": list(TRANSLATION_QUALITY),
+            "quality_llm": qllm,           # [R89] true: quality = the loaded LLM (no download, no swap)
             "present": {m: translation_mode_present(m) for m in TRANSLATION_QUALITY},
-            "model": {m: (translation_llm_spec(m) or {}).get("name") for m in TRANSLATION_QUALITY},
+            "model": model,
             "available": translation_unavailable_reason(check_setting=False) is None,
             "reason": translation_unavailable_reason(),
             "running": {"fast": TR.running(), "quality": MM.llama_model_key == "translation"},
@@ -7116,6 +7224,8 @@ async def h_translate(request):
               flush=True)
     try:
         out, info = await translate_texts(texts, to, frm, prefer="fast" if dom else None)
+    except MinorBlockError as e:       # [R89, R86] the narrow minors block on a text the LLM would translate
+        return web.json_response({"error": str(e)}, status=400)
     except EngineMissingError as e:    # [2026-10-14] no llama-server: a 503, not an engine failure's 502
         return engine_missing_response(e.binary, str(e))
     except RuntimeError as e:

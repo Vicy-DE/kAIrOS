@@ -422,6 +422,12 @@ async def t_sched_drained_hook(_):
     return "hook: silent while the granted waiter counted, once on its handback, once per drain, never for exclusive"
 
 
+def llm_fast_fixture() -> dict:
+    """[R89] the `llm_fast` section the 8/16 GB tiers carried until 2026-10-18 (tests/fixture-llm-fast.json): fast mode
+    left the shipped manifests, the kernel keeps the mechanism — this file's kernels get it injected"""
+    return json.loads((REPO / "tests" / "fixture-llm-fast.json").read_text(encoding="utf-8"))["llm_fast"]
+
+
 # ============================================================================= B. kernel units
 def kernel():
     sys.path.insert(0, str(REPO / "kernel"))
@@ -521,12 +527,12 @@ async def t_specs(ctx):
 @run_test("unit_parallel_gpu_validated_values", ["R72"])
 async def t_gpu_values(ctx):
     """[GPU validation 2026-10-07, docs/PARALLEL-LLM-2026-10-06.md §5/§6] the shipped values: 8/16 GB
-    llm + llm_fast at 2 slots with their host-RAM caps (--cache-ram 4096 / 2048, --ctx-checkpoints 8),
-    the Muse (Krea 2 family) expanders (Qwen3VL-4B) at 2 slots in every tier, vision and the other
-    expanders at 1; the derived argv keeps the caps and gives every slot the section's full context."""
+    llm at 2 slots with its host-RAM caps (--cache-ram 4096, --ctx-checkpoints 8; [R89] no llm_fast in any
+    tier or test variant any more — the fixture keeps its 2048 cap), the Muse (Krea 2 family) expanders
+    (Qwen3VL-4B) at 2 slots in every tier, vision and the other expanders at 1; the derived argv keeps the
+    caps and gives every slot the section's full context."""
     server = kernel()
-    caps = {"llm": ["--cache-ram", "4096", "--ctx-checkpoints", "8"],
-            "llm_fast": ["--cache-ram", "2048", "--ctx-checkpoints", "8"]}
+    caps = {"llm": ["--cache-ram", "4096", "--ctx-checkpoints", "8"]}
     n = 0
     for t in ("8gb", "16gb", "24gb", "32gb"):
         m = json.loads((REPO / "manifests" / f"tier-{t}.json").read_text())
@@ -549,11 +555,13 @@ async def t_gpu_values(ctx):
                     and a[a.index("--cache-ram"):a.index("--cache-ram") + 4] == c, (t, key, a)
                 n += 1
         else:
-            assert "llm_fast" not in m and m["llm"].get("parallel", 1) == 1, t
+            assert m["llm"].get("parallel", 1) == 1, t
+        assert "llm_fast" not in m, f"{t}: fast mode dropped [R89]"
     for vf in sorted((REPO / "manifests" / "test").glob("tier-8gb-*.json")):
         mv = json.loads(vf.read_text())
-        fs = mv["llm_fast"]["serve_args"]
-        assert mv["image"].get("expander_parallel") == 2 and fs[fs.index("--cache-ram") + 1] == "2048", vf.name
+        assert mv["image"].get("expander_parallel") == 2 and "llm_fast" not in mv, vf.name
+    fs = llm_fast_fixture()["serve_args"]
+    assert llm_fast_fixture()["parallel"] == 2 and fs[fs.index("--cache-ram") + 1] == "2048"
     return f"{n} sections carry the GPU-validated values; derived argv keeps the caps, every slot its full context"
 
 
@@ -696,17 +704,25 @@ async def t_choice_change_while_queued(ctx):
     return "queued request re-resolved to llm_fast, waited for the Gemma pair to drain, both Gemma answers intact"
 
 
-@run_test("unit_parallel_translation_key_swap_and_unload", ["R72", "R71"])
+@run_test("unit_parallel_translation_key_swap_and_unload", ["R72", "R71", "R89"])
 async def t_translation_swap_unload(ctx):
     """[R71 under R72] MM.chat(key="translation") is one more swap-path key: ONE slot and the
     section's argv unchanged; TranslationService.reconfigure() unloads the quality model under
     an EXCLUSIVE hold — at once when nothing runs (≤ 1 s), and right after the running
-    translation group has drained when one does — never under a holder."""
+    translation group has drained when one does — never under a holder. [R89] The 8 GB tier's
+    quality is the loaded LLM (no such key to swap: "translation" resolves to the coder LLM's
+    section); the mechanism stays for the 16 GB tier's dedicated 9B, patched in here."""
     server = kernel()
     MM, TR = server.MM, server.TR
     await MM.stop_llama(grace=3)
+    assert server.translation_quality_llm() and MM.llm_spec("translation")[0] == "llm", "8 GB: quality = the loaded LLM"
     n0 = len(k_inproc_launches())
     before = with_settings(server, translation="on", language="de", translation_quality="quality")
+    saved_q = MM.manifest["translation"]["quality"]
+    q16 = json.loads((REPO / "manifests" / "tier-16gb.json").read_text())["translation"]["quality"]
+    MM.manifest["translation"]["quality"] = q16                  # the 16 GB tier's dedicated 9B (unchanged by R89)
+    (server.MODELS_DIR / q16["file"]).parent.mkdir(parents=True, exist_ok=True)
+    (server.MODELS_DIR / q16["file"]).touch()
     try:
         spec = MM.llm_spec("translation")[1]
         assert MM.llm_slots(spec) == 1 and MM.llama_serve_args(spec) == spec["serve_args"] and "-np" not in spec["serve_args"]
@@ -741,11 +757,12 @@ async def t_translation_swap_unload(ctx):
         assert t_unloaded - t_drained < 1.0, f"unload took {t_unloaded - t_drained:.2f} s after the drain"
         assert not MM.gpu_lock.locked() and MM.gpu_lock.waiting == 0 and MM.state == "idle"
     finally:
+        MM.manifest["translation"]["quality"] = saved_q
         with_settings(server, **before)
         await TR.stop(grace=3)
         await MM.stop_llama(grace=3)
-    return (f"translation key: 1 slot, argv unchanged; idle unload {idle_unload:.2f} s; busy unload waited for the "
-            f"holder, then {t_unloaded - t_drained:.2f} s")
+    return (f"translation key (16 GB's 9B patched in; 8 GB = the LLM [R89]): 1 slot, argv unchanged; idle unload "
+            f"{idle_unload:.2f} s; busy unload waited for the holder, then {t_unloaded - t_drained:.2f} s")
 
 
 @run_test("unit_parallel_chat_stream_release_paths", ["R72", "R68"])      # R68's decision D-R68-3: the aclosing() contract
@@ -942,7 +959,7 @@ async def t_payload_from_held_spec(ctx):
     MM = server.MM
     gem, fast = MM.manifest["llm"], MM.manifest["llm_fast"]
     assert gem.get("sampling") and gem.get("chat_template_kwargs"), "tier-8gb's llm carries both fields"
-    assert not fast.get("sampling") and not fast.get("chat_template_kwargs"), "tier-8gb's llm_fast carries neither"
+    assert not fast.get("sampling") and not fast.get("chat_template_kwargs"), "the llm_fast fixture carries neither"
     before = with_settings(server, llm_model="default")
     try:
         with fake_http(server) as http:
@@ -1097,7 +1114,8 @@ async def t_reselect_no_double_load(ctx):
 class Kernel:
     """A kernel of this repo on :KPORT with this file's mock llama-server (-np from the manifest)
     and the suite's mock sd-cli, in its own VIBEOS_DIR; the manifest = tier-8gb.json with
-    llm.parallel = 2 (llm_fast untouched = today's single slot)."""
+    llm.parallel = 2 and [R89] the former llm_fast section (tests/fixture-llm-fast.json) injected
+    without `parallel` (the single-slot case) — the shipped tier has none any more."""
 
     def __init__(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="kairos-par-"))
@@ -1116,7 +1134,8 @@ class Kernel:
                         "--out", str(t / "bin" / "ENGINES.json")], check=True, capture_output=True)
         m = json.loads((REPO / "manifests" / "tier-8gb.json").read_text())
         m["llm"]["parallel"] = 2
-        m["llm_fast"].pop("parallel", None)          # today's single slot: the "section without parallel" case
+        assert "llm_fast" not in m, "[R89] the shipped tier has no fast mode"
+        m["llm_fast"] = {k: v for k, v in llm_fast_fixture().items() if k != "parallel"}   # the "section without parallel" case
         (t / "manifests" / "tier-8gb.json").write_text(json.dumps(m))
         files = set()
 
@@ -1354,11 +1373,10 @@ async def t_e2e_swap(ctx):
 
 @run_test("e2e_parallel_one_section_is_today", ["R72"])
 async def t_e2e_today(ctx):
-    """Switching to the fast coder LLM (llm_fast has no `parallel`) launches llama-server with the
-    section's argv EXACTLY as before — no -np, no KV flag, -c as written — and back."""
+    """Switching to the fast coder LLM (this kernel's injected llm_fast fixture has no `parallel`) launches
+    llama-server with the section's argv EXACTLY as before — no -np, no KV flag, -c as written — and back."""
     k, s = ctx["kernel"], ctx["session"]
-    m = json.loads((REPO / "manifests" / "tier-8gb.json").read_text())
-    fast_args = m["llm_fast"]["serve_args"]
+    fast_args = llm_fast_fixture()["serve_args"]
     async with s.post(f"{BASE}/api/settings", json={"llm_model": "fast"}) as r:
         assert r.status == 200, await r.text()
     await asyncio.sleep(0.3)
@@ -1381,53 +1399,74 @@ async def t_e2e_today(ctx):
     return f"llm_fast argv == manifest serve_args {fast_args}; default back with 2 slots"
 
 
-@run_test("e2e_translation_quality_swap_and_unload", ["R72", "R71"])
+@run_test("e2e_translation_quality_via_llm_shares_slots", ["R72", "R71", "R89"])
 async def t_e2e_translation(ctx):
-    """[R71 through the real endpoints] translation on (de, quality): /api/translate goes through
-    MM.chat(key="translation") — the 9B's server starts only after the running llm pair has
-    drained, with the section's own argv (one slot, -c 4096, no -np); switching translation off
-    unloads it (TR.reconfigure, exclusive) within a second; the next ask brings the 2-slot llm
-    back. The fast MT server (its own mock on the translate port) is untouched by the scheduler."""
+    """[R89 through the real endpoints] translation on (de, quality) on the 8 GB tier: /api/translate runs on the
+    LOADED LLM — no translation llama-server is ever launched (no swap, `loaded` stays llm) — and a batch takes
+    ONE of its two slots at a time: the batch's requests never overlap each other, so an app generation that
+    arrives mid-batch gets the other slot at once — its spec and its stream both start while the batch still
+    runs, next to a translation in flight (it never queues behind the whole batch; at worst behind ONE text);
+    never more than 2 requests in flight. Switching translation off has nothing to unload."""
+    import aiohttp
     k, s = ctx["kernel"], ctx["session"]
     async with s.post(f"{BASE}/api/settings", json={"translation": "on", "language": "de", "translation_quality": "quality"}) as r:
         assert r.status == 200, await r.text()
     r = await ask(s, "[hold 0s] warm up")                # starts the fast MT server (english_text) + the llm
     assert r["status"] == 200, r
-    n0 = len(k.launches())
-    pair = [asyncio.create_task(ask(s, f"[hold 2s] pair {i}")) for i in range(2)]
-    await asyncio.sleep(0.8)
-    t_tr_sub = time.time()
-    async with s.post(f"{BASE}/api/translate", json={"text": "[hold 0s] Good morning, world"}) as r:
-        tr = await r.json()
-        assert r.status == 200, tr
-    t_tr_done = time.time()
-    rp = await asyncio.gather(*pair)
-    assert all(x["status"] == 200 for x in rp), rp
-    assert tr["model"] == "quality" and tr["text"].startswith("mock answer to:"), tr
     st = await status(s)
-    assert st["loaded"] == "translation" and st["translation"]["running"]["quality"] is True, (st["loaded"], st["translation"]["running"])
-    la = k.launches()
-    assert len(la) == n0 + 1, [l["argv"][-5:] for l in la[n0:]]
-    argv = la[-1]["argv"]
-    assert "Index-Translate-9B" in argv[argv.index("-m") + 1] and "-np" not in argv and argv[argv.index("-c") + 1] == "4096", argv
-    pair_reqs = [q for q in k.requests() if q["prompt"].startswith("[hold 2s] pair") or "[hold 2s] pair" in q["prompt"]]
-    assert pair_reqs and la[-1]["t"] >= max(q["t1"] for q in pair_reqs[-2:]) - 0.3, "the MT server started before the llm pair drained"
-    t0 = time.time()
+    assert st["loaded"] == "llm" and st["translation"]["quality_llm"] is True and st["translation"]["effective"] == "quality", st["translation"]
+    n0, r0 = len(k.launches()), len(k.requests())
+    stamp = f"{time.time():.3f}"
+    texts = [f"[hold 1.2s] batch line {i} {stamp}" for i in range(5)]
+
+    async def batch():
+        t0 = time.time()
+        async with s.post(f"{BASE}/api/translate", json={"texts": texts}, timeout=aiohttp.ClientTimeout(total=120)) as rr:
+            return {"t0": t0, "t1": time.time(), "status": rr.status, "body": await rr.json()}
+
+    async def app():
+        t0 = time.time()
+        async with s.post(f"{BASE}/api/app", json={"prompt": f"[hold 0s] r89 app while translating {stamp}"},
+                          timeout=aiohttp.ClientTimeout(total=120)) as rr:
+            body = (await rr.read()).decode("utf-8", "ignore")
+        return {"t0": t0, "t1": time.time(), "status": rr.status, "body": body}
+
+    tb = asyncio.create_task(batch())
+    await asyncio.sleep(0.7)
+    ra = await app()
+    rb = await tb
+    assert rb["status"] == 200 and rb["body"]["model"] == "quality" and rb["body"]["via"] == "llm" and rb["body"]["calls"] == 5 \
+        and all(x.startswith("mock answer to:") for x in rb["body"]["texts"]), rb
+    assert ra["status"] == 200 and "<!DOCTYPE" in ra["body"], ra["body"][-300:]
+    app_took, batch_took = ra["t1"] - ra["t0"], rb["t1"] - rb["t0"]
+    reqs = [q for q in k.requests()[r0:] if q.get("np") == 2]          # the LLM's server (the fast MT mock runs -np 4)
+    tr = sorted((q for q in reqs if q["prompt"].startswith("Translate the following text into German")), key=lambda q: q["t0"])
+    assert len(tr) == 5, [q["prompt"] for q in reqs]
+    overlaps = [(a["t1"], b["t0"]) for a, b in zip(tr, tr[1:]) if b["t0"] < a["t1"] - 0.05]
+    assert not overlaps, f"two translations of one batch ran at once: {overlaps}"
+    apps = sorted((q for q in reqs if not q["prompt"].startswith("Translate") and q["t0"] >= ra["t0"] - 0.1), key=lambda q: q["t0"])
+    assert len(apps) >= 2, [(q["prompt"][:30], q["t0"] - ra["t0"]) for q in apps]      # the spec + the stream
+    # the app never queued behind the batch: its first request started at once, both before the batch's last text
+    # started, sharing the server with a running translation
+    assert apps[0]["t0"] - ra["t0"] < 1.5 and apps[1]["t0"] < tr[-1]["t0"], \
+        (round(apps[0]["t0"] - ra["t0"], 2), round(apps[1]["t0"] - tr[-1]["t0"], 2))
+    assert any(q["inflight_at_start"] >= 1 for q in apps[:2]), [(q["prompt"][:30], q["inflight_at_start"]) for q in apps[:2]]
+    assert k.inflight_max() <= 2 and not k.overflow(), (k.inflight_max(), k.overflow())
+    la = k.launches()[n0:]
+    assert not any("Index-Translate" in l["argv"][l["argv"].index("-m") + 1] for l in la), [l["argv"][-6:] for l in la]
+    for _ in range(100):                                  # the app's icon (an exclusive sd job) may still run
+        st = await status(s)
+        if st["state"] == "idle":
+            break
+        await asyncio.sleep(0.1)
+    assert st["translation"]["running"]["quality"] is False and st["loaded"] in ("llm", None), (st["loaded"], st["translation"]["running"])
     async with s.post(f"{BASE}/api/settings", json={"translation": "off"}) as r:
         assert r.status == 200
-    for _ in range(100):
-        st = await status(s)
-        if st["loaded"] is None and st["translation"]["running"] == {"fast": False, "quality": False}:
-            break
-        await asyncio.sleep(0.05)
-    unload = time.time() - t0
-    assert st["loaded"] is None and unload < 3.0, (st["loaded"], st["translation"]["running"], unload)
+    await asyncio.sleep(0.3)
     r = await ask(s, "[hold 0s] back")
-    assert r["status"] == 200
-    la = k.launches()
-    assert len(la) == n0 + 2 and la[-1]["argv"][-3:] == ["-np", "2", "--no-kv-unified"] and "gemma" in " ".join(la[-1]["argv"]).lower()
-    return (f"quality MT swap after the pair drained (translate waited {t_tr_done - t_tr_sub:.1f} s), 1 slot, argv unchanged; "
-            f"off → unloaded in {unload:.2f} s; llm (2 slots) back")
+    assert r["status"] == 200 and not any("Index-Translate" in l["argv"][l["argv"].index("-m") + 1] for l in k.launches()[n0:])
+    return (f"5-text quality batch on the loaded LLM in {batch_took:.1f} s, one slot at a time (no overlap); an app mid-batch "
+            f"started at once on the other slot ({app_took:.1f} s in all); in-flight max {k.inflight_max()}; no translation server launched")
 
 
 @run_test("e2e_vanished_app_client_keeps_its_slot_r62", ["R72", "R62"])

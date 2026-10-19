@@ -111,12 +111,13 @@
   },
   {
    "id": "index-translate",
-   "name": "Index-Translate 2B / 9B (translation)",
+   "name": "Index-Translate 2B / 9B (translation: the 2B fast model; the 9B quality model of the 16 GB tier and up)",
    "licence": "Apache-2.0",
    "attribution": "Index-Translate © Bilibili IndexTeam, built on Qwen3.5 (© 2026 Alibaba Cloud); official GGUFs, unmodified.",
    "files": [
     "translation/Index-Translate-2B.Q4_K_M.gguf",
-    "translation/Index-Translate-9B.Q4_K_M.gguf"
+    "translation/Index-Translate-9B.Q4_K_M.gguf",
+    "translation/Index-Translate-9B.Q8_0.gguf"
    ],
    "texts": [
     "LICENSE",
@@ -213,7 +214,7 @@
   },
   {
    "id": "qwen2.5-coder",
-   "name": "Qwen2.5-Coder-7B-Instruct (the fast coder add-on)",
+   "name": "Qwen2.5-Coder-7B-Instruct (the former fast coder add-on, retired 2026-10-18; listed while the file is on disk)",
    "licence": "Apache-2.0",
    "attribution": "Qwen2.5-Coder © Alibaba Cloud (Qwen Team); GGUF by unsloth, unmodified.",
    "files": [

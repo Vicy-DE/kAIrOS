@@ -100,8 +100,8 @@ paints what you asked for.
 
 | VRAM | HTML/app LLM | Python/game LLM | Image (default, baked) | Video (add-on) |
 |---|---|---|---|---|
-| 8 GB | Gemma 4 26B-A4B-it ultra-uncensored heretic i1-IQ4_XS (MoE, experts partly in RAM; `"uncensored": true`; fast mode: Qwen2.5-Coder-7B add-on) | shared | Muse v3.5 Extended Q4_0, no LoRA (1024²) | Wan 2.2 TI2V-5B Q4_K_M (add-on) |
-| 16 GB | Gemma 4 26B-A4B-it ultra-uncensored heretic i1-IQ4_XS (same file and flags as 8 GB; fast mode: Qwen2.5-Coder-7B add-on) | shared | Muse v3.5 Extended Q4_0, no LoRA | Wan 2.2 TI2V-5B Q8_0 (add-on) |
+| 8 GB | Gemma 4 26B-A4B-it ultra-uncensored heretic i1-IQ4_XS (MoE, experts partly in RAM; `"uncensored": true`; also the quality translator) | shared | Muse v3.5 Extended Q4_0, no LoRA (1024²) | Wan 2.2 TI2V-5B Q4_K_M (add-on) |
+| 16 GB | Gemma 4 26B-A4B-it ultra-uncensored heretic i1-IQ4_XS (same file and flags as 8 GB) | shared | Muse v3.5 Extended Q4_0, no LoRA | Wan 2.2 TI2V-5B Q8_0 (add-on) |
 | 24 GB | Qwen3-Coder-30B-A3B Q4_K_M (full GPU) | Qwen2.5-Coder-32B Q4_K_M | Muse v3.5 Extended Q4_0, no LoRA | Wan 2.2 TI2V-5B Q8_0 (add-on) |
 | 32 GB | Qwen3-Coder-30B-A3B Q6_K | Qwen2.5-Coder-32B Q5_K_M | Muse v3.5 Extended Q4_0, no LoRA | Wan 2.2 TI2V-5B Q8_0 (add-on) |
 
@@ -115,7 +115,7 @@ Manifests live in [manifests/](manifests/) and are plain JSON — swap any model
 
 **The uncensored default LLM.** On 8 and 16 GB the default LLM is the "heretic" edition of Gemma 4
 26B-A4B, marked `"uncensored": true` in the manifest: it answers adult requests itself. When a model
-still declines (fast mode, the image-prompt expander), the kernel never caches or renders the
+still declines (a censored model, the image-prompt expander), the kernel never caches or renders the
 refusal: R86's ladder retries with an 18+ system preamble, then on the uncensored model, and only
 then answers "declined" (HTTP 422). The one content block is narrow: a request that pairs an
 explicit under-18 age or word with a sexual term (plus a few illegal-content terms) is refused

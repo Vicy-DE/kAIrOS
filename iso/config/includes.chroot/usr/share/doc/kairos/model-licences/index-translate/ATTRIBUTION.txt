@@ -1,8 +1,10 @@
-Index-Translate 2B (baked, the fast translation model) and 9B (a download) — the translation layer
+Index-Translate 2B (baked, the fast translation model) and 9B (the quality model of the 16 GB tier and up, a
+download; the 8 GB tier translates "quality" with its loaded LLM since 2026-10-18) — the translation layer
 
 Files: /opt/vibeos/models/translation/Index-Translate-2B.Q4_K_M.gguf
          sha256 044b313d29342bd3b2c77cbb64023ca0d209bd9b3247763f9d162767ef2d746a
-       /opt/vibeos/models/translation/Index-Translate-9B.Q4_K_M.gguf (when downloaded)
+       /opt/vibeos/models/translation/Index-Translate-9B.Q8_0.gguf (16 GB+, when downloaded; an earlier 8 GB
+         download: Index-Translate-9B.Q4_K_M.gguf)
 Index-Translate (c) Bilibili IndexTeam, Apache License 2.0 (LICENSE, from https://github.com/bilibili/Index-Translate):
   https://huggingface.co/IndexTeam/Index-Translate-2B-GGUF — official GGUFs, unmodified.
 It is built on Qwen3.5: Qwen3.5-2B (c) 2026 Alibaba Cloud, Apache-2.0 (LICENSE-Qwen3.5-2B, from

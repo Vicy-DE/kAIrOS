@@ -169,8 +169,9 @@ that **stable-diffusion.cpp covers Krea 2 / Qwen-Image / Z-Image / Chroma image 
 Wan 2.2 video**, eliminating PyTorch+ComfyUI from the image.
 
 - **HTML LLM**: 8 and 16 GB `Gemma 4 26B-A4B-it` *ultra-uncensored heretic* i1-IQ4_XS (MoE,
-  experts partly in RAM; `"uncensored": true` — R86; since 2026-10-10, stock Gemma 4 before; fast
-  mode: the `Qwen2.5-Coder-7B` add-on); 24/32 GB `Qwen3-Coder-30B-A3B` (full GPU). All tiers run
+  experts partly in RAM; `"uncensored": true` — R86; since 2026-10-10, stock Gemma 4 before; no fast
+  mode since 2026-10-18 — R89, the `Qwen2.5-Coder-7B` add-on left; on 8 GB it is also the quality translator);
+  24/32 GB `Qwen3-Coder-30B-A3B` (full GPU). All tiers run
   ≥16k context [R43].
 - **Image (default, baked)**: `Muse v3.5 Extended` Q4_0 (a Krea 2 fine-tune, uncensored, no
   LoRA; since 2026-10-10, Krea 2 Turbo + the Kroma LoRA before) — Qwen3-VL-4B LLM encoder + the

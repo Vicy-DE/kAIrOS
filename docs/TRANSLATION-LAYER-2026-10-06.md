@@ -599,3 +599,56 @@ llm_fast's fallback in `llm_choice()`, vision, the image models, the knowledge a
   (`KAIROS_TEST_ONLY=loader_default_single_entry`) and passed in the 10:36 baseline. Re-run the full recipe once the stick
   write is done: `tests/results.json` + `docs/PROGRESS.md` (regenerated 13:12, "2 failing" = that R28/R48 timeout) then
   go back to all green.
+
+## R89 addendum (2026-10-18): quality = the loaded LLM on the 8 GB tier
+
+The owner's decision of 2026-10-18 (*"Translation via Gemma"*), on the GPU benchmark `docs/FAST-MODELS-2026-10-17.md`
+§2: the resident heretic Gemma translates at COMET-22 0.8684 against 0.8710 (Hy-MT2-7B) and 0.8706 (Index-Translate-9B
+Q4_K_M, the 8 GB tier's quality model until now) — inside the 0.005 rule — and its cycle (a translation plus the next
+Gemma answer) takes 2.9–3.0 s against 11.9–12.6 s with the swap to a dedicated model.
+
+- **Manifest.** `tier-8gb.json` `translation.quality` = `{"use": "llm", "comment": …}` — the shape a tier uses to say
+  "the quality translator is the loaded LLM" (no `file`, so nothing to download, bake or check; `section_files` and
+  the presence/download code see the fast file alone). The 9B Q4_K_M entry is gone (5.78 GB less to fetch). The 16 GB
+  tier and up keep their dedicated 9B Q8_0 unchanged: the benchmark left 16 GB open (Hy-MT2-30B-A3B leads on quality,
+  no 16 GB-card swap was measured).
+- **Kernel** (`kernel/server.py`, translation layer). `translation_quality_llm()` reads the shape;
+  `translation_mode_present("quality")` = the serving LLM's file is on disk (a public image may still be fetching it →
+  quality falls back to fast, `fallback` says so). `translate_texts` with quality chosen calls
+  `TranslationService.llm_chat` → `MM.chat(None, [user TRANSLATE_PROMPT], key="llm", temperature=0,
+  sampling=<the translation section's {"temperature": 0}>, vendor_sampling=False)`: the LLM that serves the coder role
+  (`llm_choice()`), no system message, the LLM's own `chat_template_kwargs` (thinking off), the same `max_tokens` —
+  the benchmark's body, byte for byte (`chat_payload(vendor_sampling=False)` leaves Gemma's temperature 1.0 / top_k 64 /
+  top_p 0.95 out; every other request keeps them). No swap, no `translation` llama-server: on such a tier the key
+  "translation" resolves to the coder LLM's section, so `loaded` stays `llm`. The fast server builds its body from the
+  fast spec itself (it used to resolve the key "translation", which now means the LLM).
+- **Slots (R72).** The LLM runs `-np 2`. `TRANSLATE_LLM_PARALLEL = 1`: a batch's texts go to the LLM one at a time
+  (`TR.llm_sem`), so the batch holds ONE slot. The GPU scheduler is FIFO; each text releases its shared hold before
+  the next text asks for one, and the release dispatches whoever queued meanwhile — an app generation arriving
+  mid-batch gets the free slot at once, at worst after one text (≤ 2048 tokens), never after the whole batch. Pinned
+  by `e2e_translation_quality_via_llm_shares_slots` (tests/test_llm_parallel.py: a 5-text batch with 1.2 s per text
+  never overlaps itself; an app posted mid-batch starts both its spec and its stream during the batch, next to a
+  translation in flight; ≤ 2 in flight; no translation model launched).
+- **R86.** A translation by an uncensored primary is a text request like any other: every text of the call is
+  checked by `refusal.minor_block` at the entry (check point 4; a hit = `400 {"error": BLOCK_MESSAGE}`, no model call
+  for the whole call, nothing cached, one `blocked … on translate` journal line). A refusal by the LLM (the MT check,
+  kind `prompt`) is checked once more (point 3, the text as typed — the censored-primary case) and that text goes to
+  the fast CPU translator (`last_fallback` = `{kind: translate, from: llm, to: fast}`); a second refusal = the text as
+  typed, never cached. Chosen over the ladder as the simpler correct option: no swap, no preamble system prompt that
+  would change the benchmark's body, and an MT model that does not moralise.
+- **Unchanged.** The fast path (Index-Translate-2B on the CPU, port 8085, `--cache-ram 0`), UI batches (`dom: true`)
+  always fast whenever its file is there, the English hop of the kernel's own helpers (`prefer="fast"`), the cache,
+  the settings values (`translation_quality` fast|quality — "quality" now means the loaded LLM on 8 GB).
+- **API.** `/api/translate` answers `via: "llm" | "mt"`; `/api/translate/status` (and `/api/status`, `/api/models` →
+  `translation`) carries `quality_llm` and `model.quality` = "<LLM short name> (the loaded LLM)"; `running.quality`
+  stays false there (nothing extra runs). The Settings sheet and recipe label the choice with `model.quality` and offer
+  a download only while `missing_gb` > 0.
+- **Tests.** `unit_translation_manifest_and_specs`, `http_translate_api_cache_and_addon`,
+  `http_translation_present_modes_fast_baked` (8 GB + the 16 GB 9B in-process), `http_translation_dom_batches_fast_and_cache_ram`,
+  `http_r89_quality_translation_via_llm` (three directions, the body, no launch, the fast path),
+  `unit_parallel_translation_key_swap_and_unload` (the 16 GB 9B swap mechanism), `e2e_translation_quality_via_llm_shares_slots`,
+  `refusal_e2e_quality_translation_via_llm` (the entry block with 0 model calls, the fast fallback, the censored primary).
+- **GPU check (2026-10-18, RTX 4070, USB-C PD power).** The real kernel with today's `tier-8gb.json`: en→de, en→ja and
+  de→en through `/api/translate` on the resident Gemma (`via: llm`), each followed by a Gemma answer — one llama-server
+  launch for the whole session (Gemma on :8081), no Index-Translate and no :8085 launch, `loaded` = llm throughout;
+  translation 0.81–1.07 s, cycle 1.13–1.56 s, VRAM peak 6738 MiB. Suite: 362 passed / 0 failed / 7 skipped.

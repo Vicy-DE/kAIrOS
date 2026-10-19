@@ -1,5 +1,5 @@
 {
- "at": "2026-10-18 02:13:34",
+ "at": "2026-10-18 12:44:03",
  "base": "http://127.0.0.1:1338",
  "tests": {
   "unit_prompts_style_mandate": {
@@ -163,14 +163,14 @@
     "R22"
    ],
    "status": "pass",
-   "detail": "2 Krea-2 images generated, seeds differ (971573189 vs 2132740766); engine crash -> error + idle"
+   "detail": "2 Krea-2 images generated, seeds differ (1264246921 vs 778018374); engine crash -> error + idle"
   },
   "http_video": {
    "reqs": [
     "R6"
    ],
    "status": "pass",
-   "detail": "mp4 produced and served: /files/videos/5df518e55985.mp4"
+   "detail": "mp4 produced and served: /files/videos/63c6844aa434.mp4"
   },
   "unit_finish_video_drops_intermediate": {
    "reqs": [
@@ -214,7 +214,7 @@
     "R14"
    ],
    "status": "pass",
-   "detail": "20234 bytes of self-documentation served"
+   "detail": "20190 bytes of self-documentation served"
   },
   "http_search_offline_mode": {
    "reqs": [
@@ -294,7 +294,7 @@
     "R31"
    ],
    "status": "pass",
-   "detail": "ace-lm -> request0.json -> ace-synth (turbo DiT, wav) served: /files/music/80b0f3ce4010.wav"
+   "detail": "ace-lm -> request0.json -> ace-synth (turbo DiT, wav) served: /files/music/4ede4136dffe.wav"
   },
   "unit_music_language_default_en": {
    "reqs": [
@@ -729,7 +729,7 @@
     "R62"
    ],
    "status": "pass",
-   "detail": "SIGTERM with 2 open SSE streams -> exit 0 in 1.37 s, no traceback, app told, engine gone"
+   "detail": "SIGTERM with 2 open SSE streams -> exit 0 in 1.27 s, no traceback, app told, engine gone"
   },
   "unit_r68_fixes_static": {
    "reqs": [
@@ -753,7 +753,7 @@
     "R26"
    ],
    "status": "pass",
-   "detail": "88 requirements, no holes, all cited ids documented, 19 without a test so far this run"
+   "detail": "89 requirements, no holes, all cited ids documented, 20 without a test so far this run"
   },
   "unit_game_launch_gate_mapped_window": {
    "reqs": [
@@ -901,7 +901,7 @@
     "R5"
    ],
    "status": "pass",
-   "detail": "sampling merged (temperature override, per-call wins, messages/stream protected); variants: qwen35 0.7/0.8/20/1.5, gemma 1.0/64/0.95 + --fit = tier-8gb llm, coder7b = tier-8gb llm_fast"
+   "detail": "sampling merged (temperature override, per-call wins, messages/stream protected); variants: qwen35 0.7/0.8/20/1.5, gemma 1.0/64/0.95 + --fit = tier-8gb llm, coder7b = the former llm_fast (fixture)"
   },
   "unit_engine_stamp_next_set_and_sd_server": {
    "reqs": [
@@ -916,10 +916,11 @@
    "reqs": [
     "R3",
     "R5",
-    "R47"
+    "R47",
+    "R89"
    ],
    "status": "pass",
-   "detail": "8/16 GB: Gemma 4 (sha256, --fit, thinking off, 1.0/64/0.95) + llm_fast add-on (coder7b, sha256); 24/32 GB untouched; variants carry llm_fast"
+   "detail": "8/16 GB: Gemma 4 (sha256, --fit, thinking off, 1.0/64/0.95), no llm_fast [R89]; 24/32 GB untouched; variants without it; fixture = the former section"
   },
   "unit_r47_baked_set_and_build_scripts": {
    "reqs": [
@@ -927,16 +928,17 @@
     "R3"
    ],
    "status": "pass",
-   "detail": "baked set = 4 non-addon files (Muse Q4_0, no LoRA) / 24.99 GB + 39 bake-flagged add-on files (translation fast + dictionaries) = 43 / 26.42 GB; music/video/vision/llm_fast + 3 image models + the 9B stay add-ons; 3 build paths use the list; quickjs shipped; build-image.sh mirrors the list (69-file re"
+   "detail": "baked set = 4 non-addon files (Muse Q4_0, no LoRA) / 24.99 GB + 39 bake-flagged add-on files (translation fast + dictionaries) = 43 / 26.42 GB; music/video/vision + 3 image models stay add-ons (no fast coder, no 9B [R89]); 3 build paths use the list; quickjs shipped; build-image.sh mirrors the list "
   },
   "http_llm_fast_mode": {
    "reqs": [
     "R3",
     "R5",
-    "R47"
+    "R47",
+    "R89"
    ],
    "status": "pass",
-   "detail": "models.llm default/fast + llm_setting; fast \u2192 llama-server on coder7b; add-on missing \u2192 default + reason; download keys fast|llm_fast; bad value 400"
+   "detail": "8 GB: models.llm = [default] only, modes [default]; fast \u2192 default + reason, no coder launch; 'fast' download 400; bad value 400; mechanism on the fixture: fast \u2192 llm_fast, absent \u2192 default + add-on reason"
   },
   "http_settings_validation": {
    "reqs": [
@@ -989,15 +991,16 @@
     "R45"
    ],
    "status": "pass",
-   "detail": "dock prompt: api sheet 6439 + recipe 11710 chars injected whole; 28250 of 28278 budget chars used (-c 16384)"
+   "detail": "dock prompt: api sheet 6395 + recipe 11573 chars injected whole; 28198 of 28278 budget chars used (-c 16384)"
   },
   "unit_translation_manifest_and_specs": {
    "reqs": [
     "R71",
-    "R47"
+    "R47",
+    "R89"
    ],
    "status": "pass",
-   "detail": "4 tiers: translation addon (fast 2B CPU -ngl 0 -dev none, quality 9B GPU; Q4_K_M on 8 GB, Q8_0 above), sha256/size_bytes, provisional note; specs + prompt + script heuristics"
+   "detail": "4 tiers: translation addon (fast 2B CPU -ngl 0 -dev none); quality 8 GB = the loaded LLM [R89] (no file, key 'translation' \u2192 llm), 16 GB+ the 9B Q8_0 (swap); sha256/size_bytes; specs + prompt + script heuristics"
   },
   "http_translation_settings_validation": {
    "reqs": [
@@ -1021,15 +1024,16 @@
     "R47"
    ],
    "status": "pass",
-   "detail": "single/batch/cache (de.json; repeat = 0 calls)/to+from/7 bad bodies 400; ONE CPU launch (-ngl 0 -dev none :8085, no system msg, thinking off, temp 0); extras + download = 2 files; quality\u2192fast fallback; absent \u2192 400; off stops the server"
+   "detail": "single/batch/cache (de.json; repeat = 0 calls)/to+from/7 bad bodies 400; ONE CPU launch (-ngl 0 -dev none :8085, no system msg, thinking off, temp 0); extras + download = the 2B only [R89]; quality (LLM file absent)\u2192fast fallback; absent \u2192 400; off stops the server"
   },
   "http_translation_present_modes_fast_baked": {
    "reqs": [
     "R71",
-    "R47"
+    "R47",
+    "R89"
    ],
    "status": "pass",
-   "detail": "fast only \u2192 present true, present_modes {fast, !quality}, missing_gb 5.78, download_gb 7.1; download: not 'already', both entries handed over, aria2c for the 9B only; quality only \u2192 present; neither \u2192 present false; other add-ons unchanged"
+   "detail": "8 GB [R89]: fast + LLM \u2192 present, missing 0, 'already'; fast gone \u2192 present via the LLM, the download fetches the 2B only; LLM gone \u2192 quality false, missing 0; neither \u2192 absent. 16 GB 9B: fast only \u2192 missing 9.79, both entries handed over, aria2c for the 9B only; other add-ons unchanged"
   },
   "http_translation_llm_language_and_english_hop": {
    "reqs": [
@@ -1048,7 +1052,7 @@
     "R59"
    ],
    "status": "pass",
-   "detail": "translator 6764 chars identical in shell + bridge (inert literal); handlers in both host pages; settings hook + translate=no spots; settings sheet 6439 + recipe 11710 chars carry keys/picker/switch/download/vibe.translate"
+   "detail": "translator 6764 chars identical in shell + bridge (inert literal); handlers in both host pages; settings hook + translate=no spots; settings sheet 6395 + recipe 11573 chars carry keys/picker/switch/download/vibe.translate"
   },
   "unit_p3_dictionaries_wiktionary_manifests": {
    "reqs": [
@@ -1069,10 +1073,29 @@
   "http_translation_dom_batches_fast_and_cache_ram": {
    "reqs": [
     "R71",
+    "R72",
+    "R89"
+   ],
+   "status": "pass",
+   "detail": "quality selected: dom batch \u2192 fast (:8085, --cache-ram 0, logged); explicit call \u2192 quality = the loaded LLM (:8081, no system msg, no translation launch) [R89]; \u2192 fast keeps the fast server and the LLM; off stops it"
+  },
+  "http_r89_quality_translation_via_llm": {
+   "reqs": [
+    "R89",
+    "R71",
     "R72"
    ],
    "status": "pass",
-   "detail": "quality selected: dom batch \u2192 fast (:8085, --cache-ram 0, logged), explicit call \u2192 quality (9B via the LLM port, --cache-ram 0); \u2192 fast unloads the 9B and keeps the fast server; off stops it"
+   "detail": "quality = the loaded LLM: en\u2192de / en\u2192ja / de\u2192en on :8081 with the benchmark's body (no system, temp 0, thinking off, the kernel's max_tokens, no vendor sampling), no translation launch, loaded = llm; dom batch, English hop and quality=fast stay on the 2B (:8085)"
+  },
+  "unit_r89_docs_and_sheets_static": {
+   "reqs": [
+    "R89",
+    "R39",
+    "R59"
+   ],
+   "status": "pass",
+   "detail": "R89 entry, FAST-MODELS record (no personal paths), index line, addendum, API.md; sheet 6395 / recipe 11573 chars without a fast model"
   },
   "unit_knowledge_multi_zim_sources": {
    "reqs": [
@@ -1090,7 +1113,7 @@
     "R12"
    ],
    "status": "pass",
-   "detail": "vibe.dict + dom flag in bridge/shell/host; API.md + core + settings sheet 6439 / recipe 11710 chars carry the add-ons; requirement (h) + log section; kernel appends --cache-ram"
+   "detail": "vibe.dict + dom flag in bridge/shell/host; API.md + core + settings sheet 6395 / recipe 11573 chars carry the add-ons; requirement (h) + log section; kernel appends --cache-ram"
   },
   "unit_bake_flagged_addons_in_image": {
    "reqs": [
@@ -1098,7 +1121,7 @@
     "R71"
    ],
    "status": "pass",
-   "detail": "bake flag on translation.fast + dictionaries in 7 manifests, nowhere else; 8gb list +39 files / +1.43 GB (the 9B + ZIMs stay downloads); tier presence unchanged"
+   "detail": "bake flag on translation.fast + dictionaries in 7 manifests, nowhere else; 8gb list +39 files / +1.43 GB (ZIMs + the 16 GB+ 9B stay downloads; 8 GB quality = the LLM [R89]); tier presence unchanged"
   },
   "unit_finish_info_length_limit": {
    "reqs": [

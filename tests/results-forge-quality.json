@@ -1,5 +1,5 @@
 {
- "at": "2026-10-18 02:17:46",
+ "at": "2026-10-18 12:48:22",
  "tests": {
   "unit_forge_pyflakes_static_gate": {
    "reqs": [
@@ -34,7 +34,7 @@
     "R11"
    ],
    "status": "pass",
-   "detail": "RIGHT-key crash caught in 1.2 s (line 10, input t=1.00s KEYDOWN right); healthy passed (73 events, 7.1 s); no-window, after-QUIT crash caught; QUIT ignored = pass"
+   "detail": "RIGHT-key crash caught in 1.2 s (line 10, input t=1.00s KEYDOWN right); healthy passed (73 events, 7.2 s); no-window, after-QUIT crash caught; QUIT ignored = pass"
   },
   "unit_appcheck_runtime_chromium": {
    "reqs": [
@@ -43,7 +43,7 @@
     "R45"
    ],
    "status": "pass",
-   "detail": "healthy clean (0.4 s), click error with button + app line, load error + unhandled rejection (0.4 s)"
+   "detail": "healthy clean (1.0 s), click error with button + app line, load error + unhandled rejection (0.4 s)"
   },
   "http_forge_game_static_gate_blocks_undefined_name": {
    "reqs": [

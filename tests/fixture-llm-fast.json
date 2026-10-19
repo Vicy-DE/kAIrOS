@@ -1,0 +1,27 @@
+{
+ "comment": "[R89] tests only: the `llm_fast` section the 8 and 16 GB tiers carried until 2026-10-18 (Qwen2.5-Coder-7B, the fast-mode add-on). The owner dropped fast mode (docs/FAST-MODELS-2026-10-17.md); the kernel keeps its llm_fast code paths for a manifest that still has one, and the tests inject this section into their own manifests to keep that mechanism covered (llm_model=fast, the add-on fallback, the censored primary of the refusal ladder, the parallel-slot rules).",
+ "llm_fast": {
+  "role": "fast mode — the small coder LLM (settings key llm_model = \"fast\")",
+  "name": "Qwen2.5-Coder-7B-Instruct (Q4_K_M, fast mode)",
+  "comment": "Downloadable add-on [R47]: the 8 GB tier's LLM until 2026-09-28. Selected with vibe.settings.set('llm_model', 'fast') — the kernel restarts llama-server on the selected model; when this add-on is not downloaded the default LLM keeps serving and /api/status reports the fallback. Fast (≈ 40 s per app, 51 tok/s, 5.5 GB VRAM, 4.8 GB RSS) but its generated apps mostly do not work (11/37 functional items in the feature test) — a speed/low-RAM option, not the default. sha256 computed from the local copy 2026-09-28 (the file this OS served since June).",
+  "file": "llm/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
+  "url": "https://huggingface.co/unsloth/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
+  "size_gb": 4.68,
+  "size_bytes": 4683073504,
+  "sha256": "9a961bb225cb2b9fd84b2297df0d53089895c049d7d9dc5f5f8aebbcd3247872",
+  "serve_args": [
+   "-ngl",
+   "99",
+   "-c",
+   "16384",
+   "--cache-ram",
+   "2048",
+   "--ctx-checkpoints",
+   "8",
+   "--jinja"
+  ],
+  "parallel": 2,
+  "parallel_comment": "2 llama-server slots, each with the full -c above (-c 2*C -np 2 --no-kv-unified) [R72]: two LLM requests at once; CPU-measured 2026-10-06 (docs/PARALLEL-LLM-2026-10-06.md), GPU validation follows the current GPU benchmark",
+  "addon": true
+ }
+}

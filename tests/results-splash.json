@@ -1,5 +1,5 @@
 {
- "at": "2026-10-18 02:14:58",
+ "at": "2026-10-18 12:45:32",
  "painter": "committed binary",
  "tests": {
   "splash_bgrt_fullscreen_hp_style": {
@@ -73,7 +73,7 @@
     "R73"
    ],
    "status": "pass",
-   "detail": "ENODEV -> closed + silent; reopened amdgpudrmfb 1920x1080 scale 1.35, repainted; SIGUSR1 -> rc 0, mode untouched; state 'phase=2 t=99248.9 expected=90.0 progress=0.970 fb=amdgpudrmf'"
+   "detail": "ENODEV -> closed + silent; reopened amdgpudrmfb 1920x1080 scale 1.35, repainted; SIGUSR1 -> rc 0, mode untouched; state 'phase=2 t=137082.6 expected=90.0 progress=0.970 fb=amdgpudrm'"
   },
   "splash_signals_and_stop": {
    "reqs": [

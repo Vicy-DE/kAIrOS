@@ -41,24 +41,22 @@ memEl.textContent     = `${Math.round((hw.memory_mb.total - hw.memory_mb.availab
 diskEl.textContent    = `${hw.disk_gb.free} GB free of ${hw.disk_gb.total} GB`;
 ```
 
-## The coder LLM (an "AI" section): default brain or fast mode
+## The coder LLM (an "AI" section)
 
 ```js
 const m = await vibe.models();
-// m.llm: [{key:"default", name:"Gemma 4 26B-A4B-it (…)", present:true, addon:false, active:true,  selected:true,  download_gb:0},
-//         {key:"fast",    name:"Qwen2.5-Coder-7B-Instruct (Q4_K_M, fast mode)", present:false, addon:true, active:false, selected:false, download_gb:4.7, downloading:false}]
-// m.llm_setting: {setting:"default"|"fast", effective:"default"|"fast", fallback:null|"the fast LLM is an add-on that isn't downloaded — serving the default (…)"}
-const sel = document.getElementById("llm-select");
-sel.innerHTML = m.llm.map((l) => `<option value="${l.key}" ${l.selected ? "selected" : ""}>${l.name}${l.active ? " (active)" : ""}${l.present ? "" : ` — download ${l.download_gb} GB first`}</option>`).join("");
-sel.onchange = () => vibe.settings.set("llm_model", sel.value);   // default = the tier's brain (best apps, 3–5 min per app on 8 GB)
-                                                                  // fast = the small coder model (~40 s per app, simpler results)
-await vibe.models.download("fast");             // the fast model is an add-on: fetch before selecting it
+// m.llm on 8/16 GB: ONE entry — [{key:"default", name:"Gemma 4 26B-A4B-it ultra-uncensored heretic (…)", present:true, addon:false, active:true, selected:true, download_gb:0}]
+// m.llm_setting: {setting:"default", effective:"default", fallback:null, modes:["default"]}
+llmEl.textContent = m.llm.find((l) => l.active).name;        // show the model; no separate fast model [R89]
+if (m.llm.length > 1) {                                      // a picker only where the tier offers a choice
+  sel.innerHTML = m.llm.map((l) => `<option value="${l.key}" ${l.selected ? "selected" : ""}>${l.name}${l.present ? "" : ` — download ${l.download_gb} GB first`}</option>`).join("");
+  sel.onchange = () => vibe.settings.set("llm_model", sel.value);
+}
 ```
-- Fill the picker FROM `m.llm` after `await vibe.models()` resolves — never from a static list and never
-  before the fetch (an `applySettingsToUI()` that runs first leaves the select empty). Badge `active`; when
-  `m.llm_setting.fallback` is set show it (the user picked a model that is not there yet). The OS restarts
-  its language model on the next request after a change; nothing else to do.
-- An add-on that is `present:false` gets a "⬇ Download (N GB)" button (`vibe.models.download(key)`),
+- Fill it FROM `m.llm` after `await vibe.models()` resolves — never from a static list. There is no fast
+  model any more (2026-10-18): `llm_model` "fast" serves the same model, so never offer "fast" yourself.
+  When `m.llm_setting.fallback` is set show it.
+- An entry that is `present:false` gets a "⬇ Download (N GB)" button (`vibe.models.download(entry.download_key)`),
   then poll `vibe.models()` until `present` (or watch `downloading`).
 
 ## Settings store and validation
@@ -74,7 +72,7 @@ await vibe.fs.format();                       // DANGER: factory reset of /data 
 **Values are validated**: a bad value is rejected (the promise rejects with the rule, e.g. "accent needs a
 CSS colour"). `accent`/`accent2` = a CSS colour (`#ff5cf0`, `rgb(…)`, a colour name), `os_name` = 1–40
 characters, `wallpaper` = an image URL or `null`, `image_model` ∈ default|safe|qwen|classic|uncensored|chroma,
-`image_expand` ∈ auto|on|off, `llm_model` ∈ default|fast, `image_steps` = 1–150 or null, `translation` ∈ off|on,
+`image_expand` ∈ auto|on|off, `llm_model` ∈ default (fast = the same model), `image_steps` = 1–150 or null, `translation` ∈ off|on,
 `language` ∈ en|de|es|fr|it|ja|ru, `translation_quality` ∈ fast|quality. Always send the
 value — `vibe.settings.set("accent")` without one is an error, not "reset". Reading a setting:
 `const s = await vibe.settings.get(); s.image_expand` — never `(await vibe.settings.get().image_expand)`.
@@ -84,20 +82,23 @@ value — `vibe.settings.set("accent")` without one is an error, not "reset". Re
 ```js
 const m = await vibe.models();
 // m.translation: {enabled:false, language:"en", languages:["en","de","es","fr","it","ja","ru"], names:{en:"English", de:"German", …},
-//                 quality:"fast", effective:"fast", fallback:null, present:{fast:true, quality:false}, running:{fast:false, quality:false}, cache:{}}
+//                 quality:"fast", effective:"fast", fallback:null, quality_llm:true, model:{fast:"Index-Translate …", quality:"Gemma 4 … (the loaded LLM)"},
+//                 present:{fast:true, quality:true}, running:{fast:false, quality:false}, cache:{}}
 const sel = document.getElementById("lang-select");          // the picker FROM m.translation.languages, labels from names
 sel.innerHTML = m.translation.languages.map((c) => `<option value="${c}" ${c === m.translation.language ? "selected" : ""}>${m.translation.names[c]}</option>`).join("");
 sel.onchange = () => vibe.settings.set("language", sel.value);
 toggle.checked = m.translation.enabled;                      // the on/off switch
 toggle.onchange = () => vibe.settings.set("translation", toggle.checked ? "on" : "off");
-qual.onchange = () => vibe.settings.set("translation_quality", qual.value);   // "fast" (CPU, default) | "quality" (GPU, 9B)
+qual.innerHTML = `<option value="fast">Fast (small CPU model)</option><option value="quality">Quality (${m.translation.model.quality})</option>`;
+qual.value = m.translation.quality;
+qual.onchange = () => vibe.settings.set("translation_quality", qual.value);   // quality_llm: the loaded LLM translates itself (8 GB)
 const tr = m.extras.find((e) => e.key === "translation");    // {present, present_modes:{fast, quality}, missing_gb, download_gb}
-if (!tr.present_modes.quality) dlBtn.onclick = () => vibe.models.download("translation");   // the optional 9B (tr.missing_gb GB)
+if (tr.missing_gb > 0) dlBtn.onclick = () => vibe.models.download("translation");   // only what is missing (tr.missing_gb GB)
 ```
 - Off (the default) = nothing is translated, no model runs; on + a language other than English = the
   whole OS, every app window and the generated content follow it. Show `fallback` when set.
 - `tr.present` is true on the shipped OS (the fast model is built in): never show translation as "not downloaded";
-  `present_modes` = per file, `missing_gb` = what the download still fetches — label the button with it.
+  `missing_gb` = what the download still fetches — label the button with it (0 on 8 GB: quality needs no download).
 - An app's own text: `await vibe.translate("Save")` → the OS language; `vibe.translate(["a", "b"], "en")` →
   an array into a named language. It rejects while translation is off — catch it.
 - Dictionaries & Wiktionary (the same section): `m.extras` carries `dictionaries` (kind `dictionary`, 0.12 GB —
@@ -133,8 +134,8 @@ await vibe.models.download("qwen");              // add-on models: fetch before 
 
 ## Patterns
 - Sections: Appearance (accent color pickers + live preview, os_name text field, wallpaper), Display
-  (brightness slider), Sound (volume slider + mute), Network (small WiFi status, wifi recipe), AI (coder
-  LLM picker + image model picker + expansion switch), Language (language picker + translation switch +
+  (brightness slider), Sound (volume slider + mute), Network (small WiFi status, wifi recipe), AI (the coder
+  LLM's name — a picker only when m.llm lists more than one — + image model picker + expansion switch), Language (language picker + translation switch +
   fast/quality + the add-on download), System (VRAM, current tier, tiers + upgrade),
   Danger zone (factory reset behind an in-page two-step confirm — a "Reset…" button that reveals a red
   "Yes, erase everything" button; **never `window.confirm()`**, it is blocked).

@@ -1,5 +1,5 @@
 {
- "at": "2026-10-18 02:22:15",
+ "at": "2026-10-18 12:52:53",
  "tests": {
   "pp_static_overlay_and_wiring": {
    "reqs": [
@@ -67,7 +67,7 @@
     "R87"
    ],
    "status": "pass",
-   "detail": "13 entries, texts on disk, README complete, Krea line, 67 files covered; API + 6 traversal 404"
+   "detail": "13 entries, texts on disk, README complete, Krea line, 65 files covered; API + 6 traversal 404"
   },
   "pp_panel_e2e_licences_chip_firststart_key": {
    "reqs": [

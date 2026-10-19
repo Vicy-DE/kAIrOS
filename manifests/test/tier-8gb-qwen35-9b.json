@@ -27,7 +27,7 @@
    "preamble",
    "encoder"
   ],
-  "comment": "[R86 round 4, docs/REFUSAL-FALLBACK-2026-10-09.md] what the kernel does when the LLM declines a request (kernel/refusal.py judges every user-facing answer): \"preamble\" = the same model again with prompts.ADULT_PREAMBLE prepended to the system prompt (no model swap); \"llm_uncensored\" = the uncensored LLM: a tier's llm_uncensored section when it has one, else the default llm when that carries \"uncensored\": true (this tier: the heretic Gemma 4 IS the default since 2026-10-10, so the rung serves the fast-mode primary and is skipped while the default itself answers). The rung never runs the model that declined (compared by file); a section's file absent / empty / incomplete or a failed load skips it too. Every rung declined -> the request is DECLINED: a plain error for the user, nothing cached, nothing rendered, never a 502. expander_ladder = the image-prompt expander's own cheap rungs: \"preamble\" first (integrator 2026-10-09: 0/20 refused expansions with it, results/r86-refusal-fallback/screen/SCREEN.md), then \"encoder\" = the image section's baked text encoder (or its optional expander_fallback_file) with the krea-18plus rules; every rung refused -> the picture is declined, never rendered from the refusal or the raw prompt. The narrow minors block (refusal.minor_block, round 4b lists: an explicit under-18 age or word together with a sexual term; csam / pthc / child porn / kiddie porn / Kinderporno / jailbait on their own; loli / shota with a sexual term; never a negated or age-gate disclaimer, an age difference or a measurement) runs at every media entry, on the final image/video prompt, once on a refused text request before any rung, and at the entry when the primary LLM is uncensored; it cannot be configured away."
+  "comment": "[R86 round 4, docs/REFUSAL-FALLBACK-2026-10-09.md] what the kernel does when the LLM declines a request (kernel/refusal.py judges every user-facing answer): \"preamble\" = the same model again with prompts.ADULT_PREAMBLE prepended to the system prompt (no model swap); \"llm_uncensored\" = the uncensored LLM: a tier's llm_uncensored section when it has one, else the default llm when that carries \"uncensored\": true (this tier: the heretic Gemma 4 IS the default since 2026-10-10 and, since R89, the only coder LLM, so the rung is skipped while the default answers; it serves a censored primary on a manifest that has one). The rung never runs the model that declined (compared by file); a section's file absent / empty / incomplete or a failed load skips it too. Every rung declined -> the request is DECLINED: a plain error for the user, nothing cached, nothing rendered, never a 502. expander_ladder = the image-prompt expander's own cheap rungs: \"preamble\" first (integrator 2026-10-09: 0/20 refused expansions with it, results/r86-refusal-fallback/screen/SCREEN.md), then \"encoder\" = the image section's baked text encoder (or its optional expander_fallback_file) with the krea-18plus rules; every rung refused -> the picture is declined, never rendered from the refusal or the raw prompt. The narrow minors block (refusal.minor_block, round 4b lists: an explicit under-18 age or word together with a sexual term; csam / pthc / child porn / kiddie porn / Kinderporno / jailbait on their own; loli / shota with a sexual term; never a negated or age-gate disclaimer, an age difference or a measurement) runs at every media entry, on the final image/video prompt, once on a refused text request before any rung, and at the entry when the primary LLM is uncensored; it cannot be configured away."
  },
  "llm": {
   "role": "HTML app generation + Python game generation",
@@ -62,30 +62,6 @@
  },
  "python_llm": {
   "shared_with": "llm"
- },
- "llm_fast": {
-  "role": "fast mode — the small coder LLM (settings key llm_model = \"fast\")",
-  "name": "Qwen2.5-Coder-7B-Instruct (Q4_K_M, fast mode)",
-  "comment": "Downloadable add-on [R47]: the 8 GB tier's LLM until 2026-09-28. Selected with vibe.settings.set('llm_model', 'fast') — the kernel restarts llama-server on the selected model; when this add-on is not downloaded the default LLM keeps serving and /api/status reports the fallback. Fast (≈ 40 s per app, 51 tok/s, 5.5 GB VRAM, 4.8 GB RSS) but its generated apps mostly do not work (11/37 functional items in the feature test) — a speed/low-RAM option, not the default. sha256 computed from the local copy 2026-09-28 (the file this OS served since June).",
-  "file": "llm/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
-  "url": "https://huggingface.co/unsloth/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
-  "size_gb": 4.68,
-  "size_bytes": 4683073504,
-  "sha256": "9a961bb225cb2b9fd84b2297df0d53089895c049d7d9dc5f5f8aebbcd3247872",
-  "serve_args": [
-   "-ngl",
-   "99",
-   "-c",
-   "16384",
-   "--cache-ram",
-   "2048",
-   "--ctx-checkpoints",
-   "8",
-   "--jinja"
-  ],
-  "parallel": 2,
-  "parallel_comment": "2 llama-server slots, each with the full -c above (-c 2*C -np 2 --no-kv-unified) [R72]: two LLM requests at once; CPU-measured 2026-10-06 (docs/PARALLEL-LLM-2026-10-06.md), GPU validation follows the current GPU benchmark",
-  "addon": true
  },
  "image": {
   "name": "Muse (Krea 2 fine-tune by Stable Yogi, uncensored) — v3.5 Extended Q4_0",
@@ -465,10 +441,10 @@
   ]
  },
  "translation": {
-  "name": "Index-Translate (fast: 2B Q4_K_M on the CPU, quality: 9B Q4_K_M on the GPU, llama-server)",
+  "name": "Index-Translate 2B Q4_K_M on the CPU (fast) + the loaded LLM (quality)",
   "engine": "llama-server",
   "addon": true,
-  "comment": "downloadable add-on [R71]: the translation layer's MT model (docs/TRANSLATION-LAYER-2026-10-06.md; research docs/TRANSLATION-2026-10-06.md). PROVISIONAL model choice until our own EN<->DE/ES/FR/IT/JA/RU benchmark (Hy-MT2 1.8B/7B are the A/B candidates, same llama.cpp): Bilibili IndexTeam Index-Translate (2026-09-30, Apache-2.0, 150 languages, qwen35 architecture; self-reported WMT24++ 0.849 for the 2B, 0.860 for the 9B). `fast` runs on its OWN llama-server on the CPU (-ngl 0 -dev none, port 8085, 4 slots): a UI-string batch never evicts the coder LLM or an image job under strategy swap; `quality` takes the coder LLM's GPU slot the way vision does (R70) and the coder comes back on the next LLM request. Prompt per the model card: one user message, no system message, temperature 0, thinking off (chat_template_kwargs; the kernel also strips <think>). Settings: translation off|on (default off = nothing runs), language en|de|es|fr|it|ja|ru, translation_quality fast|quality (a missing quality file falls back to fast). The 8 GB tier's quality file is the Q4_K_M (5.8 GB + KV fits the 8 GB card). vibe.models.download('translation') fetches both files; sha256/size_bytes from the Hugging Face API 2026-10-06. --cache-ram 0 on both [P3 fix 3, 2026-10-07]: llama-server's server-side prompt cache defaults to 8192 MiB and grew the fast server from 1.9 to 10.95 GB RSS over ~1 800 requests (docs/TRANSLATION-BENCH-2026-10-07.md); translation requests are single-shot, the kernel's own cache answers repeats.",
+  "comment": "downloadable add-on [R71]: the translation layer's MT model (docs/TRANSLATION-LAYER-2026-10-06.md; research docs/TRANSLATION-2026-10-06.md). `fast` = Bilibili IndexTeam Index-Translate-2B (2026-09-30, Apache-2.0, 150 languages, qwen35 architecture; self-reported WMT24++ 0.849) on its OWN llama-server on the CPU (-ngl 0 -dev none, port 8085, 4 slots): a UI-string batch never evicts the coder LLM or an image job under strategy swap — still the provisional fast choice of the CPU benchmark (docs/TRANSLATION-BENCH-2026-10-07.md). `quality` [R89, the owner 2026-10-18: \"Translation via Gemma\"] = the loaded LLM itself ({\"use\": \"llm\"}): the GPU benchmark (docs/FAST-MODELS-2026-10-17.md §2) measured the heretic Gemma at COMET-22 0.8684 vs 0.8710 (Hy-MT2-7B) and 0.8706 (Index-Translate-9B Q4_K_M, this tier's quality file until R89, 5.78 GB) — inside the 0.005 rule — with a 2.9–3.0 s cycle (a translation + the next Gemma answer) vs 11.9–12.6 s with the swap to a dedicated model; so no quality file, no download, no swap, no translation server for quality. Prompt per the model card for both: one user message, no system message, temperature 0 (`sampling` below — the LLM's own vendor sampling is left out), thinking off (chat_template_kwargs; the kernel also strips <think>). Settings: translation off|on (default off = nothing runs), language en|de|es|fr|it|ja|ru, translation_quality fast|quality. vibe.models.download('translation') fetches the fast file (built into the image anyway, `bake`); sha256/size_bytes from the Hugging Face API 2026-10-06. --cache-ram 0 on the fast server [P3 fix 3, 2026-10-07]: llama-server's server-side prompt cache defaults to 8192 MiB and grew the fast server from 1.9 to 10.95 GB RSS over ~1 800 requests (docs/TRANSLATION-BENCH-2026-10-07.md); translation requests are single-shot, the kernel's own cache answers repeats.",
   "languages": [
    "en",
    "de",
@@ -508,22 +484,8 @@
    ]
   },
   "quality": {
-   "file": "translation/Index-Translate-9B.Q4_K_M.gguf",
-   "url": "https://huggingface.co/IndexTeam/Index-Translate-9B-GGUF/resolve/main/Index-Translate-9B.Q4_K_M.gguf",
-   "size_gb": 5.78,
-   "size_bytes": 5780090304,
-   "sha256": "9cc6758b0007f4cbf42ea3400768cbff91ae74ef8d640e467158348426d33713",
-   "serve_args": [
-    "-ngl",
-    "99",
-    "-c",
-    "4096",
-    "--jinja",
-    "--reasoning",
-    "off",
-    "--cache-ram",
-    "0"
-   ]
+   "use": "llm",
+   "comment": "[R89] quality translation = the loaded LLM (the one serving the coder role, llm_choice — the heretic Gemma 4 here): TRANSLATE_PROMPT as one user message, no system prompt, temperature 0, thinking off, the same max_tokens min(2048, 64 + 3·len) — the body that scored COMET-22 0.8684; one such request at a time, so an app generation keeps the LLM's other slot. No file, no download, no swap. The 16 GB tier and up keep their dedicated 9B (not measured on a 16 GB card)."
   }
  },
  "dictionaries": {

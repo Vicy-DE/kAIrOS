@@ -5572,9 +5572,10 @@ async def t_sampling_merge(_):
         and g["file"] == "llm/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf" and g["size_bytes"] == 13917722144 and g["uncensored"] is True, g   # [R86 round 4] the heretic default
     c = json.loads((V / "tier-8gb-coder7b.json").read_text())["llm"]
     m8 = json.loads((REPO / "manifests" / "tier-8gb.json").read_text())
-    # since 2026-09-28 the tier's brain IS the gemma variant and coder7b is its `llm_fast` add-on
+    # since 2026-09-28 the tier's brain IS the gemma variant; coder7b was its `llm_fast` add-on until R89 (the fixture keeps it)
     assert {k: v for k, v in m8["llm"].items() if k != "comment"} == {k: v for k, v in g.items() if k != "comment"}, "tier-8gb llm != gemma variant"
-    assert c["file"] == m8["llm_fast"]["file"] and c["serve_args"] == m8["llm_fast"]["serve_args"] \
+    fast = llm_fast_fixture()
+    assert c["file"] == fast["file"] and c["serve_args"] == fast["serve_args"] \
         and "sampling" not in c and "chat_template_kwargs" not in c, c
     for name in ("qwen35-9b", "gemma4-26b", "coder7b"):
         mm = server.ModelManager(json.loads((V / f"tier-8gb-{name}.json").read_text()))
@@ -5582,7 +5583,7 @@ async def t_sampling_merge(_):
         assert b["max_tokens"] == 100 and b["messages"][0]["content"] == "S"
         if name != "coder7b":
             assert b["chat_template_kwargs"] == {"enable_thinking": False} and "top_k" in b, (name, b)
-    return "sampling merged (temperature override, per-call wins, messages/stream protected); variants: qwen35 0.7/0.8/20/1.5, gemma 1.0/64/0.95 + --fit = tier-8gb llm, coder7b = tier-8gb llm_fast"
+    return "sampling merged (temperature override, per-call wins, messages/stream protected); variants: qwen35 0.7/0.8/20/1.5, gemma 1.0/64/0.95 + --fit = tier-8gb llm, coder7b = the former llm_fast (fixture)"
 
 
 @run_test("unit_engine_stamp_next_set_and_sd_server", ["R3", "R47", "R41"])
@@ -5623,18 +5624,25 @@ async def t_next_set(_):
 
 # ---------------- fixes 2026-09-28 (docs/FIXES-2026-09-28.md) ----------------
 
+def llm_fast_fixture() -> dict:
+    """[R89] the `llm_fast` section the 8/16 GB tiers carried until 2026-10-18 (tests/fixture-llm-fast.json): the shipped
+    manifests dropped fast mode, the kernel keeps the mechanism for a manifest that has one — the tests inject this"""
+    return json.loads((REPO / "tests" / "fixture-llm-fast.json").read_text(encoding="utf-8"))["llm_fast"]
+
+
 GEMMA_SHA = "e2f223775fa6e4e2129b7d7802fa7326b8da3fe261e8834baf65b722f9df3742"   # [R86 round 4, 2026-10-10] the heretic i1-IQ4_XS (stock UD-IQ4_XS: babd1e38…)
 CODER7B_SHA = "9a961bb225cb2b9fd84b2297df0d53089895c049d7d9dc5f5f8aebbcd3247872"
 
 
-@run_test("unit_manifests_gemma4_and_fast_mode", ["R3", "R5", "R47"])
+@run_test("unit_manifests_gemma4_and_fast_mode", ["R3", "R5", "R47", "R89"])
 async def t_gemma_fast_manifests(_):
     """A1/A2: the 8 GB and 16 GB tiers serve Gemma 4 26B-A4B-it — since 2026-10-10 the uncensored heretic
     edition (mradermacher i1-IQ4_XS, "uncensored": true; the owner's choice, R86 round 4) — with exactly the
     argv the feature test proved (no -ngl: --fit places the MoE; thinking off both ways; vendor sampling; HF
-    sha256 + byte size) and carry the `llm_fast` add-on (Qwen2.5-Coder-7B, the previous 8 GB brain) that
-    the settings key llm_model=fast selects; the 24/32 GB tiers are untouched; the three 8 GB test
-    variants carry the same add-on (they must stay identical to tier-8gb.json outside `llm`)."""
+    sha256 + byte size). [R89, 2026-10-18] fast mode is dropped: no tier and no 8 GB test variant carries the
+    `llm_fast` add-on (Qwen2.5-Coder-7B: 11/37 functional items vs Gemma's 26–30) any more; the 24/32 GB tiers
+    are untouched; tests/fixture-llm-fast.json pins the former section (url, sha256, size, argv) for the tests
+    that keep the kernel's llm_fast mechanism covered; the llm comment names the decision."""
     m8 = json.loads((REPO / "manifests" / "tier-8gb.json").read_text())
     m16 = json.loads((REPO / "manifests" / "tier-16gb.json").read_text())
     for t, m in (("8gb", m8), ("16gb", m16)):
@@ -5646,19 +5654,21 @@ async def t_gemma_fast_manifests(_):
         assert llm["chat_template_kwargs"] == {"enable_thinking": False} and llm["sampling"] == {"temperature": 1.0, "top_k": 64, "top_p": 0.95}, t
         assert "-ngl" not in llm["serve_args"] and "--n-cpu-moe" not in llm["serve_args"] and "addon" not in llm, t
         assert m["python_llm"] == {"shared_with": "llm"}, t
-        fast = m["llm_fast"]
-        assert fast["addon"] is True and fast["file"] == "llm/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf" \
-            and fast["size_bytes"] == 4683073504 and abs(fast["size_gb"] - 4.68) < 0.01 and fast["sha256"] == CODER7B_SHA \
-            and fast["url"] == "https://huggingface.co/unsloth/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf" \
-            and fast["serve_args"] == ["-ngl", "99", "-c", "16384", "--cache-ram", "2048", "--ctx-checkpoints", "8", "--jinja"], (t, fast)
-        assert list(m).index("llm_fast") == list(m).index("python_llm") + 1, f"{t}: llm_fast sits right after python_llm"
+        assert "llm_fast" not in m and "[R89]" in llm["comment"] and "FAST-MODELS-2026-10-17" in llm["comment"], f"{t}: fast mode dropped [R89]"
+        assert "Qwen2.5-Coder-7B" not in json.dumps({k: v for k, v in m.items() if k != "llm"}), f"{t}: the coder still listed"
     for t in ("24gb", "32gb"):
         m = json.loads((REPO / "manifests" / f"tier-{t}.json").read_text())
         assert "Qwen3-Coder-30B-A3B" in m["llm"]["name"] and "llm_fast" not in m and "-ngl" in m["llm"]["serve_args"], t
     for v in (REPO / "manifests" / "test").glob("tier-8gb-*.json"):
-        assert json.loads(v.read_text())["llm_fast"] == m8["llm_fast"], f"{v.name}: llm_fast differs from tier-8gb"
+        assert "llm_fast" not in json.loads(v.read_text()), f"{v.name}: the variants mirror tier-8gb outside llm"
     assert json.loads((REPO / "manifests" / "test" / "tier-8gb-gemma4-26b.json").read_text())["llm"]["file"] == m8["llm"]["file"]
-    return "8/16 GB: Gemma 4 (sha256, --fit, thinking off, 1.0/64/0.95) + llm_fast add-on (coder7b, sha256); 24/32 GB untouched; variants carry llm_fast"
+    fast = llm_fast_fixture()
+    assert fast["addon"] is True and fast["file"] == "llm/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf" \
+        and fast["size_bytes"] == 4683073504 and abs(fast["size_gb"] - 4.68) < 0.01 and fast["sha256"] == CODER7B_SHA \
+        and fast["url"] == "https://huggingface.co/unsloth/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf" \
+        and fast["serve_args"] == ["-ngl", "99", "-c", "16384", "--cache-ram", "2048", "--ctx-checkpoints", "8", "--jinja"] \
+        and fast["parallel"] == 2, fast
+    return "8/16 GB: Gemma 4 (sha256, --fit, thinking off, 1.0/64/0.95), no llm_fast [R89]; 24/32 GB untouched; variants without it; fixture = the former section"
 
 
 @run_test("unit_r47_baked_set_and_build_scripts", ["R47", "R3"])
@@ -5684,26 +5694,27 @@ async def t_r47_baked_set(_):
                           "image/Qwen3VL-4B-Instruct-Q4_K_M.gguf", "image/qwen_image_vae.safetensors"}, set(baked)
     total = sum(e.get("size_bytes") or int(e["size_gb"] * 1e9) for e in baked.values())
     assert total == 24985530214, total      # [R86 round 4] the heretic 13 917 722 144 (stock Gemma 13 597 177 568: 24 664 985 638)
-    for key in ("music", "video", "vision", "llm_fast", "image_qwen", "image_classic", "image_chroma", "image_edit"):   # [R85] + the editor
+    for key in ("music", "video", "vision", "image_qwen", "image_classic", "image_chroma", "image_edit"):   # [R85] + the editor
         assert m8[key].get("addon") is True, f"{key} must be an add-on for the image to stay < 58 GiB"
+    assert "llm_fast" not in m8 and "file" not in m8["translation"]["quality"], "[R89] no fast coder, quality = the loaded LLM"
     lister = REPO / "scripts" / "check_tier_present.py"
     out = subprocess.run([sys.executable, str(lister), str(REPO / "manifests" / "tier-8gb.json"), "/nonexistent", "--list"],
                          capture_output=True, text=True)
     # [2026-10-07, docs/IMAGE-BAKE-ADDONS-2026-10-07.md] the list = the non-addon set + the bake-flagged add-on files:
-    # the translation `fast` model and the 38 dictionary archives ride in the image [R71], the quality 9B stays a download
+    # the translation `fast` model and the 38 dictionary archives ride in the image [R71]; quality = the loaded LLM [R89]
     bake_list = out.stdout.split()
     dict_files = [e["file"] for e in server.section_files(m8["dictionaries"])]
     assert out.returncode == 0 and bake_list == list(baked) + [m8["translation"]["fast"]["file"]] + dict_files \
-        and len(bake_list) == 43 and m8["translation"]["quality"]["file"] not in bake_list, out.stdout   # 44 in v7.5 (+ the LoRA)
+        and len(bake_list) == 43 and not any("Index-Translate-9B" in f for f in bake_list), out.stdout   # 44 in v7.5 (+ the LoRA)
     bake_total = total + m8["translation"]["fast"]["size_bytes"] + sum(e["size_bytes"] for e in server.section_files(m8["dictionaries"]))
     assert bake_total == 26416157753, bake_total      # [R86 round 4] + 320 544 576 (the heretic); [Muse 2026-10-10] 26 095 613 177; v7.5: 27 237 064 729
     out_all = subprocess.run([sys.executable, str(lister), str(REPO / "manifests" / "tier-8gb.json"), "/nonexistent", "--all", "--list"],
                              capture_output=True, text=True).stdout.split()
-    assert "music/acestep-v15-turbo-Q8_0.gguf" in out_all and "llm/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf" in out_all \
+    assert "music/acestep-v15-turbo-Q8_0.gguf" in out_all and "llm/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf" not in out_all \
         and "translation/Index-Translate-2B.Q4_K_M.gguf" in out_all and "dict/beolingus-de-en.txt.gz" in out_all \
-        and not any(f.startswith("wiktionary_") for f in out_all) \
+        and not any(f.startswith("wiktionary_") for f in out_all) and not any("Index-Translate-9B" in f for f in out_all) \
         and "image/qwen_image_2.1_turbo_Q4_K_M.gguf" in out_all \
-        and len(out_all) == 64, len(out_all)   # 21 (Muse 2026-10-10: − the LoRA; v7.5: 22 = + the LoRA, − Kroma v0.2) + the 2 translation files [R71] + 38 dictionary files [P3] + 3 picture-editor files [R85: DiT, encoder, mmproj — its VAE is image_qwen's]; the llm_uncensored add-on left 2026-10-10 (R86 round 4: the default is the heretic); the 7 ZIMs live in knowledge/, never models/
+        and len(out_all) == 62, len(out_all)   # 20 (Muse 2026-10-10: − the LoRA; v7.5: 22 = + the LoRA, − Kroma v0.2; R89: − the fast coder) + the translation fast file [R71; R89: the 9B left, quality = the loaded LLM] + 38 dictionary files [P3] + 3 picture-editor files [R85: DiT, encoder, mmproj — its VAE is image_qwen's]; the llm_uncensored add-on left 2026-10-10 (R86 round 4: the default is the heretic); the 7 ZIMs live in knowledge/, never models/
     src = (REPO / "scripts" / "check_tier_present.py").read_text()
     assert 'n.get("addon") and not include_addons' in src
     bi = (REPO / "scripts" / "build-image.sh").read_text()
@@ -5734,7 +5745,7 @@ async def t_r47_baked_set(_):
                 for v in n.values():
                     _files(v)
         _files(m8)
-        assert len(every) == 71, len(every)                     # 4 baked (Muse 2026-10-10: the LoRA entry is gone; v7.5: 5) + 67 add-on files (2 translation [R71], 38 dictionaries + 7 Wiktionary ZIMs [P3], 3 picture-editor files [R85]); the llm_uncensored add-on left 2026-10-10 [R86 round 4]
+        assert len(every) == 69, len(every)                     # 4 baked (Muse 2026-10-10: the LoRA entry is gone; v7.5: 5) + 65 add-on files (1 translation file [R71; R89: the 9B left], 38 dictionaries + 7 Wiktionary ZIMs [P3], 3 picture-editor files [R85]; R89: the fast coder left); the llm_uncensored add-on left 2026-10-10 [R86 round 4]
         for f in every:
             (real / f).parent.mkdir(parents=True, exist_ok=True); (real / f).write_bytes(b"x" * (7 * len(f)))
             (src_dir / f).parent.mkdir(parents=True, exist_ok=True); (src_dir / f).symlink_to(real / f)     # symlinked models dir
@@ -5748,7 +5759,7 @@ async def t_r47_baked_set(_):
         assert left == sorted(bake_list), left                   # the 4 non-addon files + the 39 bake-flagged add-on files
         assert not any(p.is_symlink() for p in dst.rglob("*")), "links must be copied as their targets"
         assert all((dst / f).stat().st_size == (real / f).stat().st_size for f in bake_list), "stale copies must be redone"
-        assert r.stdout.count("removing stale") == 30 and "mirrored 43 files" in r.stdout, r.stdout   # 28 unflagged add-on copies (71 − 43; R86 round 4: the llm_uncensored add-on left; R85: + the 3 picture-editor files) + 2 leftovers
+        assert r.stdout.count("removing stale") == 28 and "mirrored 43 files" in r.stdout, r.stdout   # 26 unflagged add-on copies (69 − 43; R86 round 4: the llm_uncensored add-on left; R85: + the 3 picture-editor files; R89: − the coder and the 9B) + 2 leftovers
         assert not (dst / "music").exists() and not (dst / "video").exists(), "emptied dirs go too"
         for bad_root, bad_dst in ((S, src_dir), (P("/"), P("/opt/vibeos/models")), (root, root / "opt" / "vibeos" / "models-x")):
             rb = run(src_dir, bad_root, bad_dst)
@@ -5775,18 +5786,21 @@ async def t_r47_baked_set(_):
     for doc in ("iso/flash-img.md", "README.md", "iso/README.md", "iso/build-img.sh"):
         t = (REPO / doc).read_text()
         assert "64 GB" in t and not re.search(r"[≥>]=?\s?32\s?GB (USB )?stick", t), f"{doc} still asks for a 32 GB stick"
-    return f"baked set = 4 non-addon files (Muse Q4_0, no LoRA) / {total / 1e9:.2f} GB + 39 bake-flagged add-on files (translation fast + dictionaries) = 43 / {bake_total / 1e9:.2f} GB; music/video/vision/llm_fast + 3 image models + the 9B stay add-ons; 3 build paths use the list; quickjs shipped; build-image.sh mirrors the list (69-file reused root → 43, links resolved, dangling fails); write-usb.sh needs the computed size before erasing; docs say 64 GB"
+    return f"baked set = 4 non-addon files (Muse Q4_0, no LoRA) / {total / 1e9:.2f} GB + 39 bake-flagged add-on files (translation fast + dictionaries) = 43 / {bake_total / 1e9:.2f} GB; music/video/vision + 3 image models stay add-ons (no fast coder, no 9B [R89]); 3 build paths use the list; quickjs shipped; build-image.sh mirrors the list (a reused root holding every manifest file → 43, links resolved, dangling fails); write-usb.sh needs the computed size before erasing; docs say 64 GB"
 
 
-@run_test("http_llm_fast_mode", ["R3", "R5", "R47"])
+@run_test("http_llm_fast_mode", ["R3", "R5", "R47", "R89"])
 async def t_llm_fast_mode(s):
-    """A2: /api/models lists the coder-LLM choices (default = the tier's brain, fast = the llm_fast
-    add-on) and the setting; llm_model=fast makes the next LLM request start llama-server on the
-    fast model (argv logged by the mock), /api/status shows the effective choice; when the add-on
-    file is missing the kernel serves the default and says why; back to default restarts the brain."""
+    """A2 → [R89, 2026-10-18 "Drop fast mode"]: the 8 GB tier has no `llm_fast` add-on any more. /api/models lists ONE
+    coder LLM (default = the heretic Gemma) and `modes` ["default"]; llm_model=fast is still a valid value: the
+    default keeps serving (no coder launch) and /api/status says why; the 'fast' download is no add-on (400); a bad
+    value is a 400. The mechanism stays for a manifest that HAS the section (tests/fixture-llm-fast.json in a
+    ModelManager of its own): fast → the llm_fast section, its file absent → the default + the add-on reason,
+    llm_options lists both, the download keys fast|llm_fast name the same add-on."""
+    sys.path.insert(0, str(REPO / "kernel"))
+    import server
     arglog = VDIR / "llama-args.log"
-    fast_file = VDIR / "models" / "llm" / "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf"
-    hidden = fast_file.with_name(fast_file.name + ".hidden")
+    launches = lambda: [l for l in (arglog.read_text().splitlines() if arglog.exists() else []) if l.strip()]
 
     async def status():
         async with s.get(f"{BASE}/api/status") as r:
@@ -5796,56 +5810,62 @@ async def t_llm_fast_mode(s):
         async with s.post(f"{BASE}/api/settings", json={"key": "llm_model", "value": v}) as r:
             assert r.status == 200, (v, await r.text())
 
-    async def last_launch():
-        async with s.post(f"{BASE}/api/ask", json={"prompt": "hi"}) as r:
-            assert r.status == 200, await r.text()
-        lines = [l for l in arglog.read_text().splitlines() if l.strip()]
-        return lines[-1]
-
     async with s.get(f"{BASE}/api/models") as r:
         mi = await r.json()
     by = {m["key"]: m for m in mi["llm"]}
-    # [R86 round 4] the default IS the uncensored heretic: default + fast only (an 'uncensored' entry needs a tier with the add-on section)
-    assert set(by) == {"default", "fast"} and by["default"]["addon"] is False and by["default"]["active"] is True \
-        and by["default"]["file"] == "llm/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf" and by["fast"]["addon"] is True and by["fast"]["present"] is True \
-        and abs(by["fast"]["download_gb"] - 4.68) < 0.01 and by["fast"]["active"] is False, by
+    assert set(by) == {"default"} and by["default"]["addon"] is False and by["default"]["active"] is True \
+        and by["default"]["file"] == "llm/gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf", by
     assert mi["llm_setting"]["setting"] == "default" and mi["llm_setting"]["effective"] == "default" \
-        and mi["llm_setting"]["modes"] == ["default", "fast"] and mi["overrides"]["llm_model"] == "default", mi["llm_setting"]   # [R86 round 4] no uncensored alias on this tier
+        and mi["llm_setting"]["modes"] == ["default"] and mi["overrides"]["llm_model"] == "default" \
+        and "no separate fast model" in mi["llm_setting"]["note"], mi["llm_setting"]
     try:
         await set_llm("fast")
         st = await status()
-        assert st["llm_options"]["effective"] == "fast" and st["llm_options"]["fallback"] is None and "fast mode" in st["llm"], st["llm_options"]
-        launch = await last_launch()
-        assert "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf" in launch and "-ngl 99" in launch, launch
-        assert (await status())["loaded"] == "llm_fast"
-        # the add-on vanishes (not downloaded): the default serves, with a reason
-        fast_file.rename(hidden)
-        try:
-            st = await status()
-            assert st["llm_options"]["setting"] == "fast" and st["llm_options"]["effective"] == "default" \
-                and "add-on" in st["llm_options"]["fallback"] and "download" in st["llm_options"]["fallback"], st["llm_options"]
-            async with s.get(f"{BASE}/api/models") as r:
-                mi2 = await r.json()
-            assert {m["key"]: m["present"] for m in mi2["llm"]}["fast"] is False and mi2["llm_setting"]["effective"] == "default"
-            launch = await last_launch()
-            assert "gemma-4-26B-A4B-it-ultra-uncensored-heretic.i1-IQ4_XS.gguf" in launch and "--reasoning off" in launch and "-ngl" not in launch, launch   # [R86 round 4]
-            async with s.post(f"{BASE}/api/models/download", json={"model": "llm_fast"}) as r:
-                assert r.status in (200, 500), await r.text()       # the mock env has no network: started or failed, never "unknown add-on"
-                assert "not a downloadable" not in (await r.text())
-        finally:
-            hidden.rename(fast_file)
+        assert st["llm_options"]["setting"] == "fast" and st["llm_options"]["effective"] == "default" \
+            and st["llm_options"]["section"] == "llm" and "no separate fast LLM" in st["llm_options"]["fallback"] \
+            and "serving the default" in st["llm_options"]["fallback"] and [o["key"] for o in st["llm_options"]["options"]] == ["default"], st["llm_options"]
+        n0 = len(launches())
+        async with s.post(f"{BASE}/api/ask", json={"prompt": "hi [r89 fast]"}) as r:
+            assert r.status == 200, await r.text()
+        new = launches()[n0:]
+        assert not any("Qwen2.5-Coder" in l for l in new) and all("gemma-4-26B" in l for l in new if "--port 8081" in l), new
+        assert (await status())["loaded"] == "llm"
         async with s.post(f"{BASE}/api/models/download", json={"model": "fast"}) as r:
-            assert (await r.json()).get("already") is True
-        await set_llm("default")
-        launch = await last_launch()
-        assert "gemma-4-26B" in launch and (await status())["llm_options"]["effective"] == "default", launch
+            j = await r.json()
+            assert r.status == 400 and "not a downloadable add-on" in j["error"], (r.status, j)
         async with s.post(f"{BASE}/api/settings", json={"key": "llm_model", "value": "turbo"}) as r:
             assert r.status == 400 and "llm_model" in (await r.json())["error"]
     finally:
-        if hidden.exists():
-            hidden.rename(fast_file)
         await set_llm("default")
-    return "models.llm default/fast + llm_setting; fast → llama-server on coder7b; add-on missing → default + reason; download keys fast|llm_fast; bad value 400"
+    # the mechanism, on a manifest that still has the section (the fixture)
+    fast = llm_fast_fixture()
+    mm = server.ModelManager({**json.loads((REPO / "manifests" / "tier-8gb.json").read_text()), "llm_fast": fast})
+    ff = VDIR / "models" / fast["file"]
+    ff.parent.mkdir(parents=True, exist_ok=True)
+    had = ff.exists()
+    try:
+        ff.touch()
+        c = mm.llm_choice({"llm_model": "fast"})
+        assert c == {"setting": "fast", "effective": "fast", "section": "llm_fast", "fallback": None}, c
+        assert [o["key"] for o in mm.llm_options()] == ["default", "fast"]
+        with_fast = {"llm_model": "fast"}
+        server_settings = server.load_settings
+        server.load_settings = lambda: dict(server_settings(), **with_fast)
+        try:
+            assert mm.llm_spec("llm")[0] == "llm_fast" and mm.llm_spec("llm")[1]["file"] == fast["file"]
+        finally:
+            server.load_settings = server_settings
+        ff.unlink()
+        c = mm.llm_choice({"llm_model": "fast"})
+        assert c["effective"] == "default" and c["section"] == "llm" and "add-on" in c["fallback"] and "download" in c["fallback"], c
+    finally:
+        if had:
+            ff.touch()
+        elif ff.exists():
+            ff.unlink()
+    assert server.canonical_download_key("llm_fast") == "fast" and server.addon_section_key("fast") == "llm_fast"
+    return ("8 GB: models.llm = [default] only, modes [default]; fast → default + reason, no coder launch; 'fast' download 400; "
+            "bad value 400; mechanism on the fixture: fast → llm_fast, absent → default + add-on reason")
 
 
 @run_test("http_settings_validation", ["R15", "R42"])
@@ -6097,7 +6117,7 @@ async def t_n6_docs(_):
     import server, prompts
     dock = re.search(r'data-app="settings" data-prompt="([^"]+)"', (REPO / "shell" / "index.html").read_text()).group(1)
     need = ["vibe.system.setup()", "vram_mb", "total_gb", "have_gb", "current_tier", "vibe.hw.get()", "memory_mb",
-            "disk_gb", "[object Object]", "m.llm", "llm_model", "vibe.models()", "vibe.models.download(\"fast\")",
+            "disk_gb", "[object Object]", "m.llm", "llm_model", "vibe.models()", "vibe.models.download(entry.download_key)",   # [R89] no "fast"
             "llm_setting", "fallback", "vibe.system.upgrade", "vibe.fs.format()"]
     api = server.api_docs_for(dock)
     wiki = server.wiki_pages_for(dock)
@@ -6144,13 +6164,14 @@ async def _translation_reset(s):
         await asyncio.sleep(0.25)
 
 
-@run_test("unit_translation_manifest_and_specs", ["R71", "R47"])
+@run_test("unit_translation_manifest_and_specs", ["R71", "R47", "R89"])
 async def t_translation_manifest(_):
-    """[R71] every tier carries the `translation` add-on: addon:true (tier presence ignores it), a
-    `fast` (2B — CPU: -ngl 0 -dev none, parallel slots) and a `quality` (9B — GPU) GGUF with url /
-    size_bytes / sha256 like the other add-ons, the 8 GB tier's quality file the Q4_K_M and the
-    bigger tiers' the Q8_0, thinking off + temperature 0 at the section level, a comment that calls
-    the choice provisional until the benchmark; the kernel's specs, prompt and heuristics resolve."""
+    """[R71] every tier carries the `translation` add-on: addon:true (tier presence ignores it), a `fast` (2B — CPU:
+    -ngl 0 -dev none, parallel slots) GGUF with url / size_bytes / sha256 like the other add-ons, thinking off +
+    temperature 0 at the section level. `quality`: [R89] on the 8 GB tier the loaded LLM ({"use": "llm"} — no file,
+    no url, no download; the comment names the benchmark), on 16 GB and up still the dedicated 9B Q8_0 on the GPU
+    (unchanged: the benchmark left 16 GB open). The kernel's specs, prompt and heuristics resolve; the 8 GB tier's
+    "translation" key never resolves to a translation model (no swap)."""
     sys.path.insert(0, str(REPO / "kernel"))
     import server
     for t in ("8gb", "16gb", "24gb", "32gb"):
@@ -6161,27 +6182,39 @@ async def t_translation_manifest(_):
         assert tr["chat_template_kwargs"] == {"enable_thinking": False} and tr["sampling"] == {"temperature": 0}, t
         assert "provisional" in tr["comment"].lower() and "benchmark" in tr["comment"].lower(), t
         files = server.section_files(tr)
-        assert [e["file"] for e in files] == [tr["fast"]["file"], tr["quality"]["file"]], (t, files)
+        want = [tr["fast"]["file"]] + ([] if t == "8gb" else [tr["quality"]["file"]])
+        assert [e["file"] for e in files] == want, (t, files)
         for e in files:
             assert e["url"].startswith("https://huggingface.co/IndexTeam/Index-Translate-") and e["url"].endswith(Path(e["file"]).name), e
             assert re.fullmatch(r"[0-9a-f]{64}", e["sha256"]) and e["size_bytes"] > 10**9 \
                 and abs(e["size_gb"] - e["size_bytes"] / 1e9) < 0.02, (t, e)
         assert tr["fast"]["file"] == "translation/Index-Translate-2B.Q4_K_M.gguf", t
-        assert tr["quality"]["file"] == ("translation/Index-Translate-9B.Q4_K_M.gguf" if t == "8gb"
-                                         else "translation/Index-Translate-9B.Q8_0.gguf"), t
         fa = tr["fast"]["serve_args"]
         assert fa[fa.index("-ngl") + 1] == "0" and fa[fa.index("-dev") + 1] == "none" and int(fa[fa.index("-np") + 1]) >= 2 \
             and "--jinja" in fa, (t, fa)
-        qa = tr["quality"]["serve_args"]
-        assert qa[qa.index("-ngl") + 1] == "99" and int(qa[qa.index("-c") + 1]) >= 2048, (t, qa)
+        if t == "8gb":                                              # [R89] quality = the loaded LLM
+            assert set(tr["quality"]) == {"use", "comment"} and tr["quality"]["use"] == "llm" \
+                and "0.8684" in tr["quality"]["comment"] and "FAST-MODELS-2026-10-17" in tr["comment"], tr["quality"]
+            assert server.translation_quality_llm(m) and server.translation_llm_spec("quality", m) is None
+            assert not any("Index-Translate-9B" in e["file"] for e in server.manifest_files(m, include_addons=True)), "the 9B left the 8 GB tier"
+        else:                                                       # unchanged: the dedicated 9B Q8_0
+            assert tr["quality"]["file"] == "translation/Index-Translate-9B.Q8_0.gguf" and not server.translation_quality_llm(m), t
+            qa = tr["quality"]["serve_args"]
+            assert qa[qa.index("-ngl") + 1] == "99" and int(qa[qa.index("-c") + 1]) >= 2048, (t, qa)
         assert not any(e["file"].startswith("translation/") for e in server.manifest_files(m)), f"{t}: the add-on leaks into the baked tier set"
         assert {e["file"] for e in files} <= {e["file"] for e in server.manifest_files(m, include_addons=True)}, t
         for mode in ("fast", "quality"):
             spec = server.translation_llm_spec(mode, m)
+            if spec is None:
+                assert t == "8gb" and mode == "quality", (t, mode)
+                continue
             assert spec["file"] == tr[mode]["file"] and spec["serve_args"] == tr[mode]["serve_args"] \
                 and spec["chat_template_kwargs"] == {"enable_thinking": False} and spec["sampling"] == {"temperature": 0}, (t, mode, spec)
-    key, spec = server.MM.llm_spec("translation")           # the quality model through the coder LLM's slot, like vision
-    assert key == "translation" and spec["file"].endswith("Index-Translate-9B.Q4_K_M.gguf"), spec
+    key, spec = server.MM.llm_spec("translation")           # [R89] the 8 GB tier: the coder LLM's section, never a swap
+    assert key == "llm" and spec["file"] == server.MANIFEST["llm"]["file"], (key, spec.get("file"))
+    m16 = json.loads((REPO / "manifests" / "tier-16gb.json").read_text())
+    key, spec = server.ModelManager(m16).llm_spec("translation")   # 16 GB: the dedicated 9B through the swap path, like vision
+    assert key == "translation" and spec["file"].endswith("Index-Translate-9B.Q8_0.gguf"), spec
     assert server.LANGUAGES == {"en": "English", "de": "German", "es": "Spanish", "fr": "French",
                                 "it": "Italian", "ja": "Japanese", "ru": "Russian"}
     assert "{language}" in server.TRANSLATE_PROMPT and "{text}" in server.TRANSLATE_PROMPT \
@@ -6190,8 +6223,8 @@ async def t_translation_manifest(_):
         and not server.needs_translation("こんにちは", "ja") and server.needs_translation("Hello", "ja") \
         and not server.needs_translation("Привет", "ru") and server.needs_translation("Привет", "de")
     assert server.strip_thinking("<think>x</think>\nHallo") == "Hallo"
-    return ("4 tiers: translation addon (fast 2B CPU -ngl 0 -dev none, quality 9B GPU; Q4_K_M on 8 GB, Q8_0 above), "
-            "sha256/size_bytes, provisional note; specs + prompt + script heuristics")
+    return ("4 tiers: translation addon (fast 2B CPU -ngl 0 -dev none); quality 8 GB = the loaded LLM [R89] (no file, key "
+            "'translation' → llm), 16 GB+ the 9B Q8_0 (swap); sha256/size_bytes; specs + prompt + script heuristics")
 
 
 @run_test("http_translation_settings_validation", ["R71", "R15"])
@@ -6275,9 +6308,10 @@ async def t_translate_api(s):
     """[R71] on + German: POST /api/translate — one text, a batch, the persistent cache (a repeat =
     no model call), `to`/`from` explicit, the think block stripped, the 400s; the fast server is
     launched ONCE on the CPU (-ngl 0 -dev none, its own port, the add-on's 2B file) with the
-    model-card request shape; /api/models lists the add-on and the download fetches both files; a
-    quality choice without its file falls back to fast; both files absent = a clean 400 naming the
-    download; switching off stops the server."""
+    model-card request shape; /api/models lists the add-on and the download fetches its one file (the
+    2B — [R89] quality is the loaded LLM on this tier, nothing to fetch); a quality choice whose LLM file is
+    not on disk (a public image still downloading it) falls back to fast; fast absent too = a clean 400
+    naming the download; switching off stops the server."""
     sys.path.insert(0, str(REPO / "kernel"))
     import server
     arglog, msglog = VDIR / "llama-args.log", VDIR / "llama-msgs.log"
@@ -6332,7 +6366,7 @@ async def t_translate_api(s):
         mi = await r.json()
     ex = next(e for e in mi["extras"] if e["key"] == "translation")
     assert ex["addon"] is True and ex["present"] is True and ex["available"] is True and ex["kind"] == "translation" \
-        and 7 <= ex["download_gb"] <= 7.2 and "Index-Translate" in ex["name"], ex
+        and abs(ex["download_gb"] - 1.3) < 0.05 and ex["missing_gb"] == 0 and "Index-Translate" in ex["name"], ex
     assert mi["translation"]["language"] == "de" and mi["overrides"]["translation"] == "on", mi["translation"]
     async with s.post(f"{BASE}/api/models/download", json={"key": "translation"}) as r:
         j = await r.json(); assert r.status == 200 and j.get("already") is True, j
@@ -6344,17 +6378,19 @@ async def t_translate_api(s):
         await server.run_model_download("translation", "translation")
     finally:
         server.download_entries = real
-    assert calls == [["translation/Index-Translate-2B.Q4_K_M.gguf", "translation/Index-Translate-9B.Q4_K_M.gguf"]], calls
-    qf = VDIR / "models" / "translation" / "Index-Translate-9B.Q4_K_M.gguf"
+    assert calls == [["translation/Index-Translate-2B.Q4_K_M.gguf"]], calls          # [R89] no 9B on this tier
+    qf = VDIR / "models" / server.MANIFEST["llm"]["file"]          # [R89] the quality translator = the loaded LLM's file
+    qh = qf.with_name(qf.name + ".hidden")
     ff = VDIR / "models" / "translation" / "Index-Translate-2B.Q4_K_M.gguf"
-    qf.unlink()
+    qf.rename(qh)
     try:
         async with s.post(f"{BASE}/api/settings", json={"key": "translation_quality", "value": "quality"}) as r:
             assert r.status == 200
         await asyncio.sleep(0.5)
         async with s.get(f"{BASE}/api/translate/status") as r:
             st = await r.json()
-        assert st["quality"] == "quality" and st["effective"] == "fast" and "isn't downloaded" in st["fallback"], st
+        assert st["quality"] == "quality" and st["effective"] == "fast" and "language model isn't on disk" in st["fallback"] \
+            and st["quality_llm"] is True, st
         async with s.post(f"{BASE}/api/translate", json={"text": "Quality please"}) as r:
             j = await r.json()
         assert r.status == 200 and j["text"] == "[de] Quality please" and j["model"] == "fast", j
@@ -6367,7 +6403,9 @@ async def t_translate_api(s):
             ex = next(e for e in (await r.json())["extras"] if e["key"] == "translation")
         assert ex["present"] is False and ex["available"] is False, ex
     finally:
-        qf.touch(); ff.touch()
+        if qh.exists():
+            qh.rename(qf)
+        ff.touch()
         async with s.post(f"{BASE}/api/settings", json={"key": "translation_quality", "value": "fast"}) as r:
             assert r.status == 200
     async with s.post(f"{BASE}/api/settings", json={"key": "translation", "value": "off"}) as r:
@@ -6381,73 +6419,95 @@ async def t_translate_api(s):
     assert st["running"]["fast"] is False and st["enabled"] is False, st
     await _translation_reset(s)
     return ("single/batch/cache (de.json; repeat = 0 calls)/to+from/7 bad bodies 400; ONE CPU launch (-ngl 0 -dev none :8085, "
-            "no system msg, thinking off, temp 0); extras + download = 2 files; quality→fast fallback; absent → 400; off stops the server")
+            "no system msg, thinking off, temp 0); extras + download = the 2B only [R89]; quality (LLM file absent)→fast fallback; "
+            "absent → 400; off stops the server")
 
 
-@run_test("http_translation_present_modes_fast_baked", ["R71", "R47"])
+@run_test("http_translation_present_modes_fast_baked", ["R71", "R47", "R89"])
 async def t_translation_present_modes(s):
     """[present_modes fix 2026-10-07] image v7.3 bakes only the translation add-on's fast file
-    (docs/IMAGE-BAKE-ADDONS-2026-10-07.md), the 9B stays a download — /api/models (= vibe.models())
-    must say the layer is there. extras[translation]: fast only → present true, present_modes
-    {fast: true, quality: false}, missing_gb = the 9B, download_gb still the whole add-on; both →
-    both true, missing 0, the download answers 'already'; quality only → present true; neither →
-    present false. The download keeps fetching what is missing: section_present() stays "every
-    file" (so POST /api/models/download starts instead of answering 'already', and reports the
-    9B's size), run_model_download hands both entries to download_entries, and the real
-    download_entries skips the file on disk and runs aria2c for the 9B only. Every other add-on's
-    `present` is untouched."""
+    (docs/IMAGE-BAKE-ADDONS-2026-10-07.md) — /api/models (= vibe.models()) must say the layer is there.
+    [R89] On the 8 GB tier `quality` is the loaded LLM: extras[translation] = the fast file alone (download_gb 1.3),
+    present_modes.quality = the LLM's file on disk, never part of missing_gb or the download. Live kernel: both →
+    present, missing 0, the download answers 'already'; fast gone → present (the LLM translates), missing_gb = the 2B,
+    the download starts and fetches the 2B only; the LLM file gone → present_modes.quality false, missing 0; neither →
+    present false. In-process, the 16 GB tier's dedicated 9B (unchanged by R89): fast only → missing_gb = the 9B,
+    section_present() stays "every file" (the download starts, both entries handed over) and the real
+    download_entries skips the file on disk and runs aria2c for the 9B only. Every other add-on's `present` is untouched."""
     sys.path.insert(0, str(REPO / "kernel"))
     import server
     sec = server.MANIFEST["translation"]
-    qf, ff = VDIR / "models" / sec["quality"]["file"], VDIR / "models" / sec["fast"]["file"]
-    assert qf.exists() and ff.exists(), "the runner touches both placeholders"
+    ff = VDIR / "models" / sec["fast"]["file"]
+    lf = VDIR / "models" / server.MANIFEST["llm"]["file"]
+    lh = lf.with_name(lf.name + ".hidden")
+    assert ff.exists() and lf.exists() and server.translation_quality_llm(), "the runner touches the placeholders"
 
     async def entry():
         async with s.get(f"{BASE}/api/models") as r:
             mi = await r.json()
         return mi, next(e for e in mi["extras"] if e["key"] == "translation")
 
-    # both files (the suite's mock env = a user who downloaded the 9B)
     mi, ex = await entry()
     others = {e["key"]: e["present"] for e in mi["extras"] if e["key"] != "translation"}
     assert ex["present"] is True and ex["present_modes"] == {"fast": True, "quality": True} and ex["missing_gb"] == 0 \
-        and 7 <= ex["download_gb"] <= 7.2 and ex["available"] is True, ex
+        and abs(ex["download_gb"] - 1.3) < 0.05 and ex["available"] is True, ex
     async with s.post(f"{BASE}/api/models/download", json={"key": "translation"}) as r:
         assert (await r.json()).get("already") is True
     launched, calls = [], []
     real_dl, real_exec = server.download_entries, server.asyncio.create_subprocess_exec
-    try:
-        # fast only = image v7.3 as shipped
-        qf.unlink()
-        mi, ex = await entry()
-        assert ex["present"] is True and ex["present_modes"] == {"fast": True, "quality": False} and ex["available"] is True \
-            and ex["missing_gb"] == round(sec["quality"]["size_gb"], 2) and 5 <= ex["missing_gb"] < 7 \
-            and 7 <= ex["download_gb"] <= 7.2 and ex["downloading"] is False and ex["addon"] is True, ex
-        assert {e["key"]: e["present"] for e in mi["extras"] if e["key"] != "translation"} == others, "other add-ons untouched"
-        async with s.get(f"{BASE}/api/translate/status") as r:
-            st = await r.json()
-        assert st["present"] == {"fast": True, "quality": False} and st["available"] is True, st
-        # the download still fetches the 9B: not 'already' (section_present wants every file) …
-        assert server.section_present(sec) is False and server.translation_presence()["present"] is True
+    saved_tr = server.MANIFEST["translation"]
 
-        async def rec(entries, state):
-            calls.append([e["file"] for e in entries])
-        server.download_entries = rec
+    class Req:
+        async def json(self):
+            return {"key": "translation"}
 
-        class Req:
-            async def json(self):
-                return {"key": "translation"}
+    async def rec(entries, state):
+        calls.append([e["file"] for e in entries])
+
+    async def download_once():
         server.MODEL_DL.pop("translation", None)          # the in-process state an earlier test left behind
         resp = await server.h_model_download(Req())
         j = json.loads(resp.text)
-        assert resp.status == 200 and j.get("started") is True and j["download_gb"] == ex["missing_gb"], j
         for _ in range(40):
             await asyncio.sleep(0.05)                     # the handler's create_task runs on the next yield
             if server.MODEL_DL.get("translation", {}).get("status") == "done":
                 break
-        assert server.MODEL_DL["translation"]["status"] == "done" \
-            and calls == [[sec["fast"]["file"], sec["quality"]["file"]]], (calls, server.MODEL_DL.get("translation"))
-        # … and the real download_entries skips the file on disk and runs aria2c for the 9B only
+        return resp, j
+    try:
+        # fast gone (a public image whose first-boot download is still running): the LLM still translates
+        ff.unlink()
+        mi, ex = await entry()
+        assert ex["present"] is True and ex["present_modes"] == {"fast": False, "quality": True} and ex["available"] is True \
+            and ex["missing_gb"] == round(sec["fast"]["size_gb"], 2), ex
+        assert {e["key"]: e["present"] for e in mi["extras"] if e["key"] != "translation"} == others, "other add-ons untouched"
+        server.download_entries = rec
+        resp, j = await download_once()
+        assert resp.status == 200 and j.get("started") is True and j["download_gb"] == ex["missing_gb"], j
+        assert server.MODEL_DL["translation"]["status"] == "done" and calls == [[sec["fast"]["file"]]], calls
+        ff.touch()
+        # the LLM's file gone: quality is not there, the add-on itself is complete
+        lf.rename(lh)
+        mi, ex = await entry()
+        assert ex["present"] is True and ex["present_modes"] == {"fast": True, "quality": False} and ex["missing_gb"] == 0, ex
+        ff.unlink()
+        mi, ex = await entry()
+        assert ex["present"] is False and ex["present_modes"] == {"fast": False, "quality": False} and ex["available"] is False, ex
+        ff.touch(); lh.rename(lf)
+        # the 16 GB tier's dedicated 9B (in-process): present_modes per file, the download fetches what is missing
+        m16 = json.loads((REPO / "manifests" / "tier-16gb.json").read_text())
+        server.MANIFEST["translation"] = m16["translation"]
+        q16 = m16["translation"]["quality"]
+        qf = VDIR / "models" / q16["file"]
+        assert qf.exists(), "the runner touches every tier's files"
+        assert server.translation_presence() == {"present": True, "present_modes": {"fast": True, "quality": True}, "missing_gb": 0}
+        qf.unlink()
+        assert server.translation_presence() == {"present": True, "present_modes": {"fast": True, "quality": False},
+                                                 "missing_gb": round(q16["size_gb"], 2)}
+        assert server.section_present(server.MANIFEST["translation"]) is False
+        calls.clear()
+        resp, j = await download_once()
+        assert resp.status == 200 and j.get("started") is True and j["download_gb"] == round(q16["size_gb"], 2), j
+        assert calls == [[sec["fast"]["file"], q16["file"]]], calls
         server.download_entries = real_dl
 
         class Proc:
@@ -6464,32 +6524,29 @@ async def t_translation_present_modes(s):
         await server.download_entries([sec["fast"]], state)
         assert launched == [] and state["current"] == "", "the present fast file must not be fetched again"
         try:
-            await server.download_entries([sec["fast"], sec["quality"]], state)
+            await server.download_entries([sec["fast"], q16], state)
             raise AssertionError("the 9B's (failed) aria2c must surface")
         except RuntimeError as e:
-            assert "download failed: " + sec["quality"]["file"] in str(e), e
-        assert len(launched) == 1 and launched[0][0] == "aria2c" and sec["quality"]["url"] in launched[0] \
-            and launched[0][launched[0].index("-o") + 1] == Path(sec["quality"]["file"]).name, launched
+            assert "download failed: " + q16["file"] in str(e), e
+        assert len(launched) == 1 and launched[0][0] == "aria2c" and q16["url"] in launched[0] \
+            and launched[0][launched[0].index("-o") + 1] == Path(q16["file"]).name, launched
         assert not qf.exists(), "a failed aria2c leaves no file"
-        # quality only (the baked file deleted by hand): the layer still works
-        ff.unlink(); qf.touch()
-        mi, ex = await entry()
-        assert ex["present"] is True and ex["present_modes"] == {"fast": False, "quality": True} \
-            and ex["missing_gb"] == round(sec["fast"]["size_gb"], 2) and ex["available"] is True, ex
-        # neither
-        qf.unlink()
-        mi, ex = await entry()
-        assert ex["present"] is False and ex["present_modes"] == {"fast": False, "quality": False} and ex["available"] is False \
-            and abs(ex["missing_gb"] - ex["download_gb"]) < 0.1 and 7 <= ex["download_gb"] <= 7.2, ex
+        qf.touch()
     finally:
         server.download_entries, server.asyncio.create_subprocess_exec = real_dl, real_exec
+        server.MANIFEST["translation"] = saved_tr
         server.MODEL_DL.pop("translation", None)
-        qf.touch(); ff.touch()
+        ff.touch()
+        if lh.exists():
+            lh.rename(lf)
+        q = VDIR / "models" / "translation" / "Index-Translate-9B.Q8_0.gguf"
+        q.parent.mkdir(parents=True, exist_ok=True)
+        q.touch()
     mi, ex = await entry()
     assert ex["present"] is True and ex["present_modes"] == {"fast": True, "quality": True} and ex["missing_gb"] == 0, ex
-    return (f"fast only → present true, present_modes {{fast, !quality}}, missing_gb {round(sec['quality']['size_gb'], 2)}, "
-            f"download_gb {ex['download_gb']}; download: not 'already', both entries handed over, aria2c for the 9B only; "
-            "quality only → present; neither → present false; other add-ons unchanged")
+    return ("8 GB [R89]: fast + LLM → present, missing 0, 'already'; fast gone → present via the LLM, the download fetches the "
+            "2B only; LLM gone → quality false, missing 0; neither → absent. 16 GB 9B: fast only → missing 9.79, both entries "
+            "handed over, aria2c for the 9B only; other add-ons unchanged")
 
 
 @run_test("http_translation_llm_language_and_english_hop", ["R71", "R5", "R42"])
@@ -6519,9 +6576,10 @@ async def t_translation_llm(s):
         assert server.language_instruction(sysm, key) == "", (key, sysm[:40])
     p = server.MM.chat_payload("llm", prompts.APP_SYSTEM, [{"role": "user", "content": "x"}], 10, 0.5, False)
     assert p["messages"][0]["content"] == prompts.APP_SYSTEM + line
-    p = server.MM.chat_payload("translation", None, [{"role": "user", "content": "x"}], 10, 0, False)
-    assert p["messages"] == [{"role": "user", "content": "x"}] and p["chat_template_kwargs"] == {"enable_thinking": False} \
-        and p["temperature"] == 0, p
+    # the fast MT server's body (TranslationService.chat: the fast spec — [R89] the key alone resolves to the LLM on 8 GB)
+    p = server.MM.chat_payload("translation", None, [{"role": "user", "content": "x"}], 10, 0, False, spec=server.translation_llm_spec("fast"))
+    assert p == {"messages": [{"role": "user", "content": "x"}], "max_tokens": 10, "temperature": 0, "stream": False,
+                 "chat_template_kwargs": {"enable_thinking": False}}, p
     n = len(reqs())
     async with s.post(f"{BASE}/api/ask", json={"prompt": "say hi [lang-test]"}) as r:
         assert r.status == 200
@@ -6741,6 +6799,9 @@ async def t_p3_manifests(_):
         every = {e["file"] for e in server.manifest_files(m, include_addons=True)}
         assert sum(1 for f in every if f.startswith("dict/")) == 38 and sum(1 for f in every if f.startswith("wiktionary_")) == 7, p.name
         for mode in ("fast", "quality"):
+            if "serve_args" not in m["translation"][mode]:
+                assert mode == "quality" and m["translation"][mode].get("use") == "llm", (p.name, mode)   # [R89] the loaded LLM
+                continue
             a = m["translation"][mode]["serve_args"]
             assert a[a.index("--cache-ram") + 1] == "0", (p.name, mode, a)
         assert "--cache-ram 0" in m["translation"]["comment"]
@@ -6892,12 +6953,13 @@ async def t_dict_lookup(s):
             "9 bad requests 400, status, download hook (38 files + index; wiktionary → kiwix restart), extras, add-on missing → 400")
 
 
-@run_test("http_translation_dom_batches_fast_and_cache_ram", ["R71", "R72"])
+@run_test("http_translation_dom_batches_fast_and_cache_ram", ["R71", "R72", "R89"])
 async def t_translation_dom_fast(s):
-    """[R71 P3 fix 3+4] quality selected, both files present: a UI batch (`dom: true`) goes to the fast CPU
-    server (port 8085, launched with --cache-ram 0) and the kernel logs it; an explicit call without `dom`
-    takes the 9B through the GPU path (the mock on the LLM port, --cache-ram 0 in its argv too); back to
-    fast the quality model is unloaded while the fast server stays; off stops it."""
+    """[R71 P3 fix 3+4] quality selected, both translators present: a UI batch (`dom: true`) goes to the fast CPU
+    server (port 8085, launched with --cache-ram 0) and the kernel logs it — unchanged by R89; an explicit call
+    without `dom` takes quality, which on the 8 GB tier is [R89] the loaded LLM: the request reaches the LLM's port
+    with no system message, no translation server is launched for it, and nothing needs unloading when the choice
+    goes back to fast (the fast server stays); off stops it."""
     sys.path.insert(0, str(REPO / "kernel"))
     import server
     arglog, msglog, klog = VDIR / "llama-args.log", VDIR / "llama-msgs.log", VDIR / "kernel.log"
@@ -6909,43 +6971,144 @@ async def t_translation_dom_fast(s):
     await asyncio.sleep(0.3)
     async with s.get(f"{BASE}/api/translate/status") as r:
         st = await r.json()
-    assert st["quality"] == "quality" and st["effective"] == "quality" and st["fallback"] is None and st["present"] == {"fast": True, "quality": True}, st
+    assert st["quality"] == "quality" and st["effective"] == "quality" and st["fallback"] is None and st["present"] == {"fast": True, "quality": True} \
+        and st["quality_llm"] is True and "(the loaded LLM)" in st["model"]["quality"], st
     n0, m0 = len(tr_lines()), len(msgs())
     stamp = f"{time.time():.3f}"                      # fresh texts: a cached answer would never reach a model
     texts = [f"Open this window {stamp}", f"Save the file now {stamp}", f"Close {stamp}"]
     async with s.post(f"{BASE}/api/translate", json={"texts": texts, "dom": True}) as r:
         j = await r.json()
-    assert r.status == 200 and j["model"] == "fast" and j["texts"] == [f"[de] {t}" for t in texts] and j["calls"] == 3, j
+    assert r.status == 200 and j["model"] == "fast" and j["via"] == "mt" and j["texts"] == [f"[de] {t}" for t in texts] and j["calls"] == 3, j
     new = msgs()[m0:]
     assert len(new) == 3 and all(m["port"] == 8085 for m in new), "a UI batch must go to the fast CPU server even with quality selected"
     launch = tr_lines()
     assert len(launch) == n0 + 1 and "Index-Translate-2B" in launch[-1] and "--cache-ram 0" in launch[-1] and "-ngl 0" in launch[-1] \
         and "-dev none" in launch[-1], launch[-1:]
     assert "translation: UI batch of 3 → fast (quality selected; vibe.translate() keeps quality)" in klog.read_text()
-    m1 = len(msgs())
-    async with s.post(f"{BASE}/api/translate", json={"text": "An explicit vibe.translate call wants quality"}) as r:
+    m1, n1 = len(msgs()), len(tr_lines())
+    async with s.post(f"{BASE}/api/translate", json={"text": f"An explicit vibe.translate call wants quality {stamp}"}) as r:
         j = await r.json()
-    assert r.status == 200 and j["model"] == "quality" and j["text"] == "[de] An explicit vibe.translate call wants quality" and j["calls"] == 1, j
+    assert r.status == 200 and j["model"] == "quality" and j["via"] == "llm" and j["calls"] == 1 \
+        and j["text"] == f"[de] An explicit vibe.translate call wants quality {stamp}", j
     new = msgs()[m1:]
-    assert len(new) == 1 and new[0]["port"] != 8085 and new[0]["system"] is None, new
-    assert "Index-Translate-9B" in tr_lines()[-1] and "--cache-ram 0" in tr_lines()[-1] and "--port 8085" not in tr_lines()[-1], tr_lines()[-1]
-    async with s.get(f"{BASE}/api/translate/status") as r:
-        st = await r.json()
-    assert st["running"] == {"fast": True, "quality": True}, st
+    assert len(new) == 1 and new[0]["port"] == 8081 and new[0]["system"] is None, new
+    assert len(tr_lines()) == n1, "[R89] no translation server for quality"
+    async with s.get(f"{BASE}/api/status") as r:
+        full = await r.json()
+    assert full["loaded"] == "llm" and full["translation"]["running"] == {"fast": True, "quality": False}, (full["loaded"], full["translation"]["running"])
     async with s.post(f"{BASE}/api/settings", json={"key": "translation_quality", "value": "fast"}) as r:
         assert r.status == 200
-    for _ in range(80):
-        await asyncio.sleep(0.25)
-        async with s.get(f"{BASE}/api/translate/status") as r:
-            st = await r.json()
-        if not st["running"]["quality"]:
-            break
+    await asyncio.sleep(0.3)
+    async with s.get(f"{BASE}/api/translate/status") as r:
+        st = await r.json()
     assert st["running"] == {"fast": True, "quality": False} and st["effective"] == "fast", st
+    async with s.get(f"{BASE}/api/status") as r:
+        assert (await r.json())["loaded"] == "llm", "the LLM stays: it is the coder, not a translation model"
     await _translation_reset(s)
     async with s.get(f"{BASE}/api/translate/status") as r:
         assert (await r.json())["running"] == {"fast": False, "quality": False}
-    return ("quality selected: dom batch → fast (:8085, --cache-ram 0, logged), explicit call → quality (9B via the LLM port, --cache-ram 0); "
-            "→ fast unloads the 9B and keeps the fast server; off stops it")
+    return ("quality selected: dom batch → fast (:8085, --cache-ram 0, logged); explicit call → quality = the loaded LLM "
+            "(:8081, no system msg, no translation launch) [R89]; → fast keeps the fast server and the LLM; off stops it")
+
+
+@run_test("http_r89_quality_translation_via_llm", ["R89", "R71", "R72"])
+async def t_r89_quality_via_llm(s):
+    """[R89] translation_quality=quality on the 8 GB tier: every direction runs on the LOADED LLM (en→de, en→ja, de→en
+    here) with exactly the benchmark's body — one user turn = TRANSLATE_PROMPT, no system message, temperature 0,
+    thinking off, max_tokens min(2048, 64 + 3·len), and NOT the LLM's vendor sampling (no top_k / top_p, temp 0 not
+    1.0) — no translation llama-server is launched for it and /api/status `loaded` stays llm. The fast path is
+    unchanged: a UI batch (`dom`) and the kernel's English hop (a search query) still go to the 2B on :8085 with its
+    own body; with quality=fast an explicit call does too."""
+    sys.path.insert(0, str(REPO / "kernel"))
+    import server
+    arglog, msglog = VDIR / "llama-args.log", VDIR / "llama-msgs.log"
+    launches = lambda: [ln for ln in (arglog.read_text().splitlines() if arglog.exists() else []) if ln.strip()]
+    msgs = lambda: [json.loads(ln) for ln in (msglog.read_text().splitlines() if msglog.exists() else [])]
+    await _translation_reset(s)
+    async with s.post(f"{BASE}/api/settings", json={"translation": "on", "language": "de", "translation_quality": "quality"}) as r:
+        assert r.status == 200
+    stamp = f"{time.time():.3f}"
+    n0, m0 = len(launches()), len(msgs())
+    cases = [("en", "de", f"The window opens at noon {stamp}", "German"),
+             ("en", "ja", f"Save the picture before you close the app {stamp}", "Japanese"),
+             ("de", "en", f"Der Zug fährt um acht Uhr ab {stamp}", "English")]
+    for frm, to, text, name in cases:
+        async with s.post(f"{BASE}/api/translate", json={"text": text, "to": to, "from": frm}) as r:
+            j = await r.json()
+        assert r.status == 200 and j["model"] == "quality" and j["via"] == "llm" and j["calls"] == 1 and j["text"] == f"[{to}] {text}", j
+    new = msgs()[m0:]
+    assert len(new) == 3 and all(m["port"] == 8081 for m in new), [m["port"] for m in new]
+    for m, (frm, to, text, name) in zip(new, cases):
+        assert m["system"] is None and m["messages"] == 1 and m["user"] == server.TRANSLATE_PROMPT.format(language=name, text=text) \
+            and m["temperature"] == 0 and m["chat_template_kwargs"] == {"enable_thinking": False} \
+            and m["max_tokens"] == min(2048, 64 + 3 * len(text)) \
+            and m["keys"] == ["chat_template_kwargs", "max_tokens", "messages", "stream", "temperature"], m
+    assert not any("Index-Translate" in ln for ln in launches()[n0:]), launches()[n0:]
+    async with s.get(f"{BASE}/api/status") as r:
+        st = await r.json()
+    assert st["loaded"] == "llm" and st["gpu"]["kind"] == "llm" and st["translation"]["running"]["quality"] is False \
+        and st["translation"]["quality_llm"] is True, (st["loaded"], st["gpu"], st["translation"]["running"])
+    # the in-process body builder agrees (the LLM's section: thinking off kept, vendor sampling left out)
+    spec = server.MM.llm_spec("llm")[1]
+    body = server.MM.chat_payload("llm", None, [{"role": "user", "content": "x"}], 67, 0, False, {"temperature": 0}, spec=spec,
+                                  vendor_sampling=False)
+    assert body == {"messages": [{"role": "user", "content": "x"}], "max_tokens": 67, "temperature": 0, "stream": False,
+                    "chat_template_kwargs": {"enable_thinking": False}}, body
+    assert server.MM.chat_payload("llm", None, [{"role": "user", "content": "x"}], 67, 0, False, spec=spec)["top_k"] == 64, \
+        "every other request keeps the vendor sampling"
+    # the fast path is unchanged
+    m1 = len(msgs())
+    async with s.post(f"{BASE}/api/translate", json={"texts": [f"Open {stamp}", f"Close {stamp}"], "dom": True}) as r:
+        j = await r.json()
+    assert r.status == 200 and j["model"] == "fast" and j["via"] == "mt", j
+    async with s.post(f"{BASE}/api/search", json={"query": f"Eiffelturm Geschichte {stamp}"}) as r:
+        assert r.status == 200
+    new = msgs()[m1:]
+    assert len(new) >= 3 and all(m["port"] == 8085 and m["system"] is None and m["temperature"] == 0 for m in new) \
+        and any(m["user"].startswith("Translate the following text into English.") for m in new), new   # (+ result snippets with a ZIM)
+    async with s.post(f"{BASE}/api/settings", json={"key": "translation_quality", "value": "fast"}) as r:
+        assert r.status == 200
+    m2 = len(msgs())
+    async with s.post(f"{BASE}/api/translate", json={"text": f"Good night {stamp}"}) as r:
+        j = await r.json()
+    assert r.status == 200 and j["model"] == "fast" and j["via"] == "mt" and [m["port"] for m in msgs()[m2:]] == [8085], j
+    await _translation_reset(s)
+    return ("quality = the loaded LLM: en→de / en→ja / de→en on :8081 with the benchmark's body (no system, temp 0, thinking "
+            "off, the kernel's max_tokens, no vendor sampling), no translation launch, loaded = llm; dom batch, English hop "
+            "and quality=fast stay on the 2B (:8085)")
+
+
+@run_test("unit_r89_docs_and_sheets_static", ["R89", "R39", "R59"])
+async def t_r89_docs(_):
+    """[R89] the documents say what the kernel does: the requirement, the benchmark's lasting record (no personal paths,
+    the decisions), the index line, the translation-layer addendum, API.md; the Settings sheet + recipe the coder LLM
+    gets (and the dock's Settings prompt) offer no fast model and label quality with `model.quality` — both still
+    injected whole within their caps; the Models panel text and the licence index follow."""
+    sys.path.insert(0, str(REPO / "kernel"))
+    import server
+    d = REPO / "docs"
+    assert "- **R89 — " in (d / "REQUIREMENTS.md").read_text(encoding="utf-8")
+    fm = (d / "FAST-MODELS-2026-10-17.md").read_text(encoding="utf-8")
+    assert "0.8684" in fm and "## 9. Decisions" in fm and "Drop fast mode" in fm and "Translation via Gemma" in fm
+    assert not re.search(r"/home/|~/|Bilder", fm), "personal paths in the benchmark record"
+    assert "FAST-MODELS-2026-10-17.md" in (d / "README.md").read_text(encoding="utf-8")
+    assert "## R89 addendum" in (d / "TRANSLATION-LAYER-2026-10-06.md").read_text(encoding="utf-8")
+    api = (d / "API.md").read_text(encoding="utf-8")
+    assert "There is no separate fast model" in api and "the loaded LLM" in api and "`via`" in api
+    sheet, recipe = server.API_DOCS["system-settings"]["text"], server.WIKI["settings-app"]["text"]
+    for doc, name in ((sheet, "sheet"), (recipe, "recipe")):
+        assert "model.quality" in doc and "Qwen2.5-Coder" not in doc and 'vibe.models.download("fast")' not in doc, name
+        assert "no separate fast model" in doc.lower() or "no fast model" in doc.lower(), name
+    assert len(sheet) <= server.API_SHEET_CAP and len(recipe) <= server.WIKI_FIRST_CAP, (len(sheet), len(recipe))
+    index = (REPO / "shell" / "index.html").read_text(encoding="utf-8")
+    dock = re.search(r'data-app="settings" data-prompt="([^"]+)"', index).group(1)
+    assert "fast = the small quick one" not in dock and "no fast mode" in dock and "m.translation.model.quality" in dock, dock[-600:]
+    assert "the fast coder" not in (REPO / "shell" / "models.js").read_text(encoding="utf-8")
+    lic = json.loads((REPO / "iso" / "config" / "includes.chroot" / "usr" / "share" / "doc" / "kairos" / "model-licences"
+                      / "index.json").read_text(encoding="utf-8"))
+    by = {m["id"]: m for m in lic["models"]}
+    assert "translation/Index-Translate-9B.Q8_0.gguf" in by["index-translate"]["files"] and "former" in by["qwen2.5-coder"]["name"]
+    return f"R89 entry, FAST-MODELS record (no personal paths), index line, addendum, API.md; sheet {len(sheet)} / recipe {len(recipe)} chars without a fast model"
 
 
 @run_test("unit_knowledge_multi_zim_sources", ["R32", "R71"])
@@ -7101,7 +7264,7 @@ NEEDS_AIOHTTP = ("unit_validate_html", "unit_desktop_hidden_linux_r68_static",  
                  "unit_r47_baked_set_and_build_scripts", "unit_js_syntax_gate",
                  "unit_translation_manifest_and_specs", "unit_translation_shell_bridge_docs_static",
                  "unit_p3_dictionaries_wiktionary_manifests", "unit_knowledge_multi_zim_sources",      # [R71 P3]
-                 "unit_p3_dict_wiktionary_docs_bridge_static")
+                 "unit_p3_dict_wiktionary_docs_bridge_static", "unit_r89_docs_and_sheets_static")
 
 
 @run_test("unit_bake_flagged_addons_in_image", ["R47", "R71"])
@@ -7144,14 +7307,15 @@ async def t_bake_flagged_addons(_):
         expected = non_addon + [tr["fast"]["file"]] + dict_files
         got = run(p, "/nonexistent", "--list")
         assert got.returncode == 0 and got.stdout.split() == expected, (p.name, got.stdout)
-        assert tr["quality"]["file"] not in expected and not any(f.startswith("wiktionary_") for f in expected) and len(dict_files) == 38, p.name
-        for key, sec in m.items():                               # every other add-on section stays a download (llm_fast
-            if isinstance(sec, dict) and sec.get("addon") and key not in ("translation", "dictionaries"):   # exists on 8/16 GB only)
+        assert tr["quality"].get("file", "-") not in expected and not any(f.startswith("wiktionary_") for f in expected) and len(dict_files) == 38, p.name
+        for key, sec in m.items():                               # every other add-on section stays a download
+            if isinstance(sec, dict) and sec.get("addon") and key not in ("translation", "dictionaries"):
                 # a file the add-on shares with a non-addon section (an encoder, the VAE) is baked for the latter's sake
                 assert not any(e["file"] in expected for e in server.section_files(sec) if e["file"] not in non_addon), \
                     (p.name, key, "an unflagged add-on leaks")
         every = run(p, "/nonexistent", "--all", "--list").stdout.split()
-        assert set(expected) < set(every) and tr["quality"]["file"] in every and not any(f.startswith("wiktionary_") for f in every), p.name
+        assert set(expected) < set(every) and (tr["quality"]["file"] in every if "file" in tr["quality"] else tr["quality"]["use"] == "llm") \
+            and not any(f.startswith("wiktionary_") for f in every), p.name   # [R89] the 8 GB shape: quality = the loaded LLM, no file
         assert not any(f.startswith(("translation/", "dict/")) for f in non_addon), (p.name, "a baked add-on became a tier requirement")
     # the flag's semantics on a synthetic manifest: section-level = every file, entry-level = that file, a
     # knowledge-store entry never; the kernel's manifest_files ignores the add-on section either way
@@ -7189,7 +7353,7 @@ async def t_bake_flagged_addons(_):
     m8 = json.loads((REPO / "manifests" / "tier-8gb.json").read_text())
     extra = m8["translation"]["fast"]["size_bytes"] + sum(e["size_bytes"] for e in server.section_files(m8["dictionaries"]))
     assert extra == 1312164352 + 118463187, extra
-    return f"bake flag on translation.fast + dictionaries in 7 manifests, nowhere else; 8gb list +39 files / +{extra / 1e9:.2f} GB (the 9B + ZIMs stay downloads); tier presence unchanged"
+    return f"bake flag on translation.fast + dictionaries in 7 manifests, nowhere else; 8gb list +39 files / +{extra / 1e9:.2f} GB (ZIMs + the 16 GB+ 9B stay downloads; 8 GB quality = the LLM [R89]); tier presence unchanged"
 
 # ---------------------------------------------------------------------------
 # [2026-10-14] a generation cut at the length limit is never cached (R86's GPU check: a 15 783-token page

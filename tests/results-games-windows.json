@@ -1,5 +1,5 @@
 {
- "at": "2026-10-18 02:21:24",
+ "at": "2026-10-18 12:51:59",
  "tests": {
   "gw_frame_bmp": {
    "reqs": [
@@ -26,7 +26,7 @@
     "R28"
    ],
    "status": "pass",
-   "detail": "forged + mapped in 9.2 s; window 960x540 at (127,137) inside body (127,137,960,541), centred; transient for the kiosk; game colour (150, 30, 40) above the focused kiosk; dock glow; relaunch = same frame"
+   "detail": "forged + mapped in 9.2 s; window 960x540 at (127,137) inside body (127,137,960,540), centred; transient for the kiosk; game colour (150, 30, 40) above the focused kiosk; dock glow; relaunch = same frame"
   },
   "gw_e2e_drag_follow": {
    "reqs": [
@@ -34,7 +34,7 @@
     "R68"
    ],
    "status": "pass",
-   "detail": "follow lag over 24 real drag steps: p50 15.9 ms, p95 17.2 ms, max 18.4 ms (pointer event -> X window in place); drop verified; resize keeps it centred, min [962, 576]; maximize centred"
+   "detail": "follow lag over 24 real drag steps: p50 6.2 ms, p95 16.8 ms, max 19.4 ms (pointer event -> X window in place); drop verified; resize keeps it centred, min [962, 576]; maximize centred"
   },
   "gw_e2e_cover_screenshot_uncover": {
    "reqs": [
@@ -44,7 +44,7 @@
     "R68"
    ],
    "status": "pass",
-   "detail": "sysmenu_cover_ms 26.9; sysmenu_uncover_ms 8.4; apps_cover_ms 22.8; apps_uncover_ms 49.2; window_cover_ms 18.7; window_uncover_ms 39.0; toast_cover_ms 23.1; shell_cover_ms_median 23; shell_uncover_ms_median 5.6; screenshot = game colour (150, 30, 40); process T while covered; keyboard back to the kio"
+   "detail": "sysmenu_cover_ms 27.5; sysmenu_uncover_ms 7.6; apps_cover_ms 22.0; apps_uncover_ms 53.5; window_cover_ms 15.7; window_uncover_ms 40.4; toast_cover_ms 20.5; shell_cover_ms_median 22.3; shell_uncover_ms_median 5.2; screenshot = game colour (150, 30, 40); process T while covered; keyboard back to the k"
   },
   "gw_e2e_minimize_restore_dock": {
    "reqs": [
@@ -53,7 +53,7 @@
     "R68"
    ],
    "status": "pass",
-   "detail": "_ -> unmapped in 31 ms, process T, dock icon scale 1.33; dock click -> mapped in 11 ms, running, focused"
+   "detail": "_ -> unmapped in 31 ms, process T, dock icon scale 1.33; dock click -> mapped in 28 ms, running, focused"
   },
   "gw_e2e_improve_versions_close": {
    "reqs": [
@@ -63,7 +63,7 @@
     "R86"
    ],
    "status": "pass",
-   "detail": "✨ note covered the game; 'make the background green' -> v2 (green) in the same frame after 8.5 s, v1 ended without a crash record; v▾ v2●/v1 -> v1 (red) again; ✕ ended it in 56 ms, frame + icon gone"
+   "detail": "✨ note covered the game; 'make the background green' -> v2 (green) in the same frame after 8.5 s, v1 ended without a crash record; v▾ v2●/v1 -> v1 (red) again; ✕ ended it in 62 ms, frame + icon gone"
   },
   "gw_e2e_second_screen": {
    "reqs": [
@@ -76,21 +76,21 @@
  },
  "numbers": {
   "lag": {
-   "p50": 15.9,
-   "p95": 17.2,
-   "max": 18.4,
+   "p50": 6.2,
+   "p95": 16.8,
+   "max": 19.4,
    "n": 24
   },
   "cover": {
-   "sysmenu_cover_ms": 26.9,
-   "sysmenu_uncover_ms": 8.4,
-   "apps_cover_ms": 22.8,
-   "apps_uncover_ms": 49.2,
-   "window_cover_ms": 18.7,
-   "window_uncover_ms": 39.0,
-   "toast_cover_ms": 23.1,
-   "shell_cover_ms_median": 23,
-   "shell_uncover_ms_median": 5.6
+   "sysmenu_cover_ms": 27.5,
+   "sysmenu_uncover_ms": 7.6,
+   "apps_cover_ms": 22.0,
+   "apps_uncover_ms": 53.5,
+   "window_cover_ms": 15.7,
+   "window_uncover_ms": 40.4,
+   "toast_cover_ms": 20.5,
+   "shell_cover_ms_median": 22.3,
+   "shell_uncover_ms_median": 5.2
   }
  }
 }

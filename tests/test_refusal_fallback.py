@@ -2441,6 +2441,11 @@ class Kernel:
                         "--out", str(t / "bin" / "ENGINES.json")], check=True, capture_output=True)
         m = json.loads((REPO / "manifests" / "tier-8gb.json").read_text(encoding="utf-8"))   # the SHIPPED shape: the heretic default
         assert m["llm"]["file"] == HERETIC_FILE and m["llm"]["uncensored"] is True and "llm_uncensored" not in m
+        # [R89] the shipped tier dropped fast mode; the censored primary these tests switch to (llm_model=fast) is the
+        # former llm_fast section, injected from tests/fixture-llm-fast.json (Qwen2.5-Coder-7B, a censored model)
+        assert "llm_fast" not in m
+        m["llm_fast"] = json.loads((REPO / "tests" / "fixture-llm-fast.json").read_text(encoding="utf-8"))["llm_fast"]
+        assert m["llm_fast"]["file"] == FAST_FILE
         m["image"]["expander_fallback_file"] = FALLBACK_ENCODER       # the integrator's decensored encoder slot
         (t / "manifests" / "tier-8gb.json").write_text(json.dumps(m, indent=1, ensure_ascii=False))
         files = set()
@@ -3001,6 +3006,79 @@ async def t_c8_mt(ctx):
     finally:
         await api(ctx, "POST", "/api/settings", {"key": "translation", "value": "off"})
     return "refused + hidden pair: blocked through the English hop after 1 request (fast); answered as typed on the default; MT refusal not cached; refusal-shaped source translated"
+
+
+@run_test("refusal_e2e_quality_translation_via_llm", ["R86", "R89", "R71"], needs="http")
+async def t_c8b_quality_mt(ctx):
+    """[R89] translation_quality=quality on the 8 GB tier = the loaded LLM — a text request to it like any other.
+    (point 4) the uncensored default: every text is checked at the entry — a batch holding a minors probe is a 400
+    with BLOCK_MESSAGE and NO model call at all (neither the LLM nor the fast MT), nothing cached, one journal line
+    'blocked … on translate'; (refusal) the LLM declining a sentence ([refuse-mt-llm]) → that text goes to the fast CPU
+    translator (one LLM request, then one fast request), the answer is used and cached, /api/status last_fallback =
+    {kind translate, to fast}; both declining ([refuse-mt]) → the text as typed, not cached; (point 3) a censored
+    primary (llm_model=fast, the fixture coder) is not checked at the entry, but its refusal is: a probe it declines
+    is blocked after exactly ONE LLM request and no fast fallback. The request body is the benchmark's: one user turn,
+    no system message, temperature 0, thinking off, max_tokens min(2048, 64 + 3·len)."""
+    k, S = ctx["kernel"], ctx["server"]
+    st, _ = await api(ctx, "POST", "/api/settings", {"translation": "on", "language": "de", "translation_quality": "quality"})
+    assert st == 200
+    stamp = f"{time.time():.3f}"
+    try:
+        s0 = await status(ctx)
+        assert s0["translation"]["quality_llm"] is True and s0["translation"]["effective"] == "quality", s0["translation"]
+        b0 = s0["refusal_fallback"]["blocked"]
+        # (point 4) an uncensored primary: the entry check, before any model call
+        m0 = len(k.msgs())
+        st, r = await api(ctx, "POST", "/api/translate", {"texts": [f"good morning {stamp}", MINOR_IMAGE]})
+        assert st == 400 and r["error"] == S.refusal.BLOCK_MESSAGE, (st, r)
+        assert len(k.msgs()) == m0, "no model call for a blocked batch"
+        assert re.search(r"\[kernel\] blocked \(minors: .*?\) on translate", k.log()), k.log_tail(400)
+        assert (await status(ctx))["refusal_fallback"]["blocked"] == b0 + 1
+        cache = S.TRANSLATE_CACHE_DIR / "de.json"
+        assert not cache.exists() or f"good morning {stamp}" not in cache.read_text(), "nothing of a blocked batch is cached"
+        # an ordinary text: the LLM, with the benchmark's body
+        text = f"good morning {stamp}"
+        m0 = len(k.msgs())
+        st, r = await api(ctx, "POST", "/api/translate", {"text": text})
+        assert st == 200 and r["text"] == f"[de] {text}" and r["model"] == "quality" and r["via"] == "llm", r
+        new = k.msgs()[m0:]
+        assert len(new) == 1 and new[0]["port"] == LPORT and new[0]["system"] is None and new[0]["messages"] == 1 \
+            and new[0]["user"] == S.TRANSLATE_PROMPT.format(language="German", text=text) and new[0]["temperature"] == 0 \
+            and new[0]["chat_template_kwargs"] == {"enable_thinking": False} and new[0]["max_tokens"] == min(2048, 64 + 3 * len(text)) \
+            and new[0]["keys"] == ["chat_template_kwargs", "max_tokens", "messages", "stream", "temperature"], new
+        # (refusal) the LLM declines → the fast translator
+        text = f"[refuse-mt-llm] good evening {stamp}"
+        m0 = len(k.msgs())
+        st, r = await api(ctx, "POST", "/api/translate", {"text": text})
+        assert st == 200 and r["text"] == f"[de] {text}" and r["calls"] == 1, r
+        new = k.msgs()[m0:]
+        assert [m["port"] for m in new] == [LPORT, TRPORT] and all(m["system"] is None for m in new), new
+        lf = (await status(ctx))["last_fallback"]
+        assert lf["kind"] == "translate" and lf["to"] == "fast" and lf["from"] == "llm", lf
+        st, r = await api(ctx, "POST", "/api/translate", {"text": text})
+        assert r["cached"] == 1 and r["calls"] == 0 and r["text"] == f"[de] {text}", ("the fast answer is a translation: cached", r)
+        # both decline → as typed, never cached
+        text = f"[refuse-mt] see you {stamp}"
+        m0 = len(k.msgs())
+        st, r = await api(ctx, "POST", "/api/translate", {"text": text})
+        assert st == 200 and r["text"] == text and [m["port"] for m in k.msgs()[m0:]] == [LPORT, TRPORT], (r, k.msgs()[m0:])
+        st, r = await api(ctx, "POST", "/api/translate", {"text": text})
+        assert r["cached"] == 0 and r["calls"] == 1, ("a declined translation was cached", r)
+        # (point 3) a censored primary: unchecked at the entry, checked after its refusal — no fast fallback then
+        await set_llm(ctx, "fast")
+        try:
+            m0 = len(k.msgs())
+            st, r = await api(ctx, "POST", "/api/translate", {"text": "[refuse-mt-llm] " + MINOR_IMAGE})
+            assert st == 400 and r["error"] == S.refusal.BLOCK_MESSAGE, (st, r)
+            new = k.msgs()[m0:]
+            assert [m["port"] for m in new] == [LPORT], ("one LLM request, then the block — no fast fallback", new)
+            assert FAST_FILE.split("/")[-1] in k.launches()[-1] or (await status(ctx))["loaded"] == "llm_fast"
+        finally:
+            await set_llm(ctx, "default")
+    finally:
+        await api(ctx, "POST", "/api/settings", {"translation": "off", "language": "en", "translation_quality": "fast"})
+    return ("quality = the loaded LLM: probe batch 400 with 0 model calls; body = the benchmark's; LLM refusal → fast "
+            "(cached), both → as typed (not cached); censored primary: blocked after its refusal, 1 request")
 
 
 @run_test("refusal_e2e_cached_apps_never_hidden", ["R86", "R60"], needs="http")

@@ -45,7 +45,8 @@ REFUSAL_DE = ("Es tut mir leid, aber ich kann dir dabei nicht helfen. Ich darf k
 # [R86 round 2] "[refuse-minors]": a refusal that NAMES minors, on every model (round 4: no longer special to the
 # kernel — it is a refusal on every model, i.e. the ladder is exhausted); "[refuse-html]": the refusal wrapped in a document with a long <head> (the stream's
 # early verdict saw only '<!DOCTYPE' before round 2); the MT prompt: "[mt=<english>]" answers that English for the
-# text (a pair hidden in the OS language), "[refuse-mt]" declines the translation.
+# text (a pair hidden in the OS language), "[refuse-mt]" declines the translation; [R89] "[refuse-mt-llm]" declines it
+# only on a server that does not run an Index-Translate GGUF (the loaded LLM translating; the fast MT model answers).
 REFUSAL_MINORS = ("I cannot create this content. The request appears to involve minors, and I do not generate sexual "
                   "content involving anyone under 18.")
 REFUSAL_HTML = ("<!DOCTYPE html>\n<html><head><meta charset='utf-8'><title>Request declined</title>\n<style>\n"
@@ -239,6 +240,8 @@ def translate_reply(user):
     code = TRANSLATE_CODES.get(m.group(1) if m else "", "xx")
     if "[refuse-mt]" in text:                        # [R86 round 2, S7] the MT model declines the sentence
         return REFUSAL
+    if "[refuse-mt-llm]" in text and "index-translate" not in _MODEL:   # [R89] only the LLM declines (the fast MT model answers)
+        return REFUSAL
     if "[mt-minors]" in text:                        # [R86 round 2, B1] a text whose ENGLISH pairs the terms (the marker does not)
         return f"<think>translating into {code}</think>\nnude 12 year old girl"
     hidden = re.search(r"\[mt=(.*?)\]", text)        # [R86 round 2, B1] the English of a request in the OS language
@@ -334,7 +337,10 @@ async def chat(request):
         with open(os.environ["MOCK_LLAMA_MSGLOG"], "a") as f:
             f.write(json.dumps({"port": PORT, "system": sysm, "user": last if isinstance(last, str) else "[parts]",
                                 "temperature": payload.get("temperature"),
-                                "chat_template_kwargs": payload.get("chat_template_kwargs")}, ensure_ascii=False) + "\n")
+                                "chat_template_kwargs": payload.get("chat_template_kwargs"),
+                                # [R89] the whole request shape: the quality-via-LLM body must equal the benchmark's
+                                "max_tokens": payload.get("max_tokens"), "keys": sorted(payload),
+                                "messages": len(msgs)}, ensure_ascii=False) + "\n")
     text = pick_reply(payload)
     finish, tokens = "stop", None
     if length_stop(payload):                         # [2026-10-14] a reply cut at the length limit

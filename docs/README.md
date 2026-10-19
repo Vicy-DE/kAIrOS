@@ -31,7 +31,8 @@ supersedes it, that is noted below. Dates are in the file names (`<TOPIC>-<YYYY-
   marked `"uncensored": true` in the manifests: it answers adult requests itself; R86's refusal
   ladder (the same model with an 18+ preamble, then the uncensored model) covers a model that still
   declines, and a narrow minors block refuses only a request that pairs an explicit under-18 age or
-  word with a sexual term (plus a few illegal-content terms). Fast mode: the Qwen2.5-Coder-7B add-on.
+  word with a sexual term (plus a few illegal-content terms). No separate fast model since 2026-10-18 (R89):
+  the Qwen2.5-Coder-7B add-on left the tiers, and on 8 GB the loaded LLM is also the quality translator.
 - **Default image model (every tier):** Muse v3.5 Extended Q4_0, a Krea 2 fine-tune, no LoRA.
 - **Out of the manifests since 2026-10-10:** stock Gemma 4, Krea 2 Turbo, the Kroma LoRA. Reports
   written before that date describe them as the defaults of their time.
@@ -65,7 +66,7 @@ supersedes it, that is noted below. Dates are in the file names (`<TOPIC>-<YYYY-
 | [FIXES-2026-09-28.md](FIXES-2026-09-28.md) | 8/16 GB LLM → Gemma 4, fast mode, R47, defects D1-D11; **the standard suite command and the GPU smoke recipe** |
 | [FIXES-2026-09-29.md](FIXES-2026-09-29.md) | defects N1-N6 + the symlink risk from the re-verification |
 | [PARALLEL-LLM-2026-10-06.md](PARALLEL-LLM-2026-10-06.md) | R72: the GPU scheduler, parallel LLM slots, chosen defaults, measured on CPU and end to end |
-| [TRANSLATION-LAYER-2026-10-06.md](TRANSLATION-LAYER-2026-10-06.md) | R71: the translation service (fast 2B on CPU, quality 9B on the GPU), dictionaries, Wiktionary add-ons |
+| [TRANSLATION-LAYER-2026-10-06.md](TRANSLATION-LAYER-2026-10-06.md) | R71: the translation service (fast 2B on CPU, quality 9B on the GPU — on 8 GB the loaded LLM since R89), dictionaries, Wiktionary add-ons |
 | [BOOT-SPLASH-2026-10-07.md](BOOT-SPLASH-2026-10-07.md) | R73: the boot screen — firmware logo handover, the framebuffer painter, the loading bar; the efifb mmap rule |
 | [FORGE-POLISH-2026-10-07.md](FORGE-POLISH-2026-10-07.md) | R77: the language benchmark's findings applied to the app and game forge (static gate, play-test, repair rounds) |
 | [V75-DESKTOP-WEB-2026-10-07.md](V75-DESKTOP-WEB-2026-10-07.md) | v7.5 desktop + web: pointer, clock menu (R74), one-site web consistency (R75), ESP automount, game exits |
@@ -102,6 +103,7 @@ supersedes it, that is noted below. Dates are in the file names (`<TOPIC>-<YYYY-
 | [IMAGE-BAKE-ADDONS-2026-10-07.md](IMAGE-BAKE-ADDONS-2026-10-07.md) | baking selected add-ons (translation fast model, dictionaries) into the image: the `bake` flag |
 | [TRANSLATION-2026-10-06.md](TRANSLATION-2026-10-06.md) | EN ↔ DE research: dictionary databases + AI models |
 | [TRANSLATION-BENCH-2026-10-07.md](TRANSLATION-BENCH-2026-10-07.md) | translation-model benchmark for R71 (CPU only) |
+| [FAST-MODELS-2026-10-17.md](FAST-MODELS-2026-10-17.md) | fast models vs the heretic Gemma on the GPU: Ornith / coder7b as `llm_fast`, Gemma vs dedicated quality translators, stock vs heretic — the R89 decisions (no fast mode; 8 GB quality translation = the loaded LLM) |
 | [DESKTOP-TECH-EVAL-2026-09.md](DESKTOP-TECH-EVAL-2026-09.md) | desktop technology evaluation: iframe shell vs per-app windows vs native toolkits, measured (R68 decision; the D0 window-pool question) |
 | [bench/](bench/) | the raw material: research notes, blind rating sets, queues, logs per benchmark (`image-2026-09-27/`, `lang-2026-09/`, `llm-2026-09/`, `models-2026-10-06/`, and the evidence folders of the verification runs) |
 

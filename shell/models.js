@@ -76,7 +76,7 @@ const kairosModels = (() => {
   function renderDownloads(sec, d) {
     sec.replaceChildren(h("h3", "km-h", "Downloads"));
     if (d.profile !== "public") {
-      sec.append(h("p", "km-p", "This image ships its models. Optional add-ons (video, music, the picture editor, the fast coder, translation quality, dictionaries, Wiktionary) download from ⚙ Settings."));
+      sec.append(h("p", "km-p", "This image ships its models. Optional add-ons (video, music, the picture editor, dictionaries, Wiktionary; the quality translator on 16 GB and up) download from ⚙ Settings."));
       return;
     }
     const head = h("div", "km-row km-total");

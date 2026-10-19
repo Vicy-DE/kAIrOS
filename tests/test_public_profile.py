@@ -734,8 +734,8 @@ async def t_licences(ctx):
     m8 = manifest()
     ov = overlay()
     want = [e["file"] for k in ("llm", "image", "image_classic", "vision", "translation", "dictionaries", "video", "music", "image_edit",
-                                "llm_fast", "image_chroma", "image_qwen") for e in walk_files(m8[k])] \
-        + [e["file"] for e in walk_files(ov["sections"])]
+                                "llm_fast", "image_chroma", "image_qwen") if k in m8 for e in walk_files(m8[k])] \
+        + [e["file"] for e in walk_files(ov["sections"])]          # [R89] llm_fast left the tier (no fast mode)
     uncovered = [f for f in want if f not in files_of and not any(f.startswith(p) for p in prefixes)]
     assert not uncovered, uncovered
     c = await _client(s)
