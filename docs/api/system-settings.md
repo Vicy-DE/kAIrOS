@@ -18,30 +18,27 @@ memEl.textContent = `${Math.round(hw.memory_mb.total / 1024)} GB RAM`;  battEl.t
 
 **The coder LLM** (an "AI" section): `const m = await vibe.models();` → `m.llm` =
 `[{key, name, present, addon, download_gb, download_key, active, selected}]`, `m.llm_setting` = `{setting, effective,
-fallback, modes}`. Render FROM `m.llm` (fetch `vibe.models()` first): on 8/16 GB it holds ONE entry, `default` = the
-uncensored heretic Gemma 4 (the best apps, minutes per app, answers adult requests itself) — show its name, no picker.
-There is no separate fast model [R89]: `llm_model` "fast" serves the same model. A picker only when `m.llm` lists more
-than one entry (`vibe.settings.set("llm_model", entry.key)`); an entry with `present:false` → "⬇ Download (N GB)" =
+fallback, modes}`. On 8/16 GB `m.llm` holds ONE entry, `default` = the uncensored heretic Gemma 4 (the best apps,
+minutes per app, answers adult requests itself) — show its name, no picker; there is no separate fast model [R89]
+(`llm_model` "fast" serves the same one). A picker only when `m.llm` lists more than one entry
+(`vibe.settings.set("llm_model", entry.key)`); `present:false` → "⬇ Download (N GB)" =
 `vibe.models.download(entry.download_key)` (never the bare "uncensored" — that is the image model). Show
-`m.llm_setting.fallback` when set. `m.refusal_fallback.last`
-(`{at, from, to, kind, prompt}`) = the last refusal fallback — show it as one line in this section.
+`m.llm_setting.fallback` when set, and `m.refusal_fallback.last` (`{at, from, to, kind, prompt}`, the last refusal
+fallback) as one line.
 
 **Language & translation** (a "Language" section) [R71]: `m.translation` = `{enabled, language,
 languages: ["en","de","es","fr","it","ja","ru"], names: {de: "German", …}, quality: "fast"|"quality", effective,
 fallback, quality_llm, model: {fast, quality}, present: {fast, quality}, running, cache}`. A `<select>` over
-`m.translation.languages` (label `names[code]`, selected = `language`) → `vibe.settings.set("language", code)`; a
-switch → `vibe.settings.set("translation", "on"|"off")`; fast/quality → `vibe.settings.set("translation_quality", …)`
-— label them "Fast (small CPU model)" and "Quality (" + `model.quality` + ")": `quality_llm` true (8 GB) = the loaded
-LLM translates itself, no download. Off = nothing is translated. The fast model is built in; `m.extras` lists
-`translation` with `present` (true = works — never "not downloaded" then), `present_modes: {fast, quality}` and
-`missing_gb` (what the download still fetches): `missing_gb` > 0 → a "⬇ Download (missing_gb GB)" button calling
-`vibe.models.download("translation")`. Any app: `await vibe.translate
-("text")` → string in the OS language, `vibe.translate(["a", "b"], "en")` → array into a named language; it
-rejects while translation is off. Two more add-ons in `m.extras` (render a download button each while
-`present` is false): `dictionaries` (kind `dictionary`, 0.12 GB, `pairs`) powers `vibe.dict(word, from?, to?)` →
-`{entries: [{headword, translations, source}]}` — works with translation off; `wiktionary_<lang>` (kind
-`knowledge`, one per language, `language`, `download_gb` 0.4–9.2) joins the offline `vibe.search()` — offer the
-OS language's + `wiktionary_en`.
+`languages` (label `names[code]`) → `vibe.settings.set("language", code)`; a switch →
+`vibe.settings.set("translation", "on"|"off")` (off = nothing is translated); `vibe.settings.set("translation_quality",
+"fast"|"quality")` — label them "Fast (small CPU model)" and "Quality (" + `model.quality` + ")" (`quality_llm` true,
+8 GB: the loaded LLM translates, no download). `m.extras` entry `translation`: `present` true = works (the fast model
+is built in), `missing_gb` > 0 → "⬇ Download (missing_gb GB)" = `vibe.models.download("translation")`. Any app:
+`await vibe.translate("text")` → the OS language, `vibe.translate(["a", "b"], "en")` → an array into a named
+language; rejects while translation is off. Two more `m.extras` add-ons (a download button each while `present` is
+false): `dictionaries` (0.12 GB) powers `vibe.dict(word, from?, to?)` → `{entries: [{headword, translations,
+source}]}` (works with translation off); `wiktionary_<lang>` (kind `knowledge`, `download_gb` 0.4–9.2) joins the
+offline `vibe.search()` — offer the OS language's + `wiktionary_en`.
 
 **OS look & feel** (applied live within seconds; persisted on /data):
 
@@ -50,9 +47,10 @@ const s = await vibe.settings.get();            // {os_name, accent, accent2, wa
 await vibe.settings.set("accent", "#ff5cf0");
 ```
 
-**Validation**: known keys are checked — `accent`/`accent2` must be a CSS colour, `os_name` 1–40 characters,
-`image_model`/`image_expand`/`llm_model`/`translation`/`language`/`translation_quality` one of their listed values, `image_steps` 1–150 or null; a bad value
-rejects the `vibe.settings.set` promise with the rule and stores nothing. Always pass the value.
+**Validation**: `accent`/`accent2` a CSS colour (`#ff5cf0`, `rgb(…)`, a name), `os_name` 1–40 characters, `wallpaper`
+an image URL or `null`, `image_steps` 1–150 or null, `image_model`/`image_expand`/`llm_model`/`translation`/`language`/
+`translation_quality` one of their listed values; a bad value rejects the `vibe.settings.set` promise with the rule
+and stores nothing. Always pass the value.
 
 **AI image models**: `m.models` → `[{key,name,present,addon,download_gb,active,defaults,expander,licence}]` (+ `m.expand`,
 `m.sessions`); switch via `vibe.settings.set("image_model", "default|safe|qwen|classic|chroma")` (default = Krea 2
@@ -69,6 +67,3 @@ files-storage.md. Displays → display.md.
 `.set({ntp:true})`, `.set({time:"2026-07-10 21:30:00"})`; `.timezones()` → the full picker list.
 **Volume & audio output**: `vibe.hw.volume.get()/.set(percent, mute?)`; `vibe.hw.sound.list()` → `{sinks:[{name,default}]}`,
 `vibe.hw.sound.set(sinkName)` (e.g. after Bluetooth headphones connect → network.md).
-
-Questions and text entry: in-page inputs and buttons only — `window.prompt/confirm/alert` are blocked;
-`vibe.ask()` asks the language model, not the user.

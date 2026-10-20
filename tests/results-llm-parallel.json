@@ -1,5 +1,5 @@
 {
- "at": "2026-10-18 12:45:20",
+ "at": "2026-10-19 19:39:09",
  "tests": {
   "sched_concurrency_limit": {
    "reqs": [
@@ -105,7 +105,7 @@
     "R72"
    ],
    "status": "pass",
-   "detail": "starter cancelled mid-load; the next pair waited 1.01 s for /health, one launch, first request 0.34 s after the server bound"
+   "detail": "starter cancelled mid-load; the next pair waited 1.01 s for /health, one launch, first request 0.33 s after the server bound"
   },
   "unit_parallel_choice_change_while_queued": {
    "reqs": [
@@ -178,7 +178,7 @@
     "R72"
    ],
    "status": "pass",
-   "detail": "4 asks in 5.0 s on 2 slots (in-flight max 2, no overflow); argv -c 32768 -np 2 --no-kv-unified; first request 0.09 s after the server bound"
+   "detail": "4 asks in 5.2 s on 2 slots (in-flight max 2, no overflow); argv -c 32768 -np 2 --no-kv-unified; first request 0.09 s after the server bound"
   },
   "e2e_exclusive_job_waits_then_runs_fifo": {
    "reqs": [
@@ -209,7 +209,7 @@
     "R89"
    ],
    "status": "pass",
-   "detail": "5-text quality batch on the loaded LLM in 9.1 s, one slot at a time (no overlap); an app mid-batch started at once on the other slot (0.7 s in all); in-flight max 1; no translation server launched"
+   "detail": "5-text quality batch on the loaded LLM in 9.1 s, one slot at a time (no overlap); an app mid-batch started at once on the other slot (1.7 s in all); in-flight max 1; no translation server launched"
   },
   "e2e_vanished_app_client_keeps_its_slot_r62": {
    "reqs": [

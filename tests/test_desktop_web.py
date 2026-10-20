@@ -286,7 +286,8 @@ def t_clock_static(ctx):
     ci = re.search(r"async function checkInstallable\(\) \{.*?\n\}", js, re.S).group(0)
     assert '$("#mb-install").classList.remove("hidden")' in ci and '$("#sm-install-sep").classList.remove("hidden")' in ci
     assert '$("#mb-install").addEventListener("click", openInstaller)' in js
-    assert re.search(r"html\.screen-secondary #mb-install", css), "the installer stays on screen 0 only [R52]"
+    # [R90] one desktop page: the installer exists once; its menu (under the clock) and dialog live on the primary monitor
+    assert "screen-secondary" not in css and re.search(r"#menubar \{[^}]*left: var\(--pm-x\)", css), "the menu bar is the primary's"
     assert "#mb-sysmenu" in css and ".sm-item:hover, .sm-item:focus-visible" in css and "var(--accent)" in css
     if shutil.which("node"):
         subprocess.run(["node", "--check", str(REPO / "shell" / "shell.js")], check=True, capture_output=True)
@@ -307,7 +308,7 @@ const [port, base, shot] = process.argv.slice(2);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let t = null;
 for (let i = 0; i < 100 && !t; i++) {
-  try { t = await (await fetch(`http://127.0.0.1:${port}/json/new?${base}/?screen=0`, { method: "PUT" })).json(); }
+  try { t = await (await fetch(`http://127.0.0.1:${port}/json/new?${base}/`, { method: "PUT" })).json(); }
   catch { await sleep(100); }
 }
 const ws = new WebSocket(t.webSocketDebuggerUrl);
@@ -859,8 +860,10 @@ async def t_genimg_late_browser(ctx):
     browse = ("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Browse</title><style>.b{width:200px;height:80px;"
               "background:url('/genimg/browse background')}</style></head><body><div class='b' data-bg='browse-bg'></div>"
               "<img alt='browse picture' src='/genimg/browse picture' style='width:100px'></body></html>")
-    wall = re.search(r"let wallpaperShown = null;\n.*?\n}\nfunction lateWallpaper\(.*?\n}\n", (REPO / "shell" / "shell.js").read_text(), re.S)
-    assert wall, "applyWallpaper / lateWallpaper not found in shell.js"
+    shell_js = (REPO / "shell" / "shell.js").read_text()
+    wall = re.search(r"function applyWallpaper\(url\) \{\n.*?\n}\nfunction lateWallpaper\(.*?\n}\n", shell_js, re.S)
+    setw = re.search(r"function setWallpaperImage\(url\) \{\n.*?\n}\n", shell_js, re.S)   # [R90] one tile per monitor
+    assert wall and setw, "applyWallpaper / lateWallpaper / setWallpaperImage not found in shell.js"
     with WebEnv(s, {}) as env, LatePictures(s, wait=1.0, delay=2.0, limit=2, window=0.2) as lp:
         env_dir_page = env.dir / f"{s.web_slug(page_addr)}.html"
         env_dir_page.write_text(page)
@@ -897,13 +900,14 @@ async def t_genimg_late_browser(ctx):
                         "document.getElementById('browse').innerHTML = " + json.dumps(browsed).replace("</", "<\\/")
                         + ";</script></body></html>")
             state["top"] = ("<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>"
-                   "<div id='wallpaper' data-bg='wallpaper' style='width:64px;height:64px'></div>"
+                   "<div id='wallpaper'><div class='wp-tile' data-bg='wallpaper' style='width:64px;height:64px'></div></div>"
                    "<img id='gone' alt='gone' src='/genimg/a picture whose element goes away' style='width:40px'>"
                    f"<iframe sandbox='allow-scripts allow-forms' src='/web/{page_addr}'></iframe>"
                    "<iframe id='app' sandbox='allow-scripts allow-pointer-lock'></iframe><script>"
                    "window.R = {}; addEventListener('message', (e) => { if (e.data && e.data.rep) R[e.data.rep] = e.data; });"
                    "document.getElementById('app').srcdoc = " + json.dumps(app_html).replace("</", "<\\/") + ";"
-                   "const $ = (q) => document.querySelector(q);" + wall.group(0) + REPORTER_JS +
+                   "const $ = (q) => document.querySelector(q); let wallpaperShown = null; const MON = {};"
+                   + setw.group(0) + wall.group(0) + REPORTER_JS +
                    "applyWallpaper('/genimg/wallpaper picture'); kReport('top');"
                    # removed while pending: its re-ask timer finds it disconnected and stops
                    "const g = $('#gone'); g.addEventListener('load', () => { if (g.naturalWidth % 2) g.remove(); });"

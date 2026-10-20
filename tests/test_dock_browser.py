@@ -749,7 +749,7 @@ class CDP:
 class Desk:
     """the kernel's routes (server.add_routes) on a test server + a headless Chromium on the shell"""
 
-    def __init__(self, s, env, w=1920, h=1080, query="?screen=0"):
+    def __init__(self, s, env, w=1920, h=1080, query=""):
         self.s, self.env, self.w, self.h, self.query = s, env, w, h, query
         self.ops = []
         self.posts = []         # [review v7.5-2 F1] every POST /api/…: who sent it (Origin, Sec-Fetch-Site), the answer
@@ -823,7 +823,7 @@ async def t_dock_e2e(ctx):
     restores it; built-ins the same, right-click → New window / Close; a game from the X feed gets an icon (minimized =
     1.33, click → POST raise, no chip) while an X window that is no game keeps its chip; a quick viewer keeps its chip;
     a maximized window ends above an enlarged icon; ⊞ lists Notes/News/Files; 1024 px: the apps overflow into ⊞ (+N);
-    "Remove from dock" persists; a second screen (?screen=1) draws its own dock"""
+    "Remove from dock" persists; [R90] one page over two monitors (?mon=): ONE dock, on the primary, the X chips on it"""
     s = kernel()
     for d in list(s.APPS_DIR.glob("*")):
         shutil.rmtree(d, ignore_errors=True)
@@ -933,18 +933,21 @@ async def t_dock_e2e(ctx):
             assert more and int(more[1:]) >= 10, more
             shot2 = await page.shot("dock-1024-overflow.png")
             await page.size(1920, 1080)
-    # the second screen [R52]: its own dock, no X feed
+    # [R90] one desktop page over two monitors (the kiosk's ?mon= hint; this kernel has no X, so the hint stands): ONE
+    # dock, centred on the primary; the X feed's chips are on it (no second page any more)
     with Env(s) as env:
-        async with Desk(s, env, 1280, 720, "?screen=1&x=1920&y=0&w=1280&h=720") as page:
+        async with Desk(s, env, 2560, 720, "?mon=eDP:0,0,1280,720,1;DP-1:1280,0,1280,720,0") as page:
             await page.wait("document.querySelectorAll('#dock .dock-app[data-builtin=\"browser\"]').length === 1", 10)
-            # [R82] every screen now watches the X feed (its game frames live on its page); the chips stay screen 0's
             wd = await page.ev("(() => { const r = document.querySelector('#dock').getBoundingClientRect(); renderXWindows("
                                "[{id: 79, kind: 'other', app: null, title: 'portal', minimized: false, active: false}], []); "
-                               "return [r.left, r.right, innerWidth, document.querySelectorAll('#taskbar .task-chip').length === 0]; })()")
-            assert wd[0] >= 0 and wd[1] <= wd[2] and wd[3] is True, wd
+                               "const p = MON.list[0]; return [r.left - p.x, r.right - p.x, MON.list.length, "
+                               "document.querySelectorAll('#dock').length, document.querySelectorAll('#taskbar .task-chip').length, "
+                               "p.w, p.primary]; })()")
+            # positions relative to the primary as the page sees it (the hint is in root px; a headless window may sit off 0,0)
+            assert wd[0] >= 0 and wd[1] <= 1280 and abs((wd[0] + wd[1]) / 2 - 640) <= 1 and wd[2:] == [2, 1, 1, 1280, True], wd
     return (f"1920: pinned + {len(users)} user apps, no Files/Notes/News/generated browser; app glow→1.33 (no chip)→restore; "
             f"builtin New window/Close; game icon 1.33, X non-game chip only; viewer chip; maximized above the grown icon; "
-            f"⊞ system apps; remove from dock persisted; 1024: fits, ⊞ {more}; screen 1 dock (no chips)" + (f"; shots {shot1}" if SHOTS else ""))
+            f"⊞ system apps; remove from dock persisted; 1024: fits, ⊞ {more}; 2 monitors: one dock on the primary + the X chip" + (f"; shots {shot1}" if SHOTS else ""))
 
 
 @test("browser_e2e_search_opens_addresses", ["R83", "R23"])

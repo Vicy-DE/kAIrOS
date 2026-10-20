@@ -212,9 +212,15 @@ test("destructive calls are confirmed by the host page, outside the sandbox [D9]
     assert(/const HEAL_MAX_ROUNDS = 3;/.test(src) && /win\.healRounds > HEAL_MAX_ROUNDS\) \{ showHealStop\(win, rep\); return true; \}/.test(h), file + ": heal cap");
     assert(/win\.healRounds = 0;/.test(src), file + ": a new version must reset the heal budget");
   }
+  // [R90] maximise = the window's own monitor (shell/monitors.js snapRect "top"); on the primary minus the menu bar
+  // and the dock's room, measured from the dock's box
   const max = js.slice(js.indexOf('querySelector(".win-max").onclick'), js.indexOf('querySelector(".win-improve").onclick'));
-  assert(/calc\(100% - 30px - \$\{dockRoom\(\)\}px\)/.test(max), "maximized height must subtract the dock's room");
-  assert(!/height: "calc\(100% - 30px\)"/.test(max));
+  const snap = js.slice(js.indexOf("function snapWin(win, zone, i)"), js.indexOf("function unsnapWin(win)"));
+  assert(/snapWin\(win, "top"\)/.test(max) && /KMon\.snapRect\(MON\.list, mi, zone, dockRoomOn\(MON\.list\[mi\]\)\)/.test(snap),
+         "maximized height must subtract the dock's room");
+  const KMon = require(path.join(repo, "shell", "monitors.js"));
+  const r = KMon.snapRect([{ id: "p", x: 0, y: 0, w: 1920, h: 1080, primary: true }], 0, "top", 98);
+  assert(r.y === 30 && r.h === 1080 - 30 - 98, "maximized: below the menu bar, above the dock: " + JSON.stringify(r));
   assert(/function dockRoom\(\)[\s\S]*?getBoundingClientRect/.test(js), "dockRoom measures the real dock box");
 });
 

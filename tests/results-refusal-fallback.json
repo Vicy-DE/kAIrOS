@@ -1,5 +1,5 @@
 {
- "at": "2026-10-18 12:50:26",
+ "at": "2026-10-19 19:44:17",
  "tests": {
   "refusal_detector_real_refusals": {
    "reqs": [
@@ -41,7 +41,7 @@
     "R86"
    ],
    "status": "pass",
-   "detail": "8MB plain 9 ms; 8MB nfkc 101 ms; 1MB mixed 15 ms; 50k words 12 ms; 50k \u00e9 5 ms; 50k jp 6 ms; 50k combining 5 ms; 50k 1a 4 ms; parts/dict/bytes judged as text"
+   "detail": "8MB plain 8 ms; 8MB nfkc 98 ms; 1MB mixed 14 ms; 50k words 12 ms; 50k \u00e9 4 ms; 50k jp 6 ms; 50k combining 5 ms; 50k 1a 4 ms; parts/dict/bytes judged as text"
   },
   "refusal_r4b_block_lists": {
    "reqs": [
@@ -189,7 +189,7 @@
     "R88"
    ],
    "status": "pass",
-   "detail": "16 nor/noch lists pass (term + flag + picture edit, EN + DE), 8 fire, 3 known limits fire; 149 earlier must-fire, 190 must-pass + kernel prompts hold; bridge words unique; 5 long runs in 0.40 s"
+   "detail": "16 nor/noch lists pass (term + flag + picture edit, EN + DE), 8 fire, 3 known limits fire; 149 earlier must-fire, 190 must-pass + kernel prompts hold; bridge words unique; 5 long runs in 0.41 s"
   },
   "r88_fix4_nor_lists_at_the_sd_floor": {
    "reqs": [
@@ -384,7 +384,7 @@
     "R80"
    ],
    "status": "pass",
-   "detail": "status + models shapes; 27 fallbacks, 20 blocked in this run"
+   "detail": "status + models shapes; 26 fallbacks, 20 blocked in this run"
   }
  }
 }

@@ -17,14 +17,14 @@ The originals route everything through Anthropic's cloud. kAIrOS replaces every 
 with a local one, adds media organs (image gen, video gen as an add-on, a Python game
 forge, a music path that is not wired to a built engine yet — R31) and turns the whole
 thing into a **bootable appliance**: a Debian image that boots straight into a Chromium
-kiosk showing the desktop (R28, R41, R48, R52).
+kiosk showing the desktop (R28, R41, R48, R90 — one desktop over every monitor).
 
 ## Architecture
 
 ```
-Chromium kiosk(s) ── http://localhost:1337     tty1 autologin → startx → ~/.xinitrc:
-        │                                       openbox + ONE fullscreen Chromium per
-        │                                       connected display (?screen=N)  [R52]
+Chromium kiosk ──── http://localhost:1337     tty1 autologin → startx → ~/.xinitrc:
+        │                                       openbox + ONE Chromium window over every
+        │                                       monitor (?mon=…, kairos-desktop.py)  [R90]
    [Debian trixie appliance: systemd, systemd-boot, ext4 root auto-grows]  [R8/R28/R48]
         │
    kernel/server.py (aiohttp)

@@ -280,11 +280,13 @@ def t_progress(ctx):
 @test("splash_layout_matches_boot_page", ["R73", "R28"])
 def t_layout_page(ctx):
     """The X-side page continues the painter's frame seamlessly: same reference canvas scale
-    min(vw/1920, vh/1080), same wordmark width/centre, same bar width/height/centre, same
-    wallpaper gradient, the same PNG the header embeds."""
+    min(w/1920, h/1080) — [R90] of each monitor's tile (--tw/--th; the viewport without the ?mon=
+    hint) —, same wordmark width/centre, same bar width/height/centre, same wallpaper gradient,
+    the same PNG the header embeds."""
     html = (REPO / "shell" / "boot-wait.html").read_text()
     css = lambda var: re.search(rf"{var}: ([^;]+);", html).group(1).strip()
-    assert css("--s") == "min(calc(100vw / 1920), calc(100vh / 1080))", css("--s")
+    assert css("--s") == "min(calc(var(--tw) / 1920), calc(var(--th) / 1080))", css("--s")
+    assert css("--tw") == "100vw" and css("--th") == "100vh", "one tile = the viewport without the hint"
     assert float(css("--logo-cy").rstrip("%")) / 100 == c_const("LAYOUT_LOGO2_CY")
     assert float(css("--bar-cy").rstrip("%")) / 100 == c_const("LAYOUT_BAR_CY")
     assert css("--logo-w") == "calc(var(--s) * 606)" and css("--bar-w") == f"calc(var(--s) * {int(c_const('LAYOUT_BAR_W'))})"
@@ -661,11 +663,13 @@ def t_xinit(ctx):
     assert 'xsetroot -cursor "$BLANK" "$BLANK"' in xi and xi.index('echo "xinitrc: kiosk pids') < xi.index("xsetroot -cursor_name left_ptr"), "cursor logic"
     assert "xsetroot -solid" not in xi, "the root keeps the painter's frame (-background none), no solid step"
     assert 'KIOSK_URL="file://$BOOTPAGE"' in xi and "BOOTPAGE=/opt/vibeos/os/shell/boot-wait.html" in xi
-    assert "--start-fullscreen" not in xi and xi.count("chromium --kiosk ") == 2, "both launches in kiosk mode: no 'press Esc to exit full screen' bubble"
+    # [R90] ONE desktop window over every monitor: an --app window (fullscreen = one monitor), never browser-fullscreen
+    # (no "press Esc to exit full screen" bubble); --kiosk only for an unknown screen size (headless)
+    assert "--start-fullscreen" not in xi and xi.count("chromium --kiosk ") == 1 and "--class=kairos-desktop" in xi
     assert "root_cover()" in xi and "( root_cover ) &" in xi and "root-cover.py" in xi and "--once --no-reexec --phase 2 --progress" in xi
     assert "&boot=1&up=" in xi and "&expected=$E&p=$P" in xi and "/run/kairos-splash/expected" in xi and "/run/kairos-splash/progress" in xi
     assert 'echo "xinitrc: kiosk opens the boot page' in xi
-    assert re.search(r'--app="\$\{KIOSK_URL\}\?screen=\$n&x=\$x&y=\$y&w=\$w&h=\$h\$\{BOOT_QS\}"', xi) and '?screen=0${BOOT_QS}"' in xi
+    assert re.search(r'--app="\$\{KIOSK_URL\}\?mon=\$\{MON\}\$\{BOOT_QS\}"', xi) and '?mon=${BOOT_QS}"' in xi
     assert 'BOOT_QS="&relaunch=1"' in xi, "a relaunch is not a boot"
     assert "handover_splash()" in xi and ": > /run/kairos/splash-handover" in xi
     assert xi.index("launch_all_kiosks\n") < xi.index("handover_splash\n") < xi.index("while true; do\n        sleep 3"), "handover after the launch"
@@ -689,15 +693,19 @@ def t_page(ctx):
     html = (REPO / "shell" / "boot-wait.html").read_text()
     for needle in ("api/status", "location.replace(shellUrl())", "kAIrOS", "Noto Color Emoji", 'addEventListener("contextmenu"',
                    "cursor: none", 'src="splash/logo-thick.png"', 'Q.get("boot") === "1"', 'parseFloat(Q.get("p"))',
-                   '["boot", "up", "now", "expected", "p", "relaunch"]', 'classList.add("relaunch")', "body.relaunch #bar { display: none; }",
+                   '["boot", "up", "now", "expected", "p", "relaunch"]', 'classList.add("relaunch")', "body.relaunch .bar { display: none; }",
                    "@keyframes sweep", 'fill.style.width = "100%"', "function uptime()"):
         assert needle in html, f"boot page lacks {needle!r}"
     assert "mpv" not in html and "bootanim" not in html
-    # the shell URL keeps screen/x/y/w/h, drops the page's own params (a JS-free re-implementation of shellUrl)
-    keep = [k for k in ("screen", "x", "y", "w", "h", "boot", "up", "now", "expected", "p", "relaunch")
+    # the shell URL keeps the ?mon= hint [R90], drops the page's own params (a JS-free re-implementation of shellUrl)
+    keep = [k for k in ("mon", "boot", "up", "now", "expected", "p", "relaunch")
             if k not in ["boot", "up", "now", "expected", "p", "relaunch"]]
-    assert keep == ["screen", "x", "y", "w", "h"]
-    return "logo-thick.png + bar, progress continues from ?p=, hands over to the shell with the hint only, relaunch mode, R28 guards"
+    assert keep == ["mon"]
+    # [R90] the picture on EVERY monitor of the hint: tiles from shell/monitors.js, every bar driven, re-tiled on resize
+    for needle in ('<script src="monitors.js"></script>', 'KMon.parseHint(Q.get("mon"))', 'addEventListener("resize", tiles)',
+                   'document.querySelectorAll(".fill")', 'st.setProperty("--tw", m.w + "px")'):
+        assert needle in html, f"boot page lacks {needle!r}"
+    return "logo-thick.png + bar per monitor, progress continues from ?p=, hands over to the shell with the hint only, relaunch mode, R28 guards"
 
 
 @test("splash_r27_removed", ["R73", "R28"])

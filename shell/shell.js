@@ -29,24 +29,103 @@ async function fetchToken() {
   } catch {}
 }
 
-/* ---------------- which monitor is this? [R52] ----------------
-   .xinitrc opens one kiosk Chromium per display with ?screen=N&x=&y=&w=&h=
-   (N=0 is the primary output, the rest left-to-right). Windows are DOM nodes of
-   THIS page and cannot move to another monitor, so every screen is a complete
-   workspace (dock, search, taskbar, windows) — while the machine-level singletons
-   (first-boot setup, installer, wallpaper painting, the welcome) live on screen 0
-   only: a second monitor is a place to open more windows, not a clone that asks
-   the same question twice. No hint (single monitor, a plain browser) = screen 0,
-   the desktop exactly as before. */
-const SCREEN = (() => {
-  const q = new URLSearchParams(location.search);
-  const num = (k, d) => { const v = parseInt(q.get(k), 10); return Number.isFinite(v) ? v : d; };
-  const idx = Math.max(0, num("screen", 0));
-  return { index: idx, primary: idx === 0, x: num("x", 0), y: num("y", 0),
-           w: num("w", 0) || innerWidth, h: num("h", 0) || innerHeight };
-})();
-document.documentElement.dataset.screen = String(SCREEN.index);
-document.documentElement.classList.toggle("screen-secondary", !SCREEN.primary);
+/* ---------------- one desktop over every monitor [R90] ----------------
+   .xinitrc opens ONE kiosk page over the whole X screen — every monitor — with ?mon=, the monitor list
+   (kernel/monitors.py hint "id:x,y,w,h,primary;…" in root pixels), so the desktop is laid out from the first paint;
+   the kernel's window feed (/api/windows/stream: `monitors`, from X RandR) keeps it live — a monitor plugged,
+   unplugged, moved or made primary re-lays the desktop out without a reload (applyMonitors). Windows are DOM nodes of
+   this one page, so they move between monitors like on any OS. The menu bar, the dock, the taskbar, the search, the
+   toasts and every OS dialog (first-boot setup, installer, welcome, confirmations) live on the PRIMARY monitor (the
+   CSS variables --pm-x/y/w/h + --pm-r/b), every monitor has its own wallpaper and boot picture (cover, never stretched
+   over the gap between monitors). No ?mon= (a plain browser, a remote ?token= view): the viewport is the one monitor,
+   the desktop exactly as before. The math (placement, dead areas, clamping, snapping): shell/monitors.js (KMon). */
+const MON = { list: [], kiosk: new URLSearchParams(location.search).has("mon"), pointer: null, focusAt: 0, src: "" };
+let wallpaperShown = null;     // the wallpaper URL every monitor's tile shows (applyWallpaper / setWallpaperImage)
+function viewportMonitors() {
+  return [{ id: "view", x: 0, y: 0, w: innerWidth || 1280, h: innerHeight || 800, primary: true }];
+}
+function primaryMon() { return MON.list.find((m) => m.primary) || MON.list[0] || viewportMonitors()[0]; }
+/* root pixels -> this page: where the page's viewport sits on the X screen (KMon.pageOrigin: the origin once the
+   kiosk spans the X screen, else its window position + the browser's own chrome) and the device pixel ratio */
+function rootToPage(list) {
+  const o = KMon.pageOrigin(list, window);
+  return KMon.toPage(list, o.x, o.y, o.s);
+}
+/* the primary's place for everything anchored to it (shell.css --pm-*) — the right/bottom insets follow the viewport */
+function layoutPrimary() {
+  const p = primaryMon(), st = document.documentElement.style;
+  st.setProperty("--pm-x", p.x + "px"); st.setProperty("--pm-y", p.y + "px");
+  st.setProperty("--pm-w", p.w + "px"); st.setProperty("--pm-h", p.h + "px");
+  st.setProperty("--pm-r", Math.max(0, innerWidth - p.x - p.w) + "px");
+  st.setProperty("--pm-b", Math.max(0, innerHeight - p.y - p.h) + "px");
+}
+/* one tile per monitor in `box` (the wallpaper, the boot picture): index.html's kairosTiles() */
+function paintMonitorTiles() {
+  kairosTiles(document.getElementById("wallpaper"), MON.list, "wp-tile");
+  const boot = document.getElementById("boot");
+  if (boot && !boot.classList.contains("hidden")) kairosTiles(boot, MON.list, "boot-tile");
+  if (MON.wpImg) setWallpaperImage(MON.wpImg);
+}
+/* the monitors changed (or are known for the first time): lay the desktop out again; windows on a monitor that is
+   gone go to the primary, every title bar ends on a monitor (KMon.relocate / clampTitle). -> true when it changed */
+function applyMonitors(list, src) {
+  const mons = list && list.length ? KMon.normalize(list) : viewportMonitors();
+  const before = MON.list;
+  MON.src = src || MON.src;
+  const same = before.length === mons.length &&
+    before.every((m, i) => ["id", "x", "y", "w", "h", "primary"].every((k) => m[k] === mons[i][k]));
+  layoutPrimary();
+  if (same) return false;
+  MON.list = mons;
+  layoutPrimary();
+  paintMonitorTiles();
+  if (before.length) {                             // a change (not the first layout, before the dock exists)
+    relocateWindows(before, mons);
+    layoutTaskbar();
+    dockChanged();
+    placeGamesAgain();
+  }
+  return true;
+}
+/* the kiosk's live source: the kernel's monitor list (root px) — only a kiosk page (?mon=) follows X; any other
+   page (a remote view, a test page in a plain browser) is its own viewport */
+function monitorsFromKernel(list) {
+  if (!MON.kiosk || !Array.isArray(list) || !list.length) return false;
+  return applyMonitors(rootToPage(list), "x");
+}
+applyMonitors(MON.kiosk ? rootToPage(KMon.parseHint(new URLSearchParams(location.search).get("mon"))) : [], MON.kiosk ? "hint" : "view");
+addEventListener("resize", () => {
+  if (!MON.kiosk) applyMonitors([], "view");       // a plain browser: the viewport is the monitor
+  else {
+    layoutPrimary();
+    fetch("/api/windows").then((r) => r.json()).then((d) => monitorsFromKernel(d && d.monitors)).catch(() => {});
+  }
+  placeGamesAgain();
+});
+/* [R82/R90] after a viewport or monitor change, every game frame's X window is placed again — at once and twice more
+   while X settles: openbox moves windows a screen change left outside the new screen, after our own placement (VM:
+   arrange("mirror") left the game 43,159 px off its frame until the next drag) */
+let placeGamesTimers = [];
+function placeGamesAgain() {
+  for (const t of placeGamesTimers) clearTimeout(t);
+  const run = () => { for (const w of windows.values()) if (w.el && w.game && w.onMove) w.onMove("end"); };
+  run();
+  placeGamesTimers = [setTimeout(run, 400), setTimeout(run, 1500)];
+}
+/* "the monitor that has the pointer or focus": the pointer as the shell last saw it (over the desktop, a title bar,
+   the dock — or entering an app's frame), or the focused window when that came later; the primary otherwise */
+for (const t of ["pointermove", "pointerdown", "pointerover"])
+  addEventListener(t, (e) => { MON.pointer = { x: e.clientX, y: e.clientY, t: performance.now() }; }, { capture: true, passive: true });
+function targetMonitor() {
+  const ms = MON.list;
+  if (ms.length < 2) return 0;
+  const p = MON.pointer;
+  const fw = [...windows.values()].find((w) => w.el && w.el.classList.contains("focused") && !w.el.classList.contains("minimized"));
+  if (fw && (!p || MON.focusAt > p.t)) return Math.max(0, KMon.ofRect(ms, winRect(fw)));
+  if (p) { const i = KMon.at(ms, p.x, p.y); if (i >= 0) return i; }
+  if (fw) return Math.max(0, KMon.ofRect(ms, winRect(fw)));
+  return Math.max(0, ms.findIndex((m) => m.primary));
+}
 
 /* ---------------- toasts ---------------- */
 function toast(msg, isErr = false) {
@@ -139,9 +218,10 @@ const DOCK_GROW = 18;                     // 52 px icon x 0.33, rounded up
 function dockRoom() {
   const dock = $("#dock");
   if (!dock) return 0;
-  const d = dock.getBoundingClientRect();
-  return d.height ? Math.max(0, Math.round(innerHeight - d.top + 8 + DOCK_GROW)) : 0;
+  const d = dock.getBoundingClientRect(), p = primaryMon();      // [R90] the dock is on the primary monitor
+  return d.height ? Math.max(0, Math.round(p.y + p.h - d.top + 8 + DOCK_GROW)) : 0;
 }
+const dockRoomOn = (m) => (m && m.primary ? dockRoom() : 0);   // [R90] only the primary has a dock
 
 /* [D1] the automatic self-heal stops after this many rounds per app version; the window
    then shows the error with a manual "repair once more" and the ✨ improve hint */
@@ -1124,10 +1204,10 @@ function createWindow(title, { w = 720, h = 520, improvable = true } = {}) {
   const id = "win" + ++winCount;
   const el = document.createElement("div");
   el.className = "win" + (improvable ? "" : " no-improve");
-  const vw = innerWidth || SCREEN.w, vh = innerHeight || SCREEN.h;   // this monitor [R52]
-  w = Math.max(280, Math.min(w, vw - 60)); h = Math.max(180, Math.min(h, vh - 110));
-  const x = 90 + (winCount % 7) * 36, y = 70 + (winCount % 5) * 32;
-  Object.assign(el.style, { left: x + "px", top: y + "px", width: w + "px", height: h + "px", zIndex: ++zTop });
+  // [R90] on the monitor that has the pointer or the focus (the primary otherwise), cascaded in its work area
+  const mi = targetMonitor();
+  const r0 = KMon.placeNew(MON.list, mi, w, h, winCount, dockRoomOn(MON.list[mi]));
+  Object.assign(el.style, { left: r0.x + "px", top: r0.y + "px", width: r0.w + "px", height: r0.h + "px", zIndex: ++zTop });
   el.innerHTML = `
     <div class="win-bar">
       <div class="win-title"></div>
@@ -1144,6 +1224,7 @@ function createWindow(title, { w = 720, h = 520, improvable = true } = {}) {
   windows.set(id, win);
 
   const focus = () => {
+    MON.focusAt = performance.now();               // [R90] the focus decides where the next window opens
     el.style.zIndex = ++zTop;
     const was = el.classList.contains("focused");
     document.querySelectorAll(".win").forEach((n) => n.classList.remove("focused"));
@@ -1154,21 +1235,11 @@ function createWindow(title, { w = 720, h = 520, improvable = true } = {}) {
   el.addEventListener("pointerdown", (e) => { focus(); if (win.onFocus) win.onFocus(e); });   // [R82] a game frame
   el.querySelector(".win-close").onclick = () => closeWin(win);
   el.querySelector(".win-min").onclick = () => minimizeWin(win);
+  // [R90] maximise fills the window's OWN monitor (the primary minus the menu bar and the dock's room: [D2] a
+  // maximized window ends ABOVE the dock, measured from the dock's box); ▢ again (or a drag) gives the old rect back
   el.querySelector(".win-max").onclick = () => {
-    if (win.restore) {
-      Object.assign(el.style, win.restore);
-      win.restore = null;
-      el.classList.remove("maximized");
-    } else {
-      win.restore = { left: el.style.left, top: el.style.top,
-                      width: el.style.width, height: el.style.height };
-      // [D2] a maximized window ends ABOVE the dock: the fixed dock covered the bottom
-      // ~80 px of the app (its Save row was unreachable in the feature test). Measured
-      // from the dock's box so a dock restyle cannot bring the bug back.
-      Object.assign(el.style, { left: "0px", top: "30px",
-                                width: "100%", height: `calc(100% - 30px - ${dockRoom()}px)` });
-      el.classList.add("maximized");
-    }
+    if (win.restore) unsnapWin(win);
+    else snapWin(win, "top");
     if (win.onMove) win.onMove("end");             // [R82] the game window follows its frame
   };
   el.querySelector(".win-improve").onclick = async () => {
@@ -1179,18 +1250,45 @@ function createWindow(title, { w = 720, h = 520, improvable = true } = {}) {
     improveApp(win, instruction);
   };
 
-  // drag
+  // drag [R90]: freely over every monitor (the pointer is captured: an app frame under it cannot swallow the
+  // move); the drop keeps the title bar on a monitor (KMon.clampTitle: never in a dead area, never under the menu
+  // bar or the dock) or, with the pointer at a monitor's outer edge, snaps (left / right half, top = maximise). A maximised or
+  // snapped window comes off at its old size under the pointer.
   const bar = el.querySelector(".win-bar");
   bar.addEventListener("pointerdown", (e) => {
-    if (e.target.closest("button")) return;
-    const sx = e.clientX - el.offsetLeft, sy = e.clientY - el.offsetTop;
+    if (e.target.closest("button") || e.button !== 0) return;
+    try { bar.setPointerCapture(e.pointerId); } catch {}
+    const x0 = e.clientX, y0 = e.clientY;
+    let sx = e.clientX - el.offsetLeft, sy = e.clientY - el.offsetTop, moved = false;
     // [R82] win.onMove: a game frame's X window follows every step (shell/games.js)
-    const move = (e) => { el.style.left = Math.max(0, e.clientX - sx) + "px";
-                          el.style.top = Math.max(30, e.clientY - sy) + "px";
-                          if (win.onMove) win.onMove("move"); };
-    const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up);
-                       if (win.onMove) win.onMove("end"); };
-    addEventListener("pointermove", move); addEventListener("pointerup", up);
+    const move = (e) => {
+      if (!moved && Math.abs(e.clientX - x0) + Math.abs(e.clientY - y0) < 4) return;
+      if (!moved && win.restore) {
+        const fx = (x0 - el.offsetLeft) / Math.max(1, el.offsetWidth), r = win.restore;
+        unsnapWin(win);
+        setRect(win, { x: Math.round(e.clientX - fx * r.w), y: el.offsetTop, w: r.w, h: r.h });
+        sx = e.clientX - el.offsetLeft; sy = e.clientY - el.offsetTop;
+      }
+      moved = true;
+      const U = KMon.union(MON.list);
+      el.style.left = Math.round(Math.max(U.x + 80 - el.offsetWidth, Math.min(e.clientX - sx, U.x + U.w - 80))) + "px";
+      el.style.top = Math.round(Math.max(U.y, Math.min(e.clientY - sy, U.y + U.h - KMon.BAR))) + "px";
+      if (win.onMove) win.onMove("move");
+    };
+    const up = (e) => {
+      removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up);
+      try { bar.releasePointerCapture(e.pointerId); } catch {}
+      if (moved && windows.has(win.id)) {
+        const z = e.type === "pointerup" ? KMon.snapZone(MON.list, e.clientX, e.clientY) : null;
+        if (z) snapWin(win, z.zone, z.i);
+        else {
+          const c = KMon.clampTitle(MON.list, winRect(win), dockRoom());
+          if (c.moved) { el.style.left = c.x + "px"; el.style.top = c.y + "px"; }
+        }
+      }
+      if (win.onMove) win.onMove("end");
+    };
+    addEventListener("pointermove", move); addEventListener("pointerup", up); addEventListener("pointercancel", up);
   });
   // resize
   el.querySelector(".win-resize").addEventListener("pointerdown", (e) => {
@@ -1205,6 +1303,54 @@ function createWindow(title, { w = 720, h = 520, improvable = true } = {}) {
     addEventListener("pointermove", move); addEventListener("pointerup", up);
   });
   return win;
+}
+
+/* [R90] a window's rect in page px, set it, its monitor; snapped (left / right half) or maximised ("top") on a
+   monitor, and back (win.restore = the rect before) */
+function winRect(win) {
+  const st = win.el.style;
+  return { x: parseFloat(st.left) || 0, y: parseFloat(st.top) || 0,
+           w: parseFloat(st.width) || win.el.offsetWidth, h: parseFloat(st.height) || win.el.offsetHeight };
+}
+function setRect(win, r) {
+  Object.assign(win.el.style, { left: Math.round(r.x) + "px", top: Math.round(r.y) + "px",
+                                width: Math.round(r.w) + "px", height: Math.round(r.h) + "px" });
+}
+function winMonitor(win) { return Math.max(0, KMon.ofRect(MON.list, winRect(win))); }
+function snapWin(win, zone, i) {
+  const mi = i === undefined ? winMonitor(win) : i;
+  if (!win.restore) win.restore = winRect(win);
+  setRect(win, KMon.snapRect(MON.list, mi, zone, dockRoomOn(MON.list[mi])));
+  win.snap = zone;
+  win.el.classList.toggle("maximized", zone === "top");
+  win.el.classList.toggle("snapped", zone !== "top");
+}
+function unsnapWin(win) {
+  if (!win.restore) return;
+  setRect(win, win.restore);
+  win.restore = null; win.snap = null;
+  win.el.classList.remove("maximized", "snapped");
+}
+/* the monitors changed: every window keeps its monitor (moved with it) or, its monitor gone, goes to the primary;
+   a maximised / snapped one fills its (new) monitor again; every title bar ends on a monitor; games follow */
+function relocateWindows(before, after) {
+  for (const win of windows.values()) {
+    if (!win.el) continue;
+    const n = KMon.relocate(before, after, winRect(win));
+    if (win.restore) {
+      const rr = KMon.relocate(before, after, win.restore);
+      const cr = KMon.clampTitle(after, rr, dockRoom());
+      win.restore = { x: cr.x, y: cr.y, w: rr.w, h: rr.h };
+    }
+    if (win.snap) {
+      const i = Math.max(0, after.findIndex((m) => m.id === n.to));
+      setRect(win, KMon.snapRect(after, i, win.snap, dockRoomOn(after[i])));
+    } else {
+      const c = KMon.clampTitle(after, n, dockRoom());
+      setRect(win, { x: c.x, y: c.y, w: n.w, h: n.h });
+    }
+    if (win.onMove) win.onMove("end");
+  }
 }
 
 /* closing a window must give its memory back [R68(e)]: the benchmark measured the shell
@@ -1314,10 +1460,10 @@ function layoutTaskbar() {
   const bar = $("#taskbar"), dock = $("#dock");
   if (!bar || !dock) return;
   const d = dock.getBoundingClientRect();
-  const room = Math.floor(d.left - 12 - 10);           // strip starts at 12 px, 10 px gap to the dock
+  const room = Math.floor(d.left - primaryMon().x - 12 - 10);   // strip starts 12 px into the primary [R90], 10 px gap to the dock
   const stacked = bar.children.length > 0 && room < 150;
   bar.classList.toggle("stacked", stacked);
-  bar.style.bottom = stacked ? `${Math.round(window.innerHeight - d.top + 8)}px` : "";
+  bar.style.top = stacked ? `${Math.round(d.top - 8)}px` : "";          // [R90] its bottom 8 px above the dock
   bar.style.maxWidth = stacked ? "" : `${Math.max(0, room)}px`;
 }
 window.addEventListener("resize", layoutTaskbar);
@@ -1367,7 +1513,8 @@ function pollAppIcon(win, appId) {
    Fed by SSE from GET /api/windows/stream — one message per change (the kernel watches
    X events), a refresh every 5 s while a game runs, a keepalive every 30 s otherwise:
    no polling loop in this page, and nothing at all when the kernel has no X
-   (available:false). Screen 0 only [R52]; EventSource reconnects by itself. */
+   (available:false). EventSource reconnects by itself. [R90] The same feed carries the monitor list (`monitors`):
+   the desktop follows a hot-plug / a layout change from it (monitorsFromKernel). */
 const xwins = new Map();   // xid -> chip (X windows WITHOUT a dock icon: not a game)
 const xrecs = new Map();   // [R81] xid -> the snapshot record of every listed X window (the dock's games)
 function xwinOp(id, op, body) {
@@ -1378,9 +1525,8 @@ function renderXWindows(list, frames) {
   const bar = $("#taskbar"), seen = new Set();
   xrecs.clear();
   if (typeof gamesSync === "function") gamesSync(list, frames || []);   // [R82] the game frames (shell/games.js)
-  for (const w of list) {          // every monitor's games: screen 0 is the one dock/taskbar that manages them [R52]
-    if (w.frame) continue;         // [R82] a game in its frame: the frame (a DOM window on its screen's page) is its record
-    if (!SCREEN.primary) continue; // [R82] the feed reaches every screen now (their game frames); unframed X windows stay screen 0's
+  for (const w of list) {          // [R90] one page over every monitor: its dock / taskbar manage every game
+    if (w.frame) continue;         // [R82] a game in its frame: the frame (a DOM window of this page) is its record
     xrecs.set(w.id, w);
     if (w.kind === "game") continue;     // [R81] a game's icon is on the dock (click = raise / minimize, right-click = close)
     seen.add(w.id);
@@ -1412,7 +1558,6 @@ function renderXWindows(list, frames) {
    the record to the forge as a bug report (no repair starts on its own, R35). */
 const crashSeen = new Set();
 function noteGameCrashes(list) {
-  if (!SCREEN.primary) return;                       // [R82] every screen watches the feed; one toast is enough
   for (const c of list || []) {
     if (!c || crashSeen.has(c.id)) continue;
     crashSeen.add(c.id);
@@ -1423,13 +1568,13 @@ function noteGameCrashes(list) {
 }
 let xsource = null;
 function watchXWindows() {
-  // [R82] every screen: a game's frame lives on the page of its screen [R52] (screen 0 alone has the chips)
   if (xsource || typeof EventSource === "undefined") return;
   xsource = new EventSource("/api/windows/stream");
   xsource.onmessage = (e) => {
     let d; try { d = JSON.parse(e.data); } catch { return; }
+    if (d && d.available) monitorsFromKernel(d.monitors);   // [R90] first: windows of a monitor that is gone move
     renderXWindows(d && d.available ? d.windows : [], (d && d.frames) || []);
-    noteGameCrashes(d && d.crashed);                     // with or without X [D-R68-6]; screen 0 only
+    noteGameCrashes(d && d.crashed);                     // with or without X [D-R68-6]
   };
 }
 
@@ -2049,7 +2194,7 @@ function dockItems(recs) {
   // how many user apps fit: the screen minus the pinned icons, the running extras, the separators and the
   // margin every running icon may need when it grows to 1.33 (2 x 9 px); a running user app always keeps its place
   const nFixed = items.filter((i) => !i.sep).length + extra.length, nSep = items.filter((i) => i.sep).length + 2;
-  const room = (innerWidth || SCREEN.w) - 32 - 26 - running.length * 18;
+  const room = primaryMon().w - 32 - 26 - running.length * 18;          // [R90] the dock is on the primary
   const fit = Math.max(0, Math.min(DOCK_APPS_MAX, Math.floor((room - nFixed * DOCK_SLOT - nSep * DOCK_SEP) / DOCK_SLOT)));
   const runKeys = new Set(running.map((r) => r.key));
   let left = fit - user.filter((a) => runKeys.has("app:" + a.app_id)).length;
@@ -2187,9 +2332,9 @@ function dockMenu(key, btn) {
     m.appendChild(b);
   }
   m.classList.remove("hidden");
-  const r = btn.getBoundingClientRect(), w = m.offsetWidth;
-  m.style.left = Math.max(8, Math.min(innerWidth - w - 8, Math.round(r.left + r.width / 2 - w / 2))) + "px";
-  m.style.bottom = Math.round(innerHeight - r.top + 10) + "px";
+  const r = btn.getBoundingClientRect(), w = m.offsetWidth, p = primaryMon();
+  m.style.left = Math.max(p.x + 8, Math.min(p.x + p.w - w - 8, Math.round(r.left + r.width / 2 - w / 2))) + "px";
+  m.style.top = Math.round(r.top - 10 - m.offsetHeight) + "px";        // [R90] above the icon, page-independent
   setTimeout(() => (m.querySelector(".dm-item") || m).focus(), 20);
 }
 document.addEventListener("pointerdown", (e) => {
@@ -2387,8 +2532,7 @@ function applySettings(s) {
   if (!s) return;
   document.documentElement.style.setProperty("--accent", s.accent || "#7c5cff");
   document.documentElement.style.setProperty("--accent2", s.accent2 || "#41e2ff");
-  $(".mb-logo").textContent = "❖ " + (s.os_name || "kAIrOS") +
-    (SCREEN.primary ? "" : " · screen " + (SCREEN.index + 1));
+  $(".mb-logo").textContent = "❖ " + (s.os_name || "kAIrOS");
   applyWallpaper(s.wallpaper || "");
   // [R71] off, or English: nothing is translated (and whatever was is restored)
   setTranslation(s.translation === "on" && s.language && s.language !== "en" ? s.language : null);
@@ -2400,11 +2544,10 @@ async function pollSettings() {
    /genimg/ picture as the wallpaper: one that is still rendering comes as the kernel's pending placeholder (an odd
    width — see BRIDGE_SRC's data-kairos-genimg block, which does the same for app and page pictures), so it is asked
    again (?_r=n, answered at once) with the same backoff until the picture comes, then painted. */
-let wallpaperShown = null;
 function applyWallpaper(url) {
   if (url === wallpaperShown) return;
   wallpaperShown = url;
-  $("#wallpaper").style.backgroundImage = url ? `url(${url})` : "";
+  setWallpaperImage(url);
   if (url && /^\/genimg\//.test(url)) lateWallpaper(url, 0, Date.now());
 }
 function lateWallpaper(url, n, t0) {
@@ -2412,12 +2555,19 @@ function lateWallpaper(url, n, t0) {
   im.onload = im.onerror = (e) => {
     if (wallpaperShown !== url) return;                       // another wallpaper since
     if (e.type === "load" && im.naturalWidth % 2 === 0) {     // the picture (or a final placeholder)
-      if (n) $("#wallpaper").style.backgroundImage = `url(${im.src})`;
+      if (n) setWallpaperImage(im.src);
       return;
     }
     if (Date.now() - t0 < 3600000) setTimeout(() => lateWallpaper(url, n + 1, t0), Math.min(15000, 2000 * 1.5 ** n));
   };
   im.src = url + (url.includes("?") ? "&" : "?") + "_r=" + (n + 1);
+}
+
+/* [R90] every monitor shows the whole picture (cover, centred on that monitor) — one tile per monitor, never one
+   picture stretched over the gap between monitors of different sizes */
+function setWallpaperImage(url) {
+  MON.wpImg = url || "";
+  for (const t of document.querySelectorAll("#wallpaper .wp-tile")) t.style.backgroundImage = url ? `url(${url})` : "";
 }
 
 /* ---------------- wallpaper ---------------- */
@@ -2431,7 +2581,8 @@ $("#mb-wallpaper").addEventListener("click", async () => {
     const url = await pollJob(r.job);
     await fetch("/api/settings", { method: "POST", headers: apiHeaders(),
       body: JSON.stringify({ key: "wallpaper", value: url }) });
-    $("#wallpaper").style.backgroundImage = `url(${url})`;
+    wallpaperShown = url;
+    setWallpaperImage(url);
     toast("wallpaper refreshed");
   } catch (err) { toast("wallpaper failed: " + err.message, true); }
 });
@@ -2728,15 +2879,12 @@ setInterval(pollSettings, 5000);
   setTimeout(() => {
     $("#boot").classList.add("hidden");
     $("#desktop").classList.remove("hidden");
-    dockLoadApps();                // [R81] the user's apps on the dock (every screen)
+    dockLoadApps();                // [R81] the user's apps on the dock
     dockLoadHidden();
-    if (SCREEN.primary) {          // [R52] first-boot setup / installer only once, on screen 0
-      toast("❖ welcome to kAIrOS — everything here is generated on your GPU");
-      checkSetup();
-      checkInstallable();
-    } else {
-      toast("❖ screen " + (SCREEN.index + 1) + " — an extra workspace (system dialogs stay on screen 1)");
-    }
-    watchXWindows();               // [R68] X windows -> chips (screen 0); [R82] the game frames of every screen
+    // [R90] one desktop: the welcome, the first-boot setup and the installer exist once, on the primary monitor
+    toast("❖ welcome to kAIrOS — everything here is generated on your GPU");
+    checkSetup();
+    checkInstallable();
+    watchXWindows();               // [R68] X windows -> chips; [R82] the game frames; [R90] the live monitor list
   }, 900);
 })();

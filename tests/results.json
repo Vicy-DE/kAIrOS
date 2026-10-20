@@ -1,5 +1,5 @@
 {
- "at": "2026-10-18 12:44:03",
+ "at": "2026-10-19 19:37:53",
  "base": "http://127.0.0.1:1338",
  "tests": {
   "unit_prompts_style_mandate": {
@@ -163,14 +163,14 @@
     "R22"
    ],
    "status": "pass",
-   "detail": "2 Krea-2 images generated, seeds differ (1264246921 vs 778018374); engine crash -> error + idle"
+   "detail": "2 Krea-2 images generated, seeds differ (352590901 vs 1268737457); engine crash -> error + idle"
   },
   "http_video": {
    "reqs": [
     "R6"
    ],
    "status": "pass",
-   "detail": "mp4 produced and served: /files/videos/63c6844aa434.mp4"
+   "detail": "mp4 produced and served: /files/videos/d3e0aafa6222.mp4"
   },
   "unit_finish_video_drops_intermediate": {
    "reqs": [
@@ -214,7 +214,7 @@
     "R14"
    ],
    "status": "pass",
-   "detail": "20190 bytes of self-documentation served"
+   "detail": "20250 bytes of self-documentation served"
   },
   "http_search_offline_mode": {
    "reqs": [
@@ -294,7 +294,7 @@
     "R31"
    ],
    "status": "pass",
-   "detail": "ace-lm -> request0.json -> ace-synth (turbo DiT, wav) served: /files/music/4ede4136dffe.wav"
+   "detail": "ace-lm -> request0.json -> ace-synth (turbo DiT, wav) served: /files/music/1be272f92f06.wav"
   },
   "unit_music_language_default_en": {
    "reqs": [
@@ -406,13 +406,14 @@
    "status": "pass",
    "detail": "flag /run/kairos/kiosk-reload (kairos-owned dir) shared by kernel+.xinitrc; 9 tools packaged; timeout kills child in 0.5s; full layout 20 args"
   },
-  "unit_multiscreen_kiosk_hint_roundtrip": {
+  "unit_one_desktop_kiosk_supervisor_hint": {
    "reqs": [
+    "R90",
     "R52",
     "R63"
    ],
    "status": "pass",
-   "detail": "primary-first numbering, mirror=1/identical-extended=2 kiosks, PID liveness sees a dead browser, hint read by shell"
+   "detail": "one kiosk with ?mon=, PID liveness sees a dead browser, headless = plain --kiosk, hint read by shell + boot page"
   },
   "unit_kernel_startup_survives_bad_cache": {
    "reqs": [
@@ -444,7 +445,7 @@
     "R56"
    ],
    "status": "pass",
-   "detail": "display list/arrange/set (+kiosk reload) \u00b7 datetime tz/ntp \u00b7 bluetooth status all OK"
+   "detail": "display list (+monitors/desktop)/arrange/set (live, no kiosk reload) \u00b7 datetime tz/ntp \u00b7 bluetooth status all OK"
   },
   "http_categorized_api_docs": {
    "reqs": [
@@ -552,7 +553,7 @@
     "R44"
    ],
    "status": "pass",
-   "detail": "3 session-painted wallpapers; random keep/discard differs per run (e.g. 1 fragments kept)"
+   "detail": "3 session-painted wallpapers; random keep/discard differs per run (e.g. 4 fragments kept)"
   },
   "http_remote_needs_token": {
    "reqs": [
@@ -729,7 +730,7 @@
     "R62"
    ],
    "status": "pass",
-   "detail": "SIGTERM with 2 open SSE streams -> exit 0 in 1.27 s, no traceback, app told, engine gone"
+   "detail": "SIGTERM with 2 open SSE streams -> exit 0 in 1.37 s, no traceback, app told, engine gone"
   },
   "unit_r68_fixes_static": {
    "reqs": [
@@ -753,7 +754,7 @@
     "R26"
    ],
    "status": "pass",
-   "detail": "89 requirements, no holes, all cited ids documented, 20 without a test so far this run"
+   "detail": "90 requirements, no holes, all cited ids documented, 20 without a test so far this run"
   },
   "unit_game_launch_gate_mapped_window": {
    "reqs": [
@@ -991,7 +992,7 @@
     "R45"
    ],
    "status": "pass",
-   "detail": "dock prompt: api sheet 6395 + recipe 11573 chars injected whole; 28198 of 28278 budget chars used (-c 16384)"
+   "detail": "dock prompt: api sheet 5931 + recipe 7441 chars injected whole; 23281 of 28278 budget chars used (4997 spare, pinned \u2265 1000; -c 16384)"
   },
   "unit_translation_manifest_and_specs": {
    "reqs": [
@@ -1052,7 +1053,7 @@
     "R59"
    ],
    "status": "pass",
-   "detail": "translator 6764 chars identical in shell + bridge (inert literal); handlers in both host pages; settings hook + translate=no spots; settings sheet 6395 + recipe 11573 chars carry keys/picker/switch/download/vibe.translate"
+   "detail": "translator 6764 chars identical in shell + bridge (inert literal); handlers in both host pages; settings hook + translate=no spots; settings sheet 5931 + recipe 7441 chars carry keys/picker/switch/download/vibe.translate"
   },
   "unit_p3_dictionaries_wiktionary_manifests": {
    "reqs": [
@@ -1095,7 +1096,7 @@
     "R59"
    ],
    "status": "pass",
-   "detail": "R89 entry, FAST-MODELS record (no personal paths), index line, addendum, API.md; sheet 6395 / recipe 11573 chars without a fast model"
+   "detail": "R89 entry, FAST-MODELS record (no personal paths), index line, addendum, API.md; sheet 5931 / recipe 7441 chars without a fast model"
   },
   "unit_knowledge_multi_zim_sources": {
    "reqs": [
@@ -1113,7 +1114,7 @@
     "R12"
    ],
    "status": "pass",
-   "detail": "vibe.dict + dom flag in bridge/shell/host; API.md + core + settings sheet 6395 / recipe 11573 chars carry the add-ons; requirement (h) + log section; kernel appends --cache-ram"
+   "detail": "vibe.dict + dom flag in bridge/shell/host; API.md + core + settings sheet 5931 / recipe 7441 chars carry the add-ons; requirement (h) + log section; kernel appends --cache-ram"
   },
   "unit_bake_flagged_addons_in_image": {
    "reqs": [

@@ -6,7 +6,7 @@
    REPORT §7: the pairing lives in kernel/wm.py, keyed by the frame's id, so it survives a move to real browser windows):
    * launch = run: POST /api/game {slug|prompt, frame} plays the current version (a new game is forged first); the
      window opens where the frame's body is (SDL_VIDEO_WINDOW_POS) and the kernel makes it transient for this
-     screen's kiosk window (it stays above the desktop when the user clicks the desktop) and centres it in the body;
+     kiosk window (it stays above the desktop when the user clicks the desktop) and centres it in the body;
    * following: every drag/resize step posts the body's rect (POST /api/frames/<id>/follow — no read-back; at most one
      in flight, the latest rect wins), the drop posts a verified `place`;
    * stacking: when anything of the desktop lies over the frame's body (another window above it, a menu, a toast, a
@@ -30,16 +30,21 @@ function gameSlugify(t) {               // = kernel slugify (server.py)
   return String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
 }
 
-/* the frame body's rect in this page's CSS pixels + the viewport, the screen and where this page's window is
-   (screenX/Y, devicePixelRatio) — the kernel maps it to root pixels through this page's kiosk window */
+/* the frame body's rect in this page's CSS pixels + the viewport, the monitor and where this page's window is
+   (screenX/Y, devicePixelRatio) — the kernel maps it to root pixels through this page's kiosk window. [R90] The
+   page is ONE window over every monitor at the X screen's origin: a frame on any monitor maps 1:1 to root pixels;
+   `screen` (the frame's monitor in the kernel's order) is only the kernel's fallback when it cannot find the window */
 function gameBodyCss(win) {
   const b = win.el && win.el.querySelector(".win-body");
   const r = b ? b.getBoundingClientRect() : { left: 0, top: 0, width: 1, height: 1 };
-  // cx/cy: the browser's own chrome around the viewport (0 in the kiosk; a plain --app window has a title bar)
-  const cx = Math.max(0, Math.min(100, (outerWidth - innerWidth) / 2));
-  const cy = Math.max(0, Math.min(200, outerHeight - innerHeight - cx));
-  return { id: win.game.fid, screen: SCREEN.index, x: r.left, y: r.top, w: r.width, h: r.height,
-           vw: innerWidth, vh: innerHeight, sx: screenX, sy: screenY, dpr: devicePixelRatio || 1, cx, cy };
+  // cx/cy: the browser's own chrome around the viewport (a plain --app window has a title bar). [R90] The kiosk page
+  // (?mon=) sits at the X screen's origin without any chrome by construction: it says so — mid-resize Chromium reports
+  // outer and inner sizes of different moments (VM: a mirror left the game 43,159 px off its frame) and a stale screenX
+  const kiosk = MON.kiosk;
+  const cx = kiosk ? 0 : Math.max(0, Math.min(100, (outerWidth - innerWidth) / 2));
+  const cy = kiosk ? 0 : Math.max(0, Math.min(200, outerHeight - innerHeight - cx));
+  return { id: win.game.fid, screen: winMonitor(win), x: r.left, y: r.top, w: r.width, h: r.height,
+           vw: innerWidth, vh: innerHeight, sx: kiosk ? 0 : screenX, sy: kiosk ? 0 : screenY, dpr: devicePixelRatio || 1, cx, cy };
 }
 
 function frameOp(win, op, extra) {
@@ -53,12 +58,12 @@ function frameOp(win, op, extra) {
 function gameFrame(slug, title) {
   const win = createWindow("🕹 " + title, { w: GAME_W + 2, h: GAME_H + 37 });
   win.el.classList.add("game-win");
-  // inside the screen and clear of the dock (the dock over the game's body would cover it: a 720-px screen
-  // fits the 540-px game only when the frame starts right under the menu bar)
-  const room = (innerHeight || SCREEN.h) - dockRoom();
-  win.el.style.top = Math.max(30, Math.min(parseInt(win.el.style.top, 10) || 70, room - win.el.offsetHeight)) + "px";
-  win.el.style.left = Math.max(0, Math.min(parseInt(win.el.style.left, 10) || 90, (innerWidth || SCREEN.w) - win.el.offsetWidth)) + "px";
-  win.game = { slug: slug || null, title, fid: `s${SCREEN.index}-${win.id}-${Date.now().toString(36)}${(++gameSeq).toString(36)}`,
+  // inside its monitor and clear of the dock (the dock over the game's body would cover it: a 720-px screen
+  // fits the 540-px game only when the frame starts right under the menu bar) [R90: the work area of its monitor]
+  const mi = winMonitor(win), wa = KMon.workArea(MON.list[mi], dockRoomOn(MON.list[mi]));
+  win.el.style.top = Math.max(wa.y, Math.min(parseInt(win.el.style.top, 10) || wa.y + 40, wa.y + wa.h - win.el.offsetHeight)) + "px";
+  win.el.style.left = Math.max(wa.x, Math.min(parseInt(win.el.style.left, 10) || wa.x + 90, wa.x + wa.w - win.el.offsetWidth)) + "px";
+  win.game = { slug: slug || null, title, fid: `d-${win.id}-${Date.now().toString(36)}${(++gameSeq).toString(36)}`,
                state: "none", xid: null, pid: null, version: null, kcov: false, kmin: false, busy: null, hold: false,
                shotUrl: null, known: false, ended: null, fitted: false };
   const body = win.el.querySelector(".win-body");
@@ -503,9 +508,7 @@ function gamesSync(list, frames) {
       continue;
     }
     if (w.kind !== "game" || !w.app || w.minimized || GAME_ADOPT_FAILED.has(w.id)) continue;
-    const rec = w.frame ? recs.get(w.frame) : null;
-    const mine = rec ? rec.screen === SCREEN.index : w.screen === SCREEN.index;
-    if (mine) gameAdopt(w);
+    gameAdopt(w);                                // [R90] one page over every monitor: every running game is this page's
   }
 }
 

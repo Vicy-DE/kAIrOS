@@ -614,9 +614,18 @@ naming the superseding ID. `update-progress.py` copies these notes into PROGRESS
   is extra room and not a clone asking the same question twice; the menu bar names
   secondary screens. The supervisor watches the launched browser PIDs (zombie-aware),
   not a `pgrep -f` pattern that Chromium's helper processes also matched.
+  - **Status note (2026-10-19): SUPERSEDED by R90.** One kiosk per monitor is gone: openbox's
+    `<application class="*">` position rule (centred on the "active" monitor) beat Chromium's own position, so both
+    kiosks went fullscreen on ONE monitor and the other kept the boot frame (the "frozen loading bar" of the
+    2026-10-16 card run, reproduced in the VM). R90 is one desktop window over every monitor; the PID-liveness
+    supervisor stays.
 - **R53 — display API**: `vibe.hw.display.list/set/arrange` — resolutions, primary,
   position, rotation, per-display software brightness, off, extend/mirror; the exact
   xrandr layout is persisted and re-applied at boot (`kairos-display-apply`).
+  - **Status note (2026-10-19): extended by R90** — `list` adds `monitors` (mirrors = one, primary first) and `desktop`
+    (the X screen the one desktop spans); a change no longer relaunches the kiosk (`{ok, relayout: "live"}`: the desktop
+    follows it live); `arrange("mirror")` puts every output at one mode (the primary's native one when all offer it,
+    else the largest common one); switching the primary off hands primary to the next monitor.
 - **R54 — date/time API**: `vibe.hw.datetime.get/set/timezones` (timedatectl).
 - **R55 — bluetooth API**: `vibe.hw.bluetooth.*` (status/on/off/scan/pair/connect/…).
 - **R56 — audio output API**: `vibe.hw.sound.list/set` (default sink, pactl).
@@ -1301,6 +1310,12 @@ naming the superseding ID. `update-progress.py` copies these notes into PROGRESS
   `tests/test_wifi_bt.py` (stateful nmcli / bluetoothctl / rfkill mocks); VM proof with mac80211_hwsim +
   hostapd and the GPU-generated Settings app: `docs/WIFI-BT-2026-10-07.md`. The real pairing proof is the
   owner's stick run (MX Master 2S mouse, QCY MeloBuds N70 earbuds).
+  - **Status note (2026-10-19): the Settings prompt trimmed** — the dock prompt + its injected sheets and recipes
+    used 28198 of their 28278-char budget; now 23281 (4997 spare): the recipe no longer repeats the sheet's shapes,
+    examples and validation, doubled translation/LLM/image text went out; the Network part (WiFi + Bluetooth +
+    airplane), `network.md` and the WiFi/Bluetooth recipes are unchanged. `unit_n6_docs_reach_the_model` and
+    `static_docs_for_the_coder_llm` pin ≥ 1000 spare. Mock-proven (full offline suite 362 passed / 0 failed / 7
+    skipped); the GPU check is the next image's VM/stick test.
 
 ## Imaging without model thrash, v7.5-1 (owner report after the v7.5 stick run, 2026-10-07)
 - **R79 — imaging without model thrash (and a pointer that does not flicker)**: owner, after the v7.5 stick
@@ -1772,3 +1787,68 @@ numbers are listed by title only — each gets its real entry when it is built (
     in that window — no 1.1 GHz throttle during the short run). Functional check only: the timing decision came from
     the benchmark. Not checked on hardware: a refusal while translating, the minors block on translation input, an app
     generation sharing the slots with a batch (all mock-proven).
+  - **Status note (2026-10-19): fast-mode wording consolidated** — one "no fast model" line per Settings document (the
+    dock prompt keeps "no fast mode"); part of the Settings prompt trim, 28198 → 23281 of 28278 chars (see R78).
+
+## One desktop across all monitors (owner, 2026-10-19)
+- **R90 — one desktop across all monitors (+ the second screen's boot freeze)**: owner (2026-10-19): *"make multiple screen
+  working"*; asked what failed on the v7.5-2 card run with a 2560x1440 USB-C monitor: *"One big desktop wanted"* (windows
+  move between the screens like a normal OS), *"Second screen wrong"*, *"the second screen freezed on the loading bar"*.
+  **The freeze** (reproduced in the VM, `docs/ONE-DESKTOP-2026-10-19.md`): R52 launched one `--kiosk` Chromium per monitor
+  at `--window-position`; Chromium sets that as PPosition and openbox's rc.xml rule `<application class="*">` with
+  `<position><x>center</x><y>center</y><monitor>active</monitor>` overrides a PPosition (only USPosition wins) — every
+  kiosk was centred on the monitor of the focused window (the pointer's when nothing had focus), so both went
+  fullscreen on ONE monitor; the other showed the root window = the boot frame the root cover had painted, for good.
+  Which monitor froze depended on where the pointer was at X start. **The design**: (a) ONE kiosk Chromium window covers
+  the X screen (the union of all monitors): an `--app` window of class `kairos-desktop` at 0,0 with the X screen's size
+  (`--kiosk`/fullscreen covers one monitor only), its profile without Chromium's title bar (`custom_chrome_frame` off),
+  the rc.xml rule for that class LAST (undecorated, layer normal — above nothing: games R82 and the sign-in window R78 stay
+  above it —, never fullscreen/maximized, forced to 0,0), every other window centred on the POINTER's monitor; the policy
+  `/etc/chromium/policies/managed/kairos-desktop.json` (`FullscreenAllowed: false`: F11 would shrink the desktop to one
+  monitor); `~/.config/gtk-{3,4}.0/gtk.css` gives GTK's window background the boot screen's #0a0a14 (Chromium showed
+  Adwaita's #f6f5f4 — white — for ~150 ms at every boot-page → shell handover, the old image too). (b)
+  `scripts/desktop/kairos-desktop.py watch` (user kairos, started by `.xinitrc`, restarted if it dies) keeps the window
+  at exactly (0, 0, X screen) — Chromium maps a screen-sized window clamped to one monitor (openbox clamps a per-app
+  `<size>` too) or 1 px short — at its map event (before Chromium's first frame at the wrong size; the window's X
+  background is set to #0a0a14), after a WM/browser move, fullscreen or maximize, and every X screen change; on a
+  hot-plug (RandR: the
+  set of connected outputs changes) it applies the layout: the saved one (`display.json`) when it names exactly the
+  connected outputs, else extend (active outputs keep their order and mode, a new one goes right, an unplugged one goes
+  off, a user-off output stays off, a primary always exists). (c) The monitors reach the page as the `?mon=` start hint
+  (`id:x,y,w,h,primary;…`, `kernel/monitors.py`) and live through the kernel's window feed (`/api/windows/stream`:
+  `monitors` + `desktop` from RandR 1.5 with output names; the watcher selects RandR events); `vibe.hw.display.list`
+  carries them too (R53 note). Mirrors are one monitor (the area all show); exactly one primary. (d) The shell
+  (`shell/monitors.js` = the math, `shell/shell.js`): the menu bar, dock, taskbar, search, toasts and every OS dialog
+  (first-boot setup, installer, welcome, confirmations — modal over the whole page, centred on the primary) live on the
+  primary (CSS `--pm-*`); each monitor has its own wallpaper tile (cover, never stretched over the gap) and boot tile; a
+  new window opens on the monitor with the pointer or the focus (primary fallback); windows drag freely across monitors
+  (pointer capture); a drop keeps the title bar on monitors entirely (never in a dead area such as the 1920x360 under a
+  1080p panel next to a 1440p monitor, never under the menu bar or in the dock's band — the shortest move); a drop with
+  the pointer on a monitor's OUTER edge snaps (left/right half, top = maximise; the seam between monitors is a doorway); maximise fills the
+  window's own monitor (the primary minus the menu bar and the dock's room). A monitor change re-lays the page out
+  without a reload: windows on a monitor that is gone go to the primary at the same offset, a maximised/snapped one
+  fills its new monitor, games follow their frames (placed again while X settles: openbox moves windows a screen change
+  leaves outside the new screen). Without `?mon=` (a plain browser, a remote view) the viewport is the
+  one monitor. (e) Boot (R73): the boot page and the shell's cover draw the logo + bar once per monitor; the root cover
+  paints the frame on every monitor; first-boot setup, installer, welcome once (primary). (f) Games (R82): one page at
+  the X screen's origin, so a frame's CSS px are root px on every monitor (the kiosk page reports origin 0,0 and no
+  chrome by contract — Chromium's screenX and outer/inner sizes were seen stale mid-resize); `kiosk_for()` finds the
+  one window by overlap. R52's per-screen mode is removed, no fallback: the one window has no failure mode a per-screen mode would fix.
+  **Open**: the HDMI port is wired to the NVIDIA 4070 (reverse PRIME, `docs/ONE-DESKTOP-2026-10-19.md`). Tests:
+  `tests/test_one_desktop.py` (the monitor math in kernel/monitors.py and shell/monitors.js, the window rules, the layout
+  change, the display API on mock-xrandr 2/3-monitor/stacked/mirror layouts, the hot-plug plan, `.xinitrc`'s one launch
+  line, rc.xml + policy, the window layer's monitor list; e2e on Xvfb + openbox + the kiosk Chromium: the spanning window,
+  F11 undone, windows across monitors, maximise, the dead-area clamp, snap, hot-unplug/re-plug without a reload),
+  `gw_e2e_second_monitor` and every R82 e2e test on the new desktop window (test_games_windows.py),
+  `unit_one_desktop_kiosk_supervisor_hint` (test_kernel.py). Docs: `docs/ONE-DESKTOP-2026-10-19.md`,
+  `docs/api/display.md`, `docs/API.md`.
+  - **Status note (2026-10-19): implemented, mock- and VM-proven** — the full offline suite (kairos-fix-x11:local,
+    `--network none`, the standard data mounts): 373 passed / 0 failed / 7 skipped (the 7 environment skips of R89;
+    test_one_desktop.py 11/11, test_games_windows.py 8/8 with every R82 e2e test on the new desktop window); JS checks
+    (node --check 7/7 incl. monitors.js, the inline boot-tile scripts, `BRIDGE_SRC`, bridge-test 21/21). VM (no GPU,
+    v7.5-2 overlay + the synced tree, virtio-vga with two heads): the old code's freeze reproduced; the new code boots
+    both heads to the desktop (verdict PASS, side by side and on a saved stacked layout); drag across, maximise and
+    snap on head 2, the dead-area clamp, a real game framed on head 2, hot-unplug/re-plug without a reload, mirror,
+    extend and stacked live through the display API (`docs/ONE-DESKTOP-2026-10-19.md` §5). Not proven: the real
+    USB-C DisplayPort hot-plug on the 780M, GPU compositing of a 4480-px Chromium window, the HDMI port (NVIDIA,
+    reverse PRIME — open).

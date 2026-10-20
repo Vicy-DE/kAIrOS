@@ -5,19 +5,52 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>kAIrOS</title>
 <link rel="stylesheet" href="/shell/shell.css">
+<script src="/shell/monitors.js"></script>   <!-- [R90] the monitor math (KMon), before the first paint -->
 </head>
 <body>
 <!-- the shell's own cover while it connects: the same wordmark, wallpaper and (full) bar as
      the boot screen that preceded it (scripts/splash/kairos-splash + shell/boot-wait.html),
      so the hand-off boot page -> shell -> desktop is one picture [R73/R28] -->
 <div id="boot">
-  <img class="boot-logo" src="/shell/splash/logo-thick.png" alt="kAIrOS by mAIer" draggable="false">
-  <div class="boot-bar"><div class="boot-fill"></div></div>
-  <div class="boot-sub" id="boot-sub">waking the machine spirits…</div>
+  <div class="boot-tile">
+    <img class="boot-logo" src="/shell/splash/logo-thick.png" alt="kAIrOS by mAIer" draggable="false">
+    <div class="boot-bar"><div class="boot-fill"></div></div>
+    <div class="boot-sub" id="boot-sub">waking the machine spirits…</div>
+  </div>
 </div>
+<script>
+/* [R90] one desktop over every monitor: the boot picture (and later the wallpaper) is one TILE per monitor, laid out
+   here — before the first paint — from the kiosk's ?mon= hint (shell/monitors.js); shell.js keeps the tiles in step
+   with the live monitor list. The first tile (with the status line) is the primary's; the others are clones without
+   ids. Without the hint: one tile over the whole viewport, as before. */
+function kairosTiles(box, mons, cls) {
+  if (!box) return;
+  const tiles = [...box.children].filter((t) => t.classList.contains(cls));
+  if (!tiles.length) return;
+  const list = mons && mons.length ? mons : [null];
+  while (tiles.length < list.length) {
+    const c = tiles[0].cloneNode(true);
+    c.querySelectorAll("[id]").forEach((n) => n.remove());
+    box.appendChild(c); tiles.push(c);
+  }
+  tiles.slice(list.length).forEach((t) => t.remove());
+  list.forEach((m, i) => {
+    const st = tiles[i].style;
+    for (const [k, v] of [["left", m ? m.x : 0], ["top", m ? m.y : 0]]) st[k] = v + "px";
+    st.width = m ? m.w + "px" : "100%"; st.height = m ? m.h + "px" : "100%";
+    st.setProperty("--tw", m ? m.w + "px" : "100vw"); st.setProperty("--th", m ? m.h + "px" : "100vh");
+  });
+}
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (!q.has("mon") || typeof KMon === "undefined") return;
+  const mons = KMon.parseHint(q.get("mon")), o = KMon.pageOrigin(mons, window);
+  kairosTiles(document.getElementById("boot"), KMon.toPage(mons, o.x, o.y, o.s), "boot-tile");
+})();
+</script>
 
 <div id="desktop" class="hidden">
-  <div id="wallpaper"></div>
+  <div id="wallpaper"><div class="wp-tile"></div></div>   <!-- [R90] one tile per monitor (kairosTiles) -->
 
   <div id="menubar">
     <span class="mb-logo">❖ kAIrOS</span>
@@ -104,7 +137,7 @@
     <button class="dock-app" data-builtin="arcade">🕹️<span>Arcade</span></button>
     <button class="dock-app" data-builtin="melody">🎵<span>Music</span></button>
     <span class="dock-sep"></span>
-    <button class="dock-app" data-app="settings" data-prompt="the kAIrOS system settings app: reads vibe.settings.get(), lets the user change the OS name, accent and accent2 colors (color pickers + live preview swatches), set or clear the wallpaper URL. A 'Network' section with three parts, all required: 1. WiFi per the wifi-manager recipe (bars, a password field only if needs is 'password', a Sign in button = vibe.hw.wifi.signin() if connectivity is 'portal'); 2. Bluetooth (vibe.hw.bluetooth: the devices with a kind icon and Connect/Disconnect, a Scan button listing found devices with Pair, show the code if pair() answers enter_code); 3. an airplane-mode switch (vibe.hw.airplane.set). Keep the code compact (the OS already styles buttons and inputs: little CSS, one small render function per section, no comments). An 'AI' section reads vibe.models() to pick the image model (m.models) and tune steps/scheduler, and to show the coder LLM (m.llm: on this tier one model, no fast mode; a picker only when m.llm lists more than one: vibe.settings.set('llm_model', key), download an absent add-on with vibe.models.download(key)). A 'Language' section: a picker for the OS language (vibe.settings language: en/de/es/fr/it/ja/ru, rendered from vibe.models() m.translation.languages) and a translation on/off switch (vibe.settings translation), a fast/quality choice (translation_quality; label quality with m.translation.model.quality — on this tier the loaded LLM itself, no download) and a download button for the translation add-on when m.translation.present.fast is false (vibe.models.download('translation')); below it the dictionaries and Wiktionary add-ons from m.extras (keys dictionaries and wiktionary_&lt;lang&gt;, a download button each while present is false). A 'System' section shows vibe.system.setup() info (GPU VRAM, current model tier, available tiers with download size and presence) and lets the user start a tier upgrade via vibe.system.upgrade(tier). A Models button: vibe.system.models(). A danger zone offers factory reset via vibe.fs.format() behind an in-page two-step confirmation (never window.confirm). Apply instantly with vibe.settings.set; render hardware and setup fields (percent, name, GB numbers), never whole objects">⚙️<span>Settings</span></button>
+    <button class="dock-app" data-app="settings" data-prompt="the kAIrOS system settings app: reads vibe.settings.get(), lets the user change the OS name, accent and accent2 colors (color pickers + live preview swatches), set or clear the wallpaper URL. A 'Network' section with three parts, all required: 1. WiFi per the wifi-manager recipe (bars, a password field only if needs is 'password', a Sign in button = vibe.hw.wifi.signin() if connectivity is 'portal'); 2. Bluetooth (vibe.hw.bluetooth: the devices with a kind icon and Connect/Disconnect, a Scan button listing found devices with Pair, show the code if pair() answers enter_code); 3. an airplane-mode switch (vibe.hw.airplane.set). Keep the code compact (the OS already styles buttons and inputs: little CSS, one small render function per section, no comments). An 'AI' section reads vibe.models(): the image model picker (m.models) with steps/scheduler, and the coder LLM (m.llm: one model on this tier, no fast mode; a picker only when it lists more than one). A 'Language' section: the OS language picker (from m.translation.languages), a translation on/off switch, a fast/quality choice (translation_quality; label quality with m.translation.model.quality — on this tier the loaded LLM, no download), a download button while m.translation.present.fast is false (vibe.models.download('translation')), and the dictionaries and wiktionary_&lt;lang&gt; add-ons from m.extras (a download button each while present is false). A 'System' section shows vibe.system.setup() (GPU VRAM, current tier, available tiers with download size and presence) and starts a tier upgrade via vibe.system.upgrade(tier). A Models button: vibe.system.models(). A danger zone: factory reset via vibe.fs.format() behind an in-page two-step confirmation (never window.confirm). Apply instantly with vibe.settings.set; render hardware and setup fields (percent, name, GB numbers), never whole objects">⚙️<span>Settings</span></button>
   </div>
 
   <!-- [R81] system apps that are not pinned: ⊞ Apps lists them, the search finds them by name (openSysApp) -->

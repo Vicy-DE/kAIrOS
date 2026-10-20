@@ -73,7 +73,7 @@ dream the video. Press Enter and it exists.
 | Layer | Tech | Why |
 |---|---|---|
 | Image | Debian 13 (trixie) + systemd, **raw GPT `.img.gz`**: systemd-boot ESP + ext4 root that auto-grows on first boot | flash to any ≥ 64 GB stick or disk (the raw image is ≈ 51 GiB), UEFI boot, works offline; `kairos-install` clones it onto an internal disk (R48) |
-| Desktop | tty1 autologin → X → **one fullscreen Chromium kiosk per connected display** (R52) | no boot menu, no kernel text, no login banner — a self-dreamed boot animation covers the warm-up (R27/R28) |
+| Desktop | tty1 autologin → X → **one Chromium desktop window over every connected monitor**: windows move between monitors, menu bar and dock on the primary, hot-plug without a reload (R90) | no boot menu, no kernel text, no login banner — a self-dreamed boot animation covers the warm-up (R27/R28) |
 | LLM serving | [llama.cpp](https://github.com/ggml-org/llama.cpp) `llama-server` (CUDA, sm_89 + sm_120 PTX) | GGUF, fast, zero Python |
 | Image **and** video | [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) `sd-cli` | one C++ binary covers Muse (a Krea 2 fine-tune), Qwen-Image, Z-Image, Chroma *and* Wan 2.2 video — no PyTorch, no ComfyUI |
 | Music | ACE-Step 1.5 (turbo DiT + 1.7B LM, GGUF) via [acestep.cpp](https://github.com/ServeurpersoCom/acestep.cpp) `ace-lm` + `ace-synth` | pure C++/GGML like the rest; request-JSON driven, two stages; add-on download; built by `scripts/install-engines.sh` (CUDA since 2026-09-14, `docs/ENGINES-CUDA-2026-09.md`) |

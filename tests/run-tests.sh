@@ -199,6 +199,13 @@ python3 "$REPO/tests/test_picture_edit.py" || RC=1
 echo "== running tests/test_public_profile.py =="
 python3 "$REPO/tests/test_public_profile.py" || RC=1
 
+# one desktop across all monitors [R90]: the monitor math in kernel/monitors.py AND shell/monitors.js (node or QuickJS),
+# the window rules, the layout-change path, the display API on mock-xrandr layouts (2/3 monitors, stacked, mirrored), the
+# X side's hot-plug plan, .xinitrc's one launch line; the e2e part needs a REAL X server (Xvfb + openbox + the kiosk
+# Chromium + scripts/desktop/kairos-desktop.py) and skips without one — kairos-fix-x11:local; KAIROS_SHOTS=<dir>
+echo "== running tests/test_one_desktop.py =="
+python3 "$REPO/tests/test_one_desktop.py" || RC=1
+
 if [ -z "${KAIROS_TEST_ONLY:-}" ]; then          # a subset run (iterating on a fix) never rewrites the progress page
     echo "== regenerating docs/PROGRESS.md =="
     python3 "$REPO/scripts/update-progress.py"

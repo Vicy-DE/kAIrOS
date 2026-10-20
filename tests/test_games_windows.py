@@ -4,8 +4,9 @@
 Standalone: `python3 tests/test_games_windows.py` (run-tests.sh runs it after the suite). Writes
 tests/results-games-windows.json (not for a KAIROS_TEST_ONLY subset).
 * gw_frame_bmp, gw_shell_static: no X needed.
-* the e2e tests run on a REAL X server: Xvfb + openbox with the kiosk's own rc.xml + a kiosk Chromium (--kiosk, the
-  .xinitrc geometry) on the REAL shell (index.html + shell.js + browser.js + games.js) served by the kernel's routes
+* the e2e tests run on a REAL X server: Xvfb + openbox with the kiosk's own rc.xml + the kiosk Chromium launched the
+  way .xinitrc does it [R90: ONE --app window of class kairos-desktop over the whole X screen, sized by
+  scripts/desktop/kairos-desktop.py watch] on the REAL shell (index.html + shell.js + browser.js + games.js) served by the kernel's routes
   (server.add_routes, in-process, a private VIBEOS_DIR; the forge LLM mocked: real pygame games — v1 red, a ✨ version
   asked for "green" green) + real pygame windows; real pointer input through XTEST, the page driven over the
   DevTools protocol, the X side read with python-xlib. They skip without Xvfb / openbox / chromium / python3-xlib /
@@ -30,6 +31,14 @@ REPO = Path(__file__).resolve().parent.parent
 RESULTS = {}
 SHOTS = os.environ.get("KAIROS_SHOTS", "")
 RC_XML = REPO / "iso" / "config" / "includes.chroot" / "home" / "kairos" / ".config" / "openbox" / "rc.xml"
+XINITRC = REPO / "iso" / "config" / "includes.chroot" / "home" / "kairos" / ".xinitrc"
+DESKTOP_PY = REPO / "scripts" / "desktop" / "kairos-desktop.py"
+
+
+def xinitrc_chrome_flags():
+    """[R90] the kiosk's own Chromium flags (.xinitrc CHROME_FLAGS) — the e2e desktop runs with exactly these"""
+    m = re.search(r'CHROME_FLAGS="([^"]*)"', XINITRC.read_text())
+    return m.group(1).replace("\\\n", " ").split()
 
 
 def record(name, reqs, status, detail=""):
@@ -163,7 +172,7 @@ def t_bmp(ctx):
 @test("gw_shell_static", ["R82", "R81", "R46"])
 def t_static(ctx):
     """games.js loads after shell.js + browser.js; the hooks shell.js gives a game frame (focus, move, close, min
-    size) and the record list's game kind; the X feed on every screen, chips on screen 0 only; launches go through
+    size) and the record list's game kind; the X feed (also the live monitor list, R90) on the one desktop page; launches go through
     launchGame (search, ⊞ games, the vibe.game bridge, the dock); games.js talks to the frame routes, takes the R70
     screenshot before it hides the game, watches the desktop for covers, offers ✨ and the versions"""
     html = (REPO / "shell" / "index.html").read_text()
@@ -171,16 +180,16 @@ def t_static(ctx):
     js = (REPO / "shell" / "shell.js").read_text()
     for needle in ("if (win.onFocus) win.onFocus(e)", 'if (win.onMove) win.onMove("move")', 'if (win.onMove) win.onMove("end")',
                    "if (win.onClose)", "win.minW || 280", "win.minH || 180", 'kind: w.game ? "game"',
-                   'if (win.game) return "game:"', "if (w.frame) continue;", "if (!SCREEN.primary) continue;",
+                   'if (win.game) return "game:"', "if (w.frame) continue;", "if (d && d.available) monitorsFromKernel(d.monitors);",
                    "gamesSync(list, frames || [])", 'return await launchGame({ prompt: String(args[0] ?? "") });',
                    "launchGame({ prompt: a.prompt, slug: a.slug })", "launchGame({ slug: g.slug })", "launchGame({ slug: it.app })"):
         assert needle in js, needle
     boot = js.split("(async function boot()")[1]
-    assert boot.index("watchXWindows();") > boot.index("} else {"), "the feed starts on every screen"
+    assert "watchXWindows();" in boot and "SCREEN" not in js, "the feed starts on the one desktop page; no R52 screens"
     g = (REPO / "shell" / "games.js").read_text()
     for needle in ("/api/frames/", '"follow"', '"place"', '"snapshot"', '"cover"', '"uncover"', '"minimize"', '"restore"',
                    '"adopt"', "/api/game/versions", "/api/game/version", "evolve: true", "restart: true", "stickyPrompt(win)",
-                   "new MutationObserver(gameCoverSoon)", "sx: screenX", "GAME_STATS"):
+                   "new MutationObserver(gameCoverSoon)", "sx: kiosk ? 0 : screenX", "GAME_STATS"):
         assert needle in g, needle
     assert g.index("await gameSnapshot(win)") < g.index('await frameOp(win, "cover")'), \
         "the screenshot is taken while the game is still on screen"
@@ -249,16 +258,28 @@ class XSession:
                 break
             time.sleep(0.05)
         assert self.c.wm_name() == "Openbox", self.c.wm_name()
+        # [R90] the X side of the one desktop, as .xinitrc runs it: keeps the kairos-desktop window at 0,0,W,H
+        self.desk_log = Path(self.td) / "kairos-desktop.log"
+        self.procs.append(subprocess.Popen([sys.executable, str(DESKTOP_PY), "watch"], env=env,
+                                           stdout=open(self.desk_log, "w"), stderr=subprocess.STDOUT))
 
     def chromium(self, url, port, x, y, w, h, kiosk=True):
-        if not kiosk:       # an --app window without Chromium's own title bar: its viewport is the window
+        """kiosk="desktop" [R90]: the .xinitrc launch — its CHROME_FLAGS, class kairos-desktop, at 0,0 with the X screen's
+        size, no Chromium title bar (the profile's custom_chrome_frame off); True: an old-style --kiosk window; False: a
+        plain --app window. --test-type keeps Chromium's "unsupported flag" bar (--no-sandbox, the container) away."""
+        if kiosk is not True:       # an --app window without Chromium's own title bar: its viewport is the window
             prefs = Path(self.td) / f"p{port}" / "Default"
             prefs.mkdir(parents=True, exist_ok=True)
             (prefs / "Preferences").write_text(json.dumps({"browser": {"custom_chrome_frame": False}}))
-        args = ["chromium", "--no-sandbox", "--disable-gpu", "--no-first-run", "--noerrdialogs", "--disable-infobars",
-                "--disable-dev-shm-usage", "--force-device-scale-factor=1", "--disable-translate", "--hide-scrollbars",
-                f"--remote-debugging-port={port}", f"--user-data-dir={self.td}/p{port}",
-                f"--window-position={x},{y}", f"--window-size={w},{h}"] + (["--kiosk"] if kiosk else []) + [f"--app={url}"]
+        base = ["chromium", "--no-sandbox", "--test-type", "--disable-gpu", "--disable-dev-shm-usage",
+                "--force-device-scale-factor=1", "--hide-scrollbars",
+                f"--remote-debugging-port={port}", f"--user-data-dir={self.td}/p{port}"]
+        if kiosk == "desktop":
+            args = base + xinitrc_chrome_flags() + ["--class=kairos-desktop", "--window-position=0,0",
+                                                    f"--window-size={self.w},{self.h}", f"--app={url}"]
+        else:
+            args = base + ["--no-first-run", "--noerrdialogs", "--disable-infobars", "--disable-translate",
+                           f"--window-position={x},{y}", f"--window-size={w},{h}"] + (["--kiosk"] if kiosk else []) + [f"--app={url}"]
         p = subprocess.Popen(args, env=dict(os.environ, DISPLAY=self.disp), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.browsers.append(p)
         return p
@@ -295,7 +316,7 @@ class XSession:
         out = []
         for xid in self.c.clients():
             inst, cls = self.c.wm_class(xid)
-            if "chrom" in f"{inst} {cls}".lower():
+            if "chrom" in f"{inst} {cls}".lower() or cls == "kairos-desktop":     # [R90] the desktop window's class
                 out.append((xid, self.c.geom(xid)))
         return out
 
@@ -423,11 +444,26 @@ class CDP:
 
 
 class Desk:
-    """the kernel's routes on a test server + the X session + one Chromium page per screen"""
+    """the kernel's routes on a test server + the X session + the Chromium page(s). [R90] kiosk="desktop": the one
+    desktop page over the X screen, ?mon= = `monitors` (default: the X screen as one monitor); the kernel's RandR view
+    is replaced by the same list (Xvfb has one output and ignores xrandr --setmonitor), so the live feed agrees."""
 
-    def __init__(self, s, w, h, pages):
+    def __init__(self, s, w, h, pages, monitors=None):
         self.s, self.w, self.h, self.pages_spec = s, w, h, pages     # [(screen, x, y, w, h, kiosk)]
         self.pages, self.x = [], None
+        self.monitors = monitors or [("screen", 0, 0, w, h, True)]   # [(id, x, y, w, h, primary)]
+        self.saved_randr = None
+
+    def set_monitors(self, monitors):
+        """[R90] what X "has" now (a hot-plug): the kernel's RandR answer + a wake-up of its window feed"""
+        self.monitors = list(monitors)
+        self.s.wm._randr_monitors = lambda root: [(x, y, w, h, p, i) for i, x, y, w, h, p in self.monitors]
+        self.s.wm.WM._notify()
+
+    def hint(self):
+        sys.path.insert(0, str(REPO / "kernel"))
+        import monitors as monmath
+        return monmath.hint(monmath.from_rects(self.monitors))
 
     async def __aenter__(self):
         from aiohttp import web
@@ -439,6 +475,8 @@ class Desk:
         os.environ.update(KAIROS_DISPLAY=self.x.disp, DISPLAY=self.x.disp, SDL_VIDEODRIVER="x11")
         os.environ.pop("XAUTHORITY", None)
         self.s.wm.WM = self.s.wm.WindowService()                     # a fresh window layer on this display
+        self.saved_randr = self.s.wm._randr_monitors
+        self.set_monitors(self.monitors)
         app = web.Application()
         self.s.add_routes(app)
         self.server = TestServer(app, host="127.0.0.1")
@@ -446,10 +484,15 @@ class Desk:
         self.base = f"http://127.0.0.1:{self.server.port}"
         port = 9400 + (os.getpid() + int(time.time())) % 400
         for i, (screen, x, y, w, h, kiosk) in enumerate(self.pages_spec):
-            q = f"?screen={screen}&x={x}&y={y}&w={w}&h={h}"
+            q = f"?mon={self.hint()}" if kiosk == "desktop" else f"?screen={screen}&x={x}&y={y}&w={w}&h={h}"
             before = {xid for xid, _ in self.x.chrome_windows()}
             self.x.chromium(self.base + "/" + q, port + i, x, y, w, h, kiosk)
-            if not kiosk:   # openbox centres a window that asks for no position: put it where .xinitrc's kiosk would be
+            if kiosk == "desktop":      # [R90] kairos-desktop.py watch spans it over the X screen
+                ok, _ = await until(lambda: any(g and g[:4] == (0, 0, self.w, self.h) and g[4]
+                                                for xid, g in self.x.chrome_windows()), 20, 0.05)
+                assert ok, ("the desktop window was not spanned", self.x.chrome_windows(),
+                            self.x.desk_log.read_text()[-600:] if self.x.desk_log.exists() else "")
+            elif not kiosk:   # openbox centres a window that asks for no position: put it where .xinitrc's kiosk would be
                 for _ in range(200):
                     new = [xid for xid, g in self.x.chrome_windows() if xid not in before and g and g[4] and g[2] > 300]
                     if new:
@@ -458,7 +501,7 @@ class Desk:
                 assert new, "the page's window did not map"
                 self.x.c.moveresize(new[0], x=x, y=y, w=w, h=h)
                 await asyncio.sleep(0.3)
-            page = await CDP(port + i).attach(f"screen={screen}")
+            page = await CDP(port + i).attach("mon=" if kiosk == "desktop" else f"screen={screen}")
             await page.wait('!!document.querySelector("#desktop") && !document.querySelector("#desktop").classList.contains("hidden")',
                             30, f"the desktop on screen {screen}")
             self.pages.append(page)
@@ -475,6 +518,8 @@ class Desk:
                 pass
             await self.server.close()
         finally:
+            if self.saved_randr is not None:
+                self.s.wm._randr_monitors = self.saved_randr
             self.x.stop()
             for k, v in self.saved_env.items():
                 if v is None:
@@ -525,7 +570,7 @@ E2E = {}
 async def t_launch(ctx):
     """a new game from the shell (launchGame, as the search / ⊞ / vibe.game do): its frame shows the forge's progress,
     then the pygame window maps INSIDE the frame's body (X geometry: centred in the 960x540 body), transient for the
-    kiosk window; a real click on the desktop (openbox focuses + raises the fullscreen kiosk) leaves the game visible
+    desktop window [R90: the one --app window over the X screen]; a real click on the desktop (openbox focuses + raises it) leaves the game visible
     above it (X pixel = the game's colour); the dock has the game's icon (glow); launching it again (the search's
     ▶) shows the same frame, no second process"""
     s, desk = ctx["s"], ctx["desk"]
@@ -850,46 +895,63 @@ async def t_improve(ctx):
             f"v1 ended without a crash record; v▾ v2●/v1 -> v1 (red) again; ✕ ended it in {dt * 1000:.0f} ms, frame + icon gone")
 
 
-@test("gw_e2e_second_screen", ["R82", "R52"], group="e2e2")
+@test("gw_e2e_second_monitor", ["R82", "R90", "R68"], group="e2e2")
 async def t_screen(ctx):
-    """[R52] two pages side by side on one X display (Xvfb has no RandR monitors: two Chromium --app windows at the
-    .xinitrc geometries, 1920x1080+0+0 and 1280x1024+1920+0): a game launched from screen 1's page runs in screen 1's
-    frame — its X window lies inside that frame's body on the right-hand screen, transient for screen 1's window —
-    and its dock icon is on screen 1's dock, not on screen 0's"""
+    """[R90] ONE desktop page over two monitors (1920x1080 primary + 2560x1440 right of it: the 2026-10-16 card run's
+    layout; the X screen 4480x1440 with a 1920x360 dead area): with the pointer on the second monitor a new game's frame
+    opens THERE, the game's X window lies inside the frame's body at the right ROOT coordinates (x >= 1920), transient
+    for the one desktop window; a REAL drag of the frame's title bar to the primary takes the game along (inside the
+    body again, x < 1920); the game's icon is on the dock (on the primary)"""
     s, desk = ctx["s"], ctx["desk"]
-    x, p0, p1 = desk.x, desk.pages[0], desk.pages[1]
-    where = await p1.ev("[screenX, screenY, outerWidth, outerHeight, SCREEN.index, (outerWidth - innerWidth) / 2, "
-                        "outerHeight - innerHeight - (outerWidth - innerWidth) / 2]")
-    assert where[:5] == [1920, 0, 1280, 1024, 1], (where, [(hex(w), g) for w, g in x.chrome_windows()])
-    cx, cy = where[5], where[6]          # Chromium's own title bar of a plain --app window (the kiosk has none)
-    await p1.ev('launchGame({prompt: "second screen bouncer"}).then((r) => { window.__r = r; }, (e) => { window.__e = String(e); }), 1')
-    await p1.wait("!!window.__r || !!window.__e", 90, "the game on screen 1")
-    assert not await p1.ev("window.__e || null"), await p1.ev("window.__e")
-    fs = await frame_state(p1)
+    x, page = desk.x, desk.pages[0]
+    mons = await page.ev("MON.list.map((m) => [m.id, m.x, m.y, m.w, m.h, m.primary])")
+    assert mons == [["eDP", 0, 0, 1920, 1080, True], ["DisplayPort-0", 1920, 0, 2560, 1440, False]], mons
+    deskwin = next(w for w, g in x.chrome_windows() if g and g[:4] == (0, 0, 4480, 1440))
+    x.move(3000, 700)                                   # the pointer on the second monitor
+    await asyncio.sleep(0.3)
+    await page.ev('launchGame({prompt: "second screen bouncer"}).then((r) => { window.__r = r; }, (e) => { window.__e = String(e); }), 1')
+    await page.wait("!!window.__r || !!window.__e", 90, "the game on the second monitor")
+    assert not await page.ev("window.__e || null"), await page.ev("window.__e")
+    fs = await frame_state(page)
     xid = fs["xid"]
-    win1 = next(w for w, gg in x.chrome_windows() if gg and gg[0] == 1920)
-    ok, _ = await until(lambda: x.visible(xid, win1), 5)
-    assert ok, ("the game is not above screen 1's page", x.geom(xid), hex(x.transient(xid) or 0), hex(win1),
-                [hex(v) for v in (x.c.prop(x.c.root, "_NET_CLIENT_LIST_STACKING") or [])], s.wm.WM.frames_out(),
-                {k: s.wm.WM.frames[k].get(k2) for k in s.wm.WM.frames for k2 in ("at", "chrome", "kiosk", "origin", "scale")})
+    bx, by, bw, bh = [round(v) for v in fs["body"]]
+    assert bx >= 1920, ("the frame did not open on the pointer's monitor", fs["body"])
+    ok, _ = await until(lambda: x.visible(xid, deskwin), 5)
+    assert ok, ("the game is not above the desktop", x.geom(xid), hex(x.transient(xid) or 0), hex(deskwin))
     g = x.geom(xid)
-    bx, by, bw, bh = 1920 + round(cx + fs["body"][0]), round(cy + fs["body"][1]), round(fs["body"][2]), round(fs["body"][3])
     assert g[0] >= 1920 and bx <= g[0] and by <= g[1] and g[0] + g[2] <= bx + bw and g[1] + g[3] <= by + bh, (g, fs["body"])
-    assert x.transient(xid) == win1, (hex(x.transient(xid) or 0), hex(win1))
-    await p1.wait('!!document.querySelector(\'#dock [data-game="second-screen-bouncer"]\')', 5)
-    await asyncio.sleep(0.5)
-    assert not await p0.ev('!!document.querySelector(\'#dock [data-game="second-screen-bouncer"]\')'), "screen 0's dock shows it"
-    assert await p0.ev("GAME_FRAMES.size") == 0 and await p0.ev("document.querySelectorAll('#taskbar .task-chip').length") == 0
-    E2E["shot_screen1"] = x.shot("game-on-the-second-screen.png")
-    await p1.ev("closeWin([...GAME_FRAMES.values()][0]), 1")
+    assert x.transient(xid) == deskwin, (hex(x.transient(xid) or 0), hex(deskwin))
+    E2E["shot_screen1"] = x.shot("game-on-the-second-monitor.png")
+    g_on2 = g
+    # a real drag of the title bar 2000 px to the left: the frame (and the game) end on the primary
+    title = await page.ev(f"(() => {{ const r = windows.get('{fs['id']}').el.querySelector('.win-title').getBoundingClientRect(); "
+                          "return [r.left + 40, r.top + r.height / 2]; })()")
+    x.move(*title)
+    await asyncio.sleep(0.05)
+    x.button(True)
+    for k in range(1, 41):
+        x.move(title[0] - k * 50, title[1])
+        await asyncio.sleep(0.016)
+    x.button(False)
+    await asyncio.sleep(0.4)
+    fs = await frame_state(page)
+    bx, by, bw, bh = [round(v) for v in fs["body"]]
+    want = (bx + (bw - 960) // 2, by + (bh - 540) // 2)
+    ok, _ = await until(lambda: (x.geom(xid) or (0, 0))[:2] == want, 3)
+    g = x.geom(xid)
+    assert ok and g[0] + g[2] <= 1920 + 1, ("the game did not follow its frame to the primary", g, want, fs["body"])
+    await page.wait('!!document.querySelector(\'#dock [data-game="second-screen-bouncer"]\')', 5)
+    dock = await page.rect("#dock")
+    assert dock[0] >= 0 and dock[0] + dock[2] <= 1920 and dock[1] + dock[3] <= 1080, ("the dock is not on the primary", dock)
+    await page.ev("closeWin([...GAME_FRAMES.values()][0]), 1")
     ok, _ = await until(lambda: x.geom(xid) is None, 5)
     assert ok
-    return (f"screen 1's game at ({g[0]},{g[1]}) inside its frame body ({bx},{by},{bw},{bh}) (page chrome {cx},{cy} px), "
-            "transient for screen 1's window; icon on screen 1's dock only")
+    return (f"frame opened on the pointer's monitor: game at ({g_on2[0]},{g_on2[1]}) inside its body, transient for the one "
+            f"desktop window; dragged by its title to the primary: game at ({g[0]},{g[1]}); dock on the primary {dock}")
 
 
 # ----------------------------------------------------------------------------- runner
-async def run_group(tests, size, pages):
+async def run_group(tests, size, pages, monitors=None):
     s = kernel()
     ctx = {"s": s}
     try:
@@ -900,7 +962,7 @@ async def run_group(tests, size, pages):
         return
     with Forge(s) as forge:
         ctx["forge"] = forge
-        async with Desk(s, size[0], size[1], pages) as desk:
+        async with Desk(s, size[0], size[1], pages, monitors) as desk:
             ctx["desk"] = desk
             ok = True
             for t in tests:
@@ -918,10 +980,11 @@ def main():
         asyncio.run(run_one(t, {}))
     e2e = [t for t in tests if t._group == "e2e"]
     if e2e:
-        asyncio.run(run_group(e2e, (1920, 1080), [(0, 0, 0, 1920, 1080, True)]))
+        asyncio.run(run_group(e2e, (1920, 1080), [(0, 0, 0, 1920, 1080, "desktop")]))   # [R90] the .xinitrc desktop window
     e2e2 = [t for t in tests if t._group == "e2e2"]
     if e2e2:
-        asyncio.run(run_group(e2e2, (3200, 1080), [(0, 0, 0, 1920, 1080, False), (1, 1920, 0, 1280, 1024, False)]))
+        asyncio.run(run_group(e2e2, (4480, 1440), [(0, 0, 0, 4480, 1440, "desktop")],      # [R90] one page, two monitors
+                              [("eDP", 0, 0, 1920, 1080, True), ("DisplayPort-0", 1920, 0, 2560, 1440, False)]))
     if not only:
         out = {"at": time.strftime("%Y-%m-%d %H:%M:%S"), "tests": RESULTS, "numbers": {k: v for k, v in E2E.items() if k in ("lag", "cover")}}
         (REPO / "tests" / "results-games-windows.json").write_text(json.dumps(out, indent=1, ensure_ascii=False))

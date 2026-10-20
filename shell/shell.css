@@ -15,10 +15,13 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
 .hidden { display: none !important; }
 
 /* ---------- boot ---------- */
-/* geometry = the boot screen's reference canvas 1920x1080 scaled by min(vw/1920, vh/1080):
-   wordmark 606 px wide centred at 40 % height, bar 540x12 px centred at 65.5 % — the same
-   numbers as scripts/splash/kairos-splash.c (LAYOUT_*) and shell/boot-wait.html [R73] */
-#boot { --bs: min(calc(100vw / 1920), calc(100vh / 1080)); position: fixed; inset: 0; z-index: 99;
+/* geometry = the boot screen's reference canvas 1920x1080 scaled by min(w/1920, h/1080) of each
+   monitor's tile [R90] (--tw/--th, index.html kairosTiles): wordmark 606 px wide centred at 40 %
+   height, bar 540x12 px centred at 65.5 % — the same numbers as scripts/splash/kairos-splash.c
+   (LAYOUT_*) and shell/boot-wait.html [R73] */
+#boot { position: fixed; inset: 0; z-index: 99; background: #07070d; }
+.boot-tile { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: hidden;
+  --tw: 100vw; --th: 100vh; --bs: min(calc(var(--tw) / 1920), calc(var(--th) / 1080));
   background:
     radial-gradient(calc(var(--bs) * 1200) calc(var(--bs) * 700) at 75% 15%, #1b1340 0%, transparent 60%),
     radial-gradient(calc(var(--bs) * 900) calc(var(--bs) * 600) at 15% 85%, #0a2a38 0%, transparent 55%),
@@ -34,15 +37,21 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
 @keyframes pulse { 50% { opacity: 0.35; transform: scale(0.94); } }
 
 /* ---------- desktop ---------- */
+/* [R90] ONE page over every monitor. --pm-x/y/w/h = the PRIMARY monitor in page px, --pm-r/b = its distance to the
+   page's right / bottom edge (shell.js layoutPrimary): the menu bar, the dock, the taskbar, the search, the toasts
+   and the OS dialogs are anchored to it; the defaults (no monitor list yet, a plain browser) = the viewport. */
+:root { --pm-x: 0px; --pm-y: 0px; --pm-w: 100vw; --pm-h: 100vh; --pm-r: 0px; --pm-b: 0px; }
 #desktop { position: fixed; inset: 0; }
-#wallpaper { position: absolute; inset: 0; z-index: 0; background:
+#wallpaper { position: absolute; inset: 0; z-index: 0; }
+/* one tile per monitor (cover, centred on THAT monitor — never one picture stretched over the gap) */
+.wp-tile { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background:
   radial-gradient(1200px 700px at 75% 15%, #1b1340 0%, transparent 60%),
   radial-gradient(900px 600px at 15% 85%, #0a2a38 0%, transparent 55%),
   linear-gradient(160deg, #0a0a14 0%, #11101f 50%, #0a0d16 100%);
   background-size: cover; background-position: center; transition: opacity .8s; }
 
 /* ---------- menubar ---------- */
-#menubar { position: absolute; top: 0; left: 0; right: 0; height: 30px; z-index: 50;
+#menubar { position: absolute; top: var(--pm-y); left: var(--pm-x); width: var(--pm-w); height: 30px; z-index: 50;
   display: flex; align-items: center; gap: 16px; padding: 0 14px;
   background: rgba(10, 10, 20, 0.55); backdrop-filter: blur(18px);
   border-bottom: 1px solid var(--glass-border); font-size: 12.5px; }
@@ -83,7 +92,10 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
 .sm-about-facts dt { color: var(--text-dim); } .sm-about-facts dd { color: var(--text); word-break: break-word; }
 
 /* ---------- dock ---------- */
-#dock { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 50;
+/* [R90] anchored to the primary's TOP + height, never to the page's bottom: a monitor change re-lays the page out
+   before the X side has resized the window, and the dock's box (dockRoom) must already be right then */
+#dock { position: absolute; top: calc(var(--pm-y) + var(--pm-h) - 12px); left: calc(var(--pm-x) + var(--pm-w) / 2);
+  transform: translate(-50%, -100%); z-index: 50;
   display: flex; align-items: flex-end; gap: 6px; padding: 8px 12px;
   background: rgba(14, 14, 26, 0.55); backdrop-filter: blur(20px);
   border: 1px solid var(--glass-border); border-radius: 20px; }
@@ -99,8 +111,9 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
 
 /* ---------- launcher ---------- */
 #launcher { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center;
+  padding: var(--pm-y) var(--pm-r) var(--pm-b) var(--pm-x);   /* [R90] centred on the primary */
   justify-content: center; background: rgba(5, 5, 10, 0.5); backdrop-filter: blur(6px); }
-.launcher-box { width: min(620px, 90vw); padding: 28px; border-radius: 20px;
+.launcher-box { width: min(620px, calc(var(--pm-w) * .9)); padding: 28px; border-radius: 20px;
   background: rgba(16, 16, 30, 0.85); border: 1px solid var(--glass-border);
   box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(124,92,255,.15); }
 .launcher-title { font-size: 20px; font-weight: 600; margin-bottom: 14px;
@@ -156,8 +169,8 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
 /* idle, the search box sits UNDER the windows (z 5 < .win >= 10): a window dragged over
    the top-centre band stays clickable there; while it has focus it floats above them
    as before, so results overlay the desktop (docs/DESKTOP-TECH-EVAL-2026-09.md §8.9) */
-#dsearch { position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
-  width: min(560px, 80vw); z-index: 5; }
+#dsearch { position: absolute; top: calc(var(--pm-y) + 44px); left: calc(var(--pm-x) + var(--pm-w) / 2);
+  transform: translateX(-50%); width: min(560px, calc(var(--pm-w) * .8)); z-index: 5; }
 #dsearch:focus-within { z-index: 55; }
 #ds-input { width: 100%; padding: 11px 18px; font-size: 14px; color: var(--text);
   background: rgba(14, 14, 26, 0.55); backdrop-filter: blur(18px);
@@ -165,7 +178,7 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
   transition: all .2s; }
 #ds-input:focus { border-color: var(--accent); background: rgba(14, 14, 26, 0.8);
   box-shadow: 0 0 0 3px rgba(124,92,255,.15), 0 18px 50px rgba(0,0,0,.5); }
-#ds-results { margin-top: 8px; border-radius: 16px; overflow: hidden auto; max-height: 56vh;
+#ds-results { margin-top: 8px; border-radius: 16px; overflow: hidden auto; max-height: calc(var(--pm-h) * .56);
   background: rgba(14, 14, 26, 0.92); backdrop-filter: blur(20px);
   border: 1px solid var(--glass-border); box-shadow: 0 24px 70px rgba(0,0,0,.6); }
 .ds-group { padding: 8px 14px 2px; font-size: 10.5px; letter-spacing: 2px;
@@ -179,8 +192,9 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
 
 /* ---------- first-boot setup ---------- */
 #setup { position: fixed; inset: 0; z-index: 90; display: flex; align-items: center;
+  padding: var(--pm-y) var(--pm-r) var(--pm-b) var(--pm-x);   /* [R90] centred on the primary */
   justify-content: center; background: rgba(5, 5, 10, 0.65); backdrop-filter: blur(10px); }
-.setup-box { width: min(560px, 92vw); padding: 34px 38px; border-radius: 22px; text-align: center;
+.setup-box { width: min(560px, calc(var(--pm-w) * .92)); padding: 34px 38px; border-radius: 22px; text-align: center;
   background: rgba(16, 16, 30, 0.92); border: 1px solid var(--glass-border);
   box-shadow: 0 40px 100px rgba(0,0,0,.7), 0 0 0 1px rgba(124,92,255,.2); }
 .setup-logo { font-size: 44px; color: var(--accent); animation: pulse 1.8s ease-in-out infinite; }
@@ -202,8 +216,9 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
 
 /* ---------- installer ---------- */
 #install { position: fixed; inset: 0; z-index: 92; display: flex; align-items: center;
+  padding: var(--pm-y) var(--pm-r) var(--pm-b) var(--pm-x);   /* [R90] centred on the primary */
   justify-content: center; background: rgba(5, 5, 10, 0.65); backdrop-filter: blur(10px); }
-#install .setup-box { width: min(600px, 94vw); }
+#install .setup-box { width: min(600px, calc(var(--pm-w) * .94)); }
 .install-disk { text-align: left; padding: 12px 14px; margin: 8px 0; border-radius: 12px;
   background: var(--glass); border: 1px solid var(--glass-border); cursor: pointer;
   font-size: 14px; transition: all .12s; }
@@ -214,7 +229,8 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
   font: 11px/1.5 ui-monospace, monospace; color: #8fd8ff; white-space: pre-wrap; }
 
 /* ---------- toasts ---------- */
-#toasts { position: fixed; top: 42px; right: 14px; z-index: 80; display: flex;
+#toasts { position: fixed; top: calc(var(--pm-y) + 42px); left: calc(var(--pm-x) + var(--pm-w) - 14px);
+  transform: translateX(-100%); z-index: 80; display: flex;
   flex-direction: column; gap: 8px; pointer-events: none; }   /* [R81] a toast never swallows the click meant for a
   maximized window's ✨ _ ▢ ✕ under it (it is text only) */
 .toast { padding: 10px 16px; border-radius: 12px; background: rgba(16, 16, 30, 0.92);
@@ -225,9 +241,10 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
 
 /* in-page prompt (native dialogs are blocked in kiosk mode) */
 .ui-prompt-overlay { position: fixed; inset: 0; z-index: 200; display: flex;
+  padding: var(--pm-y) var(--pm-r) var(--pm-b) var(--pm-x);   /* [R90] centred on the primary */
   align-items: center; justify-content: center; background: rgba(0,0,0,.55);
   backdrop-filter: blur(4px); animation: slidein .15s ease; }
-.ui-prompt { width: min(460px, 90vw); padding: 22px; border-radius: 16px;
+.ui-prompt { width: min(460px, calc(var(--pm-w) * .9)); padding: 22px; border-radius: 16px;
   background: rgba(16,16,30,.97); border: 1px solid var(--glass-border);
   box-shadow: 0 24px 70px rgba(0,0,0,.6); }
 .ui-prompt-q { font-size: 15px; margin-bottom: 14px; color: #e8e8f2; }
@@ -293,13 +310,14 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
    the room really there and, when that is not even one chip (1024 px wide: ~120 px —
    the game chip was painted under the dock and cut, VM test D-R68-4), lifts it onto its
    own row above the dock (.stacked, bottom set from the dock's box); never under it */
-#taskbar { position: absolute; left: 12px; bottom: 12px; z-index: 45; display: flex;
-  gap: 6px; max-width: calc(100vw - 24px); overflow-x: auto; scrollbar-width: none; }
-#taskbar.stacked { bottom: 94px; }
+#taskbar { position: absolute; left: calc(var(--pm-x) + 12px); top: calc(var(--pm-y) + var(--pm-h) - 12px);
+  transform: translateY(-100%); z-index: 45; display: flex;
+  gap: 6px; max-width: calc(var(--pm-w) - 24px); overflow-x: auto; scrollbar-width: none; }
+#taskbar.stacked { top: calc(var(--pm-y) + var(--pm-h) - 94px); }
 .task-chip { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px 0 8px;
   border: 1px solid var(--glass-border); border-radius: 12px; cursor: pointer; color: var(--text);
   background: rgba(14,14,26,.62); backdrop-filter: blur(18px); font: 12.5px system-ui;
-  max-width: min(190px, 44vw); flex: none; transition: background .12s; animation: slidein .18s ease; }
+  max-width: min(190px, calc(var(--pm-w) * .44)); flex: none; transition: background .12s; animation: slidein .18s ease; }
 .task-chip:hover { background: rgba(124,92,255,.24); }
 .task-ic { width: 24px; height: 24px; flex: none; display: flex; align-items: center;
   justify-content: center; font-size: 17px; }
@@ -307,7 +325,7 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
 /* min-width: 0 lets the flex item shrink below its text, so the title ellipsizes inside
    the chip instead of pushing the controls out (a game chip carries two of them) */
 .task-t { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.task-x { max-width: min(236px, 52vw); }
+.task-x { max-width: min(236px, calc(var(--pm-w) * .52)); }
 /* real X windows (games) [R68]: the chip is the window's only control — the two glyphs
    are the window buttons' look (translucent, solid on hover); a minimized game dims */
 .task-x .task-ctl { width: 22px; height: 26px; margin-left: -4px; display: flex; align-items: center;
@@ -320,8 +338,9 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
 
 /* ---------- apps menu [R60] ---------- */
 #appsmenu { position: fixed; inset: 0; z-index: 72; display: flex; align-items: center;
+  padding: var(--pm-y) var(--pm-r) var(--pm-b) var(--pm-x);   /* [R90] centred on the primary */
   justify-content: center; background: rgba(5,5,10,.5); backdrop-filter: blur(6px); }
-.appsmenu-box { width: min(760px, 92vw); max-height: 78vh; padding: 24px; border-radius: 20px;
+.appsmenu-box { width: min(760px, calc(var(--pm-w) * .92)); max-height: calc(var(--pm-h) * .78); padding: 24px; border-radius: 20px;
   display: flex; flex-direction: column; background: rgba(16,16,30,.9);
   border: 1px solid var(--glass-border); box-shadow: 0 30px 80px rgba(0,0,0,.6); }
 .appsmenu-title { font-size: 19px; font-weight: 600; margin-bottom: 12px;
@@ -345,10 +364,6 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
 .appsmenu-empty { grid-column: 1/-1; color: var(--text-dim); text-align: center; padding: 30px; }
 .appsmenu-hint { margin-top: 12px; font-size: 11.5px; color: var(--text-dim); }
 
-/* [R52] secondary monitors are full workspaces, but the machine-level singletons
-   (installer, wallpaper painting, first-boot setup) belong to screen 0 only */
-html.screen-secondary #mb-install, html.screen-secondary #mb-wallpaper,
-html.screen-secondary #setup { display: none !important; }
 
 /* ---------- the dock's states [R81] ----------
    running + every window minimized -> the icon 1.33 bigger (grows up out of the dock: shell.js

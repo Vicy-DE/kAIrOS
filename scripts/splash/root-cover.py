@@ -10,7 +10,10 @@ frame with `kairos-splash --once` (as the kiosk user, into a file) and this scri
 as the root window's background pixmap, retained after the client exits (like xsetroot),
 so whatever gap there is before the kiosk's first paint shows the boot screen, not black.
 
-usage: root-cover.py <raw BGRX frame> <w> <h> [x y]
+usage: root-cover.py <raw BGRX frame> <w> <h> [x y] [<frame> <w> <h> <x> <y> ...]
+[R90] one frame per monitor (.xinitrc renders the boot frame at each monitor's size): every monitor
+shows the boot screen until the one desktop window covers them all; the rest of the root (the dead
+areas between monitors of different sizes) gets the wallpaper's top tone.
 Cosmetic: any error exits 0 and leaves the root alone [R63]. python-xlib is in the image
 (kernel/wm.py); DISPLAY from the environment (.xinitrc).
 """
@@ -19,15 +22,20 @@ import sys
 BG = 0x0A0A14          # the wallpaper's top tone (shell.css) around a frame smaller than the root
 
 
+def frames(argv):
+    """[(raw, w, h, x, y)] from the command line: the first frame may omit x y (0 0)"""
+    if len(argv) in (3, 5):
+        a = list(argv) + ["0", "0"][: 5 - len(argv)]
+        return [(a[0], int(a[1]), int(a[2]), int(a[3]), int(a[4]))]
+    if len(argv) % 5:
+        raise ValueError("frames come as <raw> <w> <h> <x> <y>")
+    return [(argv[i], int(argv[i + 1]), int(argv[i + 2]), int(argv[i + 3]), int(argv[i + 4]))
+            for i in range(0, len(argv), 5)]
+
+
 def main():
-    raw, w, h = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
-    x = int(sys.argv[4]) if len(sys.argv) > 4 else 0
-    y = int(sys.argv[5]) if len(sys.argv) > 5 else 0
+    todo = frames(sys.argv[1:])
     from Xlib import X, display
-    with open(raw, "rb") as f:
-        data = f.read()
-    if w <= 0 or h <= 0 or len(data) < w * h * 4:
-        return 1
     d = display.Display()
     d.set_close_down_mode(X.RetainPermanent)          # the pixmap outlives this process
     scr = d.screen()
@@ -38,10 +46,19 @@ def main():
     pix = root.create_pixmap(rw, rh, depth)
     gc = pix.create_gc(foreground=BG, background=BG)
     pix.fill_rectangle(gc, 0, 0, rw, rh)
-    band = max(1, 200000 // (w * 4))                  # rows per request: under the 256 KiB default request limit
-    for y0 in range(0, h, band):
-        n = min(band, h - y0)
-        pix.put_image(gc, x, y + y0, w, n, X.ZPixmap, depth, 0, data[y0 * w * 4:(y0 + n) * w * 4])
+    painted = 0
+    for raw, w, h, x, y in todo:
+        with open(raw, "rb") as f:
+            data = f.read()
+        if w <= 0 or h <= 0 or len(data) < w * h * 4:
+            continue
+        band = max(1, 200000 // (w * 4))              # rows per request: under the 256 KiB default request limit
+        for y0 in range(0, h, band):
+            n = min(band, h - y0)
+            pix.put_image(gc, x, y + y0, w, n, X.ZPixmap, depth, 0, data[y0 * w * 4:(y0 + n) * w * 4])
+        painted += 1
+    if not painted:
+        return 1
     root.change_attributes(background_pixmap=pix)
     root.clear_area(0, 0, 0, 0)                       # repaint the root from its new background
     d.sync()

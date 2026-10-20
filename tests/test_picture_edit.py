@@ -717,7 +717,7 @@ async def t_e2e(ctx):
             await page.type("make it a snowy night")
             await page.key("Enter")
             await page.wait(f"{ww}.pic.url.endsWith('/v1.png')", 15, "the wallpaper's v1")
-            await page.wait("(document.querySelector('#wallpaper').style.backgroundImage || '').includes('/v1.png')", 8)
+            await page.wait("(document.querySelector('#wallpaper .wp-tile').style.backgroundImage || '').includes('/v1.png')", 8)   # [R90] a tile per monitor
             assert s.load_settings()["wallpaper"].endswith("/v1.png")
     return "viewer ✨ → note → veil → v1 (strip v0 v1) → v2 → v0 revert; quick viewer + Imagine open the viewer; wallpaper ✨ → v1 = wallpaper" \
         + (f"; shots {shot_note}, {shot_v1}" if SHOTS else "")

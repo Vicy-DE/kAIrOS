@@ -41,7 +41,7 @@ LOCUS = {
     "R46": "shell/index.html dock has no 📖 app; docs stay at /api/docs + vibe.docs()",
     "R49": "docs/API.md 'WiFi connect — full reference' + docs/api/network.md",
     "R50": "iso/config/package-lists/kairos.list.chroot (firmware-intel-graphics, firmware-iwlwifi, intel-microcode)",
-    "R52": "iso/config/includes.chroot/home/kairos/.xinitrc (one Chromium per xrandr geometry, ?screen=N, relaunch loop)",
+    "R52": "superseded by R90 (one desktop window over every monitor); the PID-liveness supervisor stays in .xinitrc",
     "R61": "shell/shell.js addTask()/#taskbar chips [R61]",
 }
 
@@ -263,6 +263,8 @@ def main():
     results = {**results, **load_results(RESULTS.with_name("results-picture-edit.json"))[1]}
     # and the public images [R87] (tests/test_public_profile.py -> results-public-profile.json)
     results = {**results, **load_results(RESULTS.with_name("results-public-profile.json"))[1]}
+    # and one desktop across all monitors [R90] (tests/test_one_desktop.py -> results-one-desktop.json)
+    results = {**results, **load_results(RESULTS.with_name("results-one-desktop.json"))[1]}
     ids, titles, notes = parse_requirements(REQ_DOC.read_text(encoding="utf-8"))
     lines, c = render(ids, titles, notes, results, ran_at)
     OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")

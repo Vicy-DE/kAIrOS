@@ -1617,20 +1617,21 @@ async def t_boot_hardening(_):
 
 @run_test("unit_hw_deps_and_kiosk_reload", ["R38", "R53", "R55", "R56"])
 async def t_hw_deps(_):
-    """kernel/hw.py against the image: (a) the kiosk-reload flag path agrees between
-    the root kernel and the kairos-user .xinitrc and lives in a dir the kiosk user
-    owns; (b) every binary hw.py shells out to has its package in the image list, plus
+    """kernel/hw.py against the image: (a) the kiosk-reload flag (.xinitrc's; [R90] the display
+    API no longer relaunches the kiosk — the desktop follows a layout change live) lives in a
+    dir the kiosk user owns, the same dir as the kernel's sign-in flags; (b) every binary hw.py shells out to has its package in the image list, plus
     the sound server itself; (c) timed-out children are killed, not leaked; (d) real
     xrandr output parses (rotation) and the FULL layout is persisted."""
     import importlib, re, tempfile, time
     iso = REPO / "iso"; inc = iso / "config" / "includes.chroot"
     src = (REPO / "kernel" / "hw.py").read_text()
-    # (a) reload flag: one path, under /run/kairos, tmpfiles gives that dir to kairos
-    flag = re.search(r'KAIROS_KIOSK_RELOAD",\s*"([^"]+)"', src).group(1)
+    # (a) reload flag: under /run/kairos (the kernel's kiosk flags' dir), tmpfiles gives that dir to kairos
     xinit = (inc / "home" / "kairos" / ".xinitrc").read_text()
     m = re.search(r"^RELOAD=(\S+)$", xinit, re.M)
-    assert m and m.group(1) == flag, f".xinitrc RELOAD={m and m.group(1)} != kernel {flag}"
-    assert "/tmp/kairos-kiosk-reload" not in xinit and "/tmp/kairos-kiosk-reload" not in src
+    flag = m and m.group(1)
+    assert flag == "/run/kairos/kiosk-reload", f".xinitrc RELOAD={flag}"
+    assert str(Path(re.search(r'KAIROS_OPEN_URL",\s*"([^"]+)"', src).group(1)).parent) == str(Path(flag).parent)
+    assert "KIOSK_RELOAD" not in src and "/tmp/kairos-kiosk-reload" not in xinit
     assert 'rm -f "$RELOAD"' in xinit and '[ -f "$RELOAD" ] && break' in xinit
     tmpf = (inc / "etc" / "tmpfiles.d" / "kairos.conf").read_text()
     d = str(Path(flag).parent)
@@ -1693,31 +1694,29 @@ async def t_hw_deps(_):
             f"timeout kills child in {time.time() - t0:.1f}s; full layout {len(args)} args")
 
 
-@run_test("unit_multiscreen_kiosk_hint_roundtrip", ["R52", "R63"])
+@run_test("unit_one_desktop_kiosk_supervisor_hint", ["R90", "R52", "R63"])
 async def t_multiscreen(_):
-    """[R52] one kiosk per display SURFACE, numbered primary-first then left-to-right
-    (numeric, not string order); mirrored outputs collapse, two identical EXTENDED
-    monitors do not; the supervisor judges liveness by the launched browser PIDs (a
-    lingering helper with the same cmdline no longer masks a dead browser); shell.js
-    reads every parameter of the hint .xinitrc writes and keeps the machine-level
-    singletons on screen 0; boot-wait.html forwards the hint. Hermetic sh run of the
-    extracted .xinitrc functions against a fake xrandr + fake chromium."""
+    """[R90] ONE kiosk over every monitor (R52's one kiosk per monitor is replaced: tests/test_one_desktop.py covers
+    the launch line, the monitor math and the real-X behaviour): the supervisor judges liveness by the launched
+    browser PID (a lingering helper with the same cmdline does not mask a dead browser); headless / an unknown screen
+    size = one plain --kiosk; the ?mon= hint .xinitrc writes is what shell.js and the boot page read (KMon.parseHint)
+    and the boot page forwards it (and only it) to the shell; the machine-level singletons (first-boot setup,
+    installer, welcome) exist once. Hermetic sh run of the extracted .xinitrc functions against a fake xrandr +
+    fake chromium."""
     import re, subprocess, tempfile
     inc = REPO / "iso" / "config" / "includes.chroot"
     xinit = (inc / "home" / "kairos" / ".xinitrc").read_text()
     subprocess.run(["sh", "-n", str(inc / "home" / "kairos" / ".xinitrc")], check=True)
     funcs = "".join(re.search(rf"^{f}\(\) \{{\n.*?^\}}\n", xinit, re.M | re.S).group(0)
-                    for f in ("kiosk_geoms", "launch_all_kiosks", "kiosks_alive"))
-    code = "\n".join(l for l in funcs.splitlines() if not l.lstrip().startswith("#"))
-    assert "sort -u" not in code, "string-sorted geometries: screen 0 would not be the primary"
+                    for f in ("monitor_hint", "desktop_size", "launch_all_kiosks", "kiosks_alive"))
     assert "kiosks_alive || " in xinit and not re.search(r"pgrep -f .chromium", xinit), \
         "the supervisor must watch the browser PIDs, not a pgrep pattern helpers match too"
     with tempfile.TemporaryDirectory() as td:
         t = Path(td); (t / "bin").mkdir(); log = t / "chromium.log"; mock = t / "xrandr.txt"
         (t / "bin" / "xrandr").write_text(f'#!/bin/sh\ncat "{mock}"\n')
+        (t / "bin" / "xsetroot").write_text("#!/bin/sh\nexit 0\n")
         # fake browser: logs its argv, spawns a "zygote" helper carrying the same
         # cmdline (what pgrep -f matched) that OUTLIVES it, then idles like a browser
-        # (both detach from the harness's captured pipes, or run() would wait for EOF)
         (t / "bin" / "chromium").write_text(
             f'#!/bin/sh\necho "$*" >> "{log}"\n"{t}/bin/chromium.helper" --type=zygote "$@" >/dev/null 2>&1 &\n'
             f'echo $! >> "{t}/helpers"\nexec sleep 300 >/dev/null 2>&1\n')
@@ -1726,46 +1725,24 @@ async def t_multiscreen(_):
             f.chmod(0o755)
         env = dict(os.environ, PATH=f"{t / 'bin'}:/usr/bin:/bin")
         def sh(script):
-            return subprocess.run(["sh", "-c", funcs + "\n" + script], env=env, capture_output=True,
-                                  text=True, timeout=60)
-        def geoms(text):
-            mock.write_text(text)
-            r = sh("kiosk_geoms"); assert r.returncode == 0, r.stderr
-            return r.stdout.split()
+            return subprocess.run(["sh", "-c", "DESK=/nonexistent\nPTR_DIAG=1\n" + funcs + "\n" + script], env=env,
+                                  capture_output=True, text=True, timeout=60)
         Q = ("Screen 0: minimum 320 x 200, current 3840 x 1080, maximum 16384 x 16384\n"
              "eDP-1 connected primary 1920x1080+0+0 (normal left inverted right) 344mm x 194mm\n"
              "   1920x1080     60.01*+  48.00\n")
-        assert geoms(Q + "HDMI-1 connected 1920x1080+1920+0 (normal left inverted right) 527mm x 296mm\n"
-                     "   1920x1080     60.00*+\nDP-1 disconnected (normal left inverted right)\n") \
-            == ["1920x1080+0+0", "1920x1080+1920+0"], "two identical EXTENDED monitors must give two kiosks"
-        assert geoms("HDMI-1 connected 1024x768+0+0 (normal left inverted right) 300mm x 200mm\n"
-                     "eDP-1 connected primary 1920x1080+1024+0 (normal left inverted right) 344mm x 194mm\n") \
-            == ["1920x1080+1024+0", "1024x768+0+0"], "screen 0 must be the PRIMARY output even when it sits on the right"
-        assert geoms("DP-1 connected 1920x1080+3840+0 (normal)\nHDMI-1 connected 1920x1080+0+0 (normal)\n"
-                     "eDP-1 connected 1920x1080+1920+0 (normal)\n") \
-            == ["1920x1080+0+0", "1920x1080+1920+0", "1920x1080+3840+0"], "no primary flag: left-to-right by x"
-        assert geoms(Q + "HDMI-1 connected 1920x1080+0+0 (normal)\n") == ["1920x1080+0+0"], "mirror = one surface = one kiosk"
-        assert geoms(Q + "HDMI-1 connected (normal left inverted right)\n") == ["1920x1080+0+0"], "connected-but-off output: no kiosk"
-        assert geoms("eDP-1 disconnected (normal)\n") == []
         pids = []
         try:
-            # 2 monitors -> 2 browsers with the hint; browser 0 dies while its helper
-            # (same cmdline) lives on -> the supervisor must see a dead kiosk
             mock.write_text(Q + "HDMI-1 connected 1920x1080+1920+0 (normal)\n")
             r = sh('KIOSK_URL=http://localhost:1337/; CHROME_FLAGS=--flag\nlaunch_all_kiosks >/dev/null\n'
                    'echo "PIDS:$KIOSK_PIDS"\nkiosks_alive && echo ALIVE1 || echo DEAD1\n'
                    'first=${KIOSK_PIDS# }; first=${first%% *}; kill "$first"; sleep 0.5\n'
                    'kiosks_alive && echo ALIVE2 || echo DEAD2\n')
             pids += [int(x) for x in re.search(r"PIDS:(.*)", r.stdout).group(1).split()]
-            assert "ALIVE1" in r.stdout and "DEAD2" in r.stdout, (r.stdout, r.stderr)
-            # both browsers append concurrently: order by profile index, not arrival
-            args = sorted(log.read_text().splitlines(), key=lambda a: a.split("--user-data-dir=/tmp/kiosk-")[1][:1])
-            assert len(args) == 2, args
-            assert "--user-data-dir=/tmp/kiosk-0" in args[0] and "--window-position=0,0" in args[0] \
-                and "--window-size=1920,1080" in args[0] and args[0].startswith("--kiosk ") and "--start-fullscreen" not in args[0] \
-                and args[0].endswith("--app=http://localhost:1337/?screen=0&x=0&y=0&w=1920&h=1080"), args[0]
-            assert "--user-data-dir=/tmp/kiosk-1" in args[1] \
-                and args[1].endswith("--app=http://localhost:1337/?screen=1&x=1920&y=0&w=1920&h=1080"), args[1]
+            assert len(pids) == 1 and "ALIVE1" in r.stdout and "DEAD2" in r.stdout, (r.stdout, r.stderr)
+            args = log.read_text().splitlines()
+            assert len(args) == 1 and "--kiosk" not in args[0].split() and "--class=kairos-desktop" in args[0] \
+                and "--window-position=0,0" in args[0] and "--window-size=3840,1080" in args[0] \
+                and args[0].endswith("--app=http://localhost:1337/?mon=eDP-1:0,0,1920,1080,1;HDMI-1:1920,0,1920,1080,0"), args
             helpers = [int(x) for x in (t / "helpers").read_text().split()]
             pids += helpers
             for h in helpers:
@@ -1775,7 +1752,7 @@ async def t_multiscreen(_):
             r = sh('KIOSK_URL=http://localhost:1337/; CHROME_FLAGS=--flag\nlaunch_all_kiosks >/dev/null\necho "PIDS:$KIOSK_PIDS"')
             pids += [int(x) for x in re.search(r"PIDS:(.*)", r.stdout).group(1).split()]
             args = log.read_text().splitlines()
-            assert len(args) == 1 and args[0].startswith("--kiosk ") and args[0].endswith("?screen=0"), args
+            assert len(args) == 1 and args[0].startswith("--kiosk ") and args[0].endswith("?mon="), args
             pids += [int(x) for x in (t / "helpers").read_text().split()]
         finally:
             for pid in pids:
@@ -1783,24 +1760,20 @@ async def t_multiscreen(_):
                     os.kill(pid, 15)
                 except ProcessLookupError:
                     pass
-    # the round trip: every parameter .xinitrc puts in the URL is read by the shell
-    app_line = re.search(r'--app="\$\{KIOSK_URL\}\?(screen=\$n[^"]*)"', xinit).group(1)
-    params = re.findall(r"(\w+)=\$", app_line)
-    assert params == ["screen", "x", "y", "w", "h"], params
+    # the round trip: the hint .xinitrc puts in the URL is what the shell and the boot page read
+    assert re.search(r'--app="\$\{KIOSK_URL\}\?mon=\$\{MON\}\$\{BOOT_QS\}"', xinit)
     js = (REPO / "shell" / "shell.js").read_text()
-    for prm in params:
-        assert re.search(rf'(num|\.get)\("{prm}"', js), f"shell.js never reads ?{prm}="
-    assert "SCREEN.primary" in js and re.search(r"if \(SCREEN\.primary\) \{[^}]*checkSetup\(\);[^}]*checkInstallable\(\);", js, re.S), \
-        "first-boot setup + installer must run on screen 0 only"
-    assert "screen-secondary" in js and 'toast("❖ welcome' in js.split("if (SCREEN.primary)")[1]
+    assert 'KMon.parseHint(new URLSearchParams(location.search).get("mon"))' in js and "SCREEN" not in js
+    boot = js.split("(async function boot()")[1]
+    assert re.search(r'toast\("❖ welcome[^;]*;\s*checkSetup\(\);\s*checkInstallable\(\);', boot), \
+        "first-boot setup + installer + welcome once, on the one desktop page (dialogs centred on the primary)"
     css = (REPO / "shell" / "shell.css").read_text()
-    for el in ("#mb-install", "#mb-wallpaper"):
-        assert re.search(rf"html\.screen-secondary {el}", css), f"{el} must be hidden on secondary screens"
+    assert "screen-secondary" not in css and "padding: var(--pm-y) var(--pm-r) var(--pm-b) var(--pm-x);" in css
     bw = (REPO / "shell" / "boot-wait.html").read_text()
     assert "location.replace(shellUrl())" in bw and '["boot", "up", "now", "expected", "p", "relaunch"]' in bw, "the boot page forwards the hint (and only the hint)"
     bl = (inc / "usr" / "local" / "sbin" / "kairos-bootlog").read_text()   # diagnostics count by profile dir
-    assert "--user-data-dir=/tmp/kiosk-" in bl and '--user-data-dir="/tmp/kiosk-$n"' in xinit
-    return "primary-first numbering, mirror=1/identical-extended=2 kiosks, PID liveness sees a dead browser, hint read by shell"
+    assert "--user-data-dir=/tmp/kiosk-" in bl and "--user-data-dir=/tmp/kiosk-0" in xinit
+    return "one kiosk with ?mon=, PID liveness sees a dead browser, headless = plain --kiosk, hint read by shell + boot page"
 
 
 @run_test("unit_kernel_startup_survives_bad_cache", ["R63"])
@@ -1934,14 +1907,15 @@ async def t_hw_devices(s):
     assert d["available"] and d["count"] == 2 and d["multiscreen"] is True, d
     edp = next(x for x in d["displays"] if x["output"] == "eDP-1")
     assert edp["primary"] and edp["resolution"] == "1920x1080" and "1600x900" in edp["modes"]
+    # [R90] a layout change is followed LIVE by the one desktop: nothing relaunches the kiosk
     reload_flag = Path(os.environ["KAIROS_KIOSK_RELOAD"])
     reload_flag.unlink(missing_ok=True)
     r = await hwp({"device": "display", "op": "arrange", "mode": "extend"})
-    assert r["ok"] and reload_flag.exists(), "arrange did not ask the kiosk to relaunch"
-    reload_flag.unlink(missing_ok=True)
+    assert r == {"ok": True, "relayout": "live"} and not reload_flag.exists(), r
     r = await hwp({"device": "display", "op": "set", "output": "HDMI-1",
                    "resolution": "2560x1440", "rotation": "left"})
-    assert r["ok"] and reload_flag.exists(), r
+    assert r["ok"] and not reload_flag.exists(), r
+    assert [m["id"] for m in d["monitors"]] == ["eDP-1", "HDMI-1"] and d["desktop"] == {"x": 0, "y": 0, "w": 3840, "h": 1080}, d
     args = Path(os.environ["MOCK_XRANDR_LOG"]).read_text()
     assert "--mode\t2560x1440" in args and "--rotate\tleft" in args, args[-200:]
     # a single-output tweak persists the WHOLE layout (every connected output), so
@@ -1955,7 +1929,7 @@ async def t_hw_devices(s):
     assert "Asia/Tokyo" in tz["timezones"]
     bt = await hwp({"device": "bluetooth", "op": "status"})
     assert bt["available"] and bt["powered"] and "Mock Headphones" in bt["connected"][0]
-    return "display list/arrange/set (+kiosk reload) · datetime tz/ntp · bluetooth status all OK"
+    return "display list (+monitors/desktop)/arrange/set (live, no kiosk reload) · datetime tz/ntp · bluetooth status all OK"
 
 
 @run_test("http_categorized_api_docs", ["R59"])
@@ -4395,10 +4369,10 @@ async def t_desktop_r68_static(_):
     for needle in ("function closeWin(win)", "function releaseFrame(win)", 'f.src = "about:blank"', 'removeAttribute("srcdoc")',
                    "windows.delete(win.id)", "clearInterval(win.iconTimer)", "win.abort.abort()", "onclick = () => closeWin(win)"):
         assert needle in js, needle
-    assert 'new EventSource("/api/windows/stream")' in js and "function renderXWindows" in js and "if (!SCREEN.primary" in js
+    assert 'new EventSource("/api/windows/stream")' in js and "function renderXWindows" in js and "monitorsFromKernel(d.monitors)" in js
     for op in ("raise", "minimize", "close"):
         assert f'xwinOp(w.id, "{op}")' in js, op
-    assert "watchXWindows();" in js and js.index("watchXWindows();") > js.index("if (SCREEN.primary) {")
+    assert "watchXWindows();" in js and js.index("watchXWindows();") > js.index("(async function boot()")
     return "rc.xml decor off/no menu/no keys + openbox-session; contextmenu on 4 page classes; F11 flags; python3-xlib; home owned; search z-index idle < win; closeWin release; SSE chips"
 
 
@@ -6084,7 +6058,10 @@ async def t_shell_fixes_static(_):
     assert 'data-broken="{{BROKEN}}"' in (REPO / "shell" / "bench" / "host.html").read_text() and "document.body.dataset.broken" in host
     assert ".ui-confirm-ok:disabled" in (REPO / "shell" / "shell.css").read_text(), "N4 disabled style"
     mx = js[js.index('querySelector(".win-max").onclick'):js.index('querySelector(".win-improve").onclick')]
-    assert "calc(100% - 30px - ${dockRoom()}px)" in mx and 'height: "calc(100% - 30px)"' not in mx, "D2"
+    sw = js[js.index("function snapWin(win, zone, i)"):js.index("function unsnapWin(win)")]
+    km = (REPO / "shell" / "monitors.js").read_text()
+    assert 'snapWin(win, "top")' in mx and "KMon.snapRect(MON.list, mi, zone, dockRoomOn(MON.list[mi]))" in sw \
+        and "m.h - MENU - Math.max(0, dockRoom)" in km, "D2 [R90]: maximise = the monitor minus the menu bar and the dock's room"
     assert re.search(r"function dockRoom\(\).*?getBoundingClientRect", js, re.S), "D2: measured from the dock"
     css = (REPO / "shell" / "shell.css").read_text()
     assert ".heal-stop" in css and ".ui-confirm-ok" in css
@@ -6112,11 +6089,12 @@ async def t_n6_docs(_):
     vibe.system.setup()'s vram_mb/total_gb/have_gb and the coder-LLM picker recipe (m.llm/llm_model) —
     the generated app invented info.gpu_vram/tier.name and shipped an empty LLM picker. Now both
     documents carry the shapes first AND the caps admit them whole; the R43 arithmetic (whole blocks
-    only when they fit prompt_char_budget) still has room with the 8 GB manifest's -c 16384."""
+    only when they fit prompt_char_budget) still has room with the 8 GB manifest's -c 16384 — and since the
+    2026-10-19 trim (28198 → 23281 of 28278) at least 1000 chars of it stay free (pinned below)."""
     sys.path.insert(0, str(REPO / "kernel"))
     import server, prompts
     dock = re.search(r'data-app="settings" data-prompt="([^"]+)"', (REPO / "shell" / "index.html").read_text()).group(1)
-    need = ["vibe.system.setup()", "vram_mb", "total_gb", "have_gb", "current_tier", "vibe.hw.get()", "memory_mb",
+    need =["vibe.system.setup()", "vram_mb", "total_gb", "have_gb", "current_tier", "vibe.hw.get()", "memory_mb",
             "disk_gb", "[object Object]", "m.llm", "llm_model", "vibe.models()", "vibe.models.download(entry.download_key)",   # [R89] no "fast"
             "llm_setting", "fallback", "vibe.system.upgrade", "vibe.fs.format()"]
     api = server.api_docs_for(dock)
@@ -6133,6 +6111,13 @@ async def t_n6_docs(_):
     assert all(n in api_text[:2400] for n in ("vram_mb", "total_gb", "have_gb", "vibe.hw.get()", "memory_mb", "m.llm", "llm_model")), "API sheet: shapes not first"
     assert all(n in wiki_text[:4200] for n in ("vram_mb", "total_gb", "have_gb", "memory_mb", "m.llm", "llm_model")), "wiki: shapes not first"
     assert "gpu_vram" in wiki_text and "tier.name" in wiki_text, "the invented names are called out as non-existent"
+    # the 2026-10-19 trim kept every rule the Settings app needs (somewhere in the pack: dock prompt + sheet + recipe)
+    pack = dock + api_text + wiki_text
+    for n in ("accent2", "wallpaper", "os_name", "vibe.hw.brightness.set(", "vibe.hw.volume.set(", "vibe.hw.sound.set(",
+              "image_model", "image_expand", "image_steps", "licence", "answers adult requests", "m.refusal_fallback.last",
+              "cancelled", "two-step", "vibe.system.models()", "available:false", "reason", "Bluetooth", "airplane",
+              "wifi-manager recipe", "vibe.hw.datetime", "a bad value rejects", "never whole objects"):
+        assert n in pack, f"the Settings pack lost {n!r}"
     # every API sheet fits its cap; secondary wiki pages keep the old cap; the caps are what the functions use
     assert max(len(p["text"]) for p in server.API_DOCS.values()) <= server.API_SHEET_CAP
     assert len(server.WIKI["settings-app"]["text"]) <= server.WIKI_FIRST_CAP and server.WIKI_PAGE_CAP == 2800
@@ -6147,7 +6132,10 @@ async def t_n6_docs(_):
     wiki_block = len(prompts.WIKI_HEADER) + sum(len(t) + 20 for _, t in wiki)
     used = len("Open this app: " + dock) + 2400 + 70 + api_block + wiki_block + 1700
     assert used <= budget, f"dock prompt would overflow: {used} > {budget}"
-    return f"dock prompt: api sheet {len(api_text)} + recipe {len(wiki_text)} chars injected whole; {used} of {budget} budget chars used (-c {ctx})"
+    # the 2026-10-19 trim freed ~4.9 K (80 → 4997 spare): the pack may not grow back into the last 1000 chars
+    assert used <= budget - 1000, f"dock prompt headroom < 1000 chars: {used} > {budget} - 1000 — trim the dock prompt, sheet or recipe first"
+    return (f"dock prompt: api sheet {len(api_text)} + recipe {len(wiki_text)} chars injected whole; {used} of {budget} budget chars used "
+            f"({budget - used} spare, pinned ≥ 1000; -c {ctx})")
 
 
 # ---------------- the translation layer [R71] (docs/TRANSLATION-LAYER-2026-10-06.md) ----------------

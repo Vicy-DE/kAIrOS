@@ -19,6 +19,8 @@ import shutil
 import time
 from pathlib import Path
 
+import monitors
+
 SYSFS = Path(os.environ.get("VIBEOS_SYSFS", "/sys"))
 _BIN = None  # set by init()
 # [R78] called (no arguments) after every radio/network write op — the kernel resets
@@ -642,7 +644,7 @@ async def _wifi_saved(nm):
 # check is configured (iso: etc/NetworkManager/conf.d/20-kairos-connectivity.conf — Debian
 # ships none). signin() asks the kiosk supervisor (.xinitrc, user kairos) to open the portal in
 # a real Chromium --app window: the kernel writes the URL into OPEN_URL, .xinitrc opens it and
-# removes the flag (same ownership rules as KIOSK_RELOAD); once the device is online (or off
+# removes the flag (/run/kairos is the kiosk user's: _kiosk_flag); once the device is online (or off
 # the network, or after SIGNIN_LIMIT) the kernel writes CLOSE_URL and .xinitrc closes the window.
 OPEN_URL = Path(os.environ.get("KAIROS_OPEN_URL", "/run/kairos/open-url"))
 CLOSE_URL = Path(os.environ.get("KAIROS_CLOSE_URL", "/run/kairos/close-url"))
@@ -950,13 +952,10 @@ async def power(op, body):
 # ---------------------------------------------------------------- displays (xrandr) [R53]
 # The kiosk's X server runs as user "kairos" on :0; the kernel (root) reaches it
 # with that DISPLAY + XAUTHORITY. Layout is saved so .xinitrc re-applies it on boot.
+# [R90] one desktop spans every monitor: a layout change is followed LIVE — the X side
+# (scripts/desktop/kairos-desktop.py watch) resizes the one kiosk window to the new X screen,
+# the shell re-lays itself out from the monitor list (/api/windows/stream) — no kiosk relaunch.
 DISPLAY_STATE = Path(os.environ.get("VIBEOS_DIR", "/opt/vibeos")) / "cache" / "display.json"
-# The reload flag is written by the kernel (root) and REMOVED by the kiosk
-# supervisor in .xinitrc (user kairos). It must not live in sticky /tmp: there a
-# non-root user cannot unlink a root-owned file, the flag stuck, and the supervisor
-# relaunched every Chromium every 3 s until reboot. /run/kairos is created by
-# tmpfiles.d/kairos.conf owned by the kiosk user; the same path is in .xinitrc.
-KIOSK_RELOAD = Path(os.environ.get("KAIROS_KIOSK_RELOAD", "/run/kairos/kiosk-reload"))
 KIOSK_USER = os.environ.get("KAIROS_KIOSK_USER", "kairos")
 
 
@@ -968,11 +967,6 @@ def _kiosk_ids():
         return p.pw_uid, p.pw_gid
     except (KeyError, ImportError):
         return None
-
-
-def _touch_reload():
-    """Ask the kiosk supervisor to relaunch; the flag must be removable by it (_kiosk_flag)."""
-    _kiosk_flag(KIOSK_RELOAD, "reload")
 
 
 X11_SOCKETS = Path(os.environ.get("KAIROS_X11_SOCKETS", "/tmp/.X11-unix"))
@@ -1010,32 +1004,7 @@ async def _xrandr(args, timeout=25):
     return await _run([xr, *args], timeout=timeout, env=_xenv())
 
 
-def _parse_xrandr(text):
-    """Parse `xrandr --query` into a list of outputs with modes + current geometry."""
-    import re
-    outputs = []
-    cur = None
-    for line in text.splitlines():
-        m = re.match(r"^(\S+) (connected|disconnected)(.*)$", line)
-        if m:
-            name, state, rest = m.group(1), m.group(2), m.group(3)
-            geo = re.search(r"(\d+)x(\d+)\+(\d+)\+(\d+)", rest)
-            # the rotation keyword sits between the geometry and the "(normal left
-            # inverted right)" capability list — never match inside that list
-            head = rest.split("(")[0].split()
-            cur = {"output": name, "connected": state == "connected",
-                   "primary": "primary" in head,
-                   "resolution": (f"{geo.group(1)}x{geo.group(2)}" if geo else None),
-                   "position": ([int(geo.group(3)), int(geo.group(4))] if geo else None),
-                   "rotation": next((r for r in ("left", "right", "inverted")
-                                     if r in head), "normal"),
-                   "modes": []}
-            outputs.append(cur)
-            continue
-        m = re.match(r"^\s+(\d+x\d+)\s", line)
-        if m and cur is not None:
-            cur["modes"].append(m.group(1))
-    return outputs
+_parse_xrandr = monitors.parse_xrandr     # [R90] shared with the X side (scripts/desktop) and the tests
 
 
 async def _layout_args(query_text=None):
@@ -1062,37 +1031,61 @@ async def _layout_args(query_text=None):
 
 
 async def display_list():
+    """the outputs (R53) + [R90] what the one desktop spans: `monitors` (mirrors = one, primary first, the numbering
+    of /api/vision "screen:N") and `desktop` (their bounding box = the X screen the kiosk window covers)"""
     rc, out = await _xrandr(["--query"])
     if rc != 0:
         return {"available": False,
                 "reason": "no X display / xrandr (headless or pre-kiosk)"}
     outs = _parse_xrandr(out)
     conn = [o for o in outs if o["connected"]]
+    mons = monitors.from_outputs(outs)
     return {"available": True, "count": len(conn),
-            "multiscreen": len(conn) > 1, "displays": outs}
+            "multiscreen": len(mons) > 1, "displays": outs,
+            "monitors": mons, "desktop": monitors.union(mons)}
+
+
+def _common_mode(outs):
+    """[R90] the mode a mirror uses ("WxH") — a mirror shows one picture on all outputs: the primary's native
+    (preferred) mode when every output offers it (a 1080p panel + a 1440p monitor: the panel's 1920x1080), else the
+    largest mode they all offer; None when they share none"""
+    common = None
+    for o in outs:
+        ms = set(o["modes"])
+        common = ms if common is None else common & ms
+    if not common:
+        return None
+    prim = next((o for o in outs if o["primary"]), outs[0])
+    if prim.get("preferred") in common:
+        return prim["preferred"]
+    return max(common, key=lambda m: int(m.split("x")[0]) * int(m.split("x")[1]))
 
 
 async def display_set(body):
     """op=set: resolution/position/rotation/primary/off for one output.
     op=arrange: {mode:"extend"|"mirror"} across all connected outputs.
-    Layout is persisted and the kiosk is asked to relaunch its per-screen windows."""
+    The layout is persisted for the next boot; the running desktop follows it live [R90]."""
     op = body.get("op")
+    rc, query = await _xrandr(["--query"])
+    outs = _parse_xrandr(query) if rc == 0 else []
     if op == "arrange":
-        rc, out = await _xrandr(["--query"])
-        conn = [o["output"] for o in _parse_xrandr(out) if o["connected"]] if rc == 0 else []
+        conn = [o for o in outs if o["connected"]]
         if not conn:
             return {"ok": False, "error": "no connected displays"}
         mode = body.get("mode", "extend")
+        # [R90] a mirror is ONE picture: every output at one mode (_common_mode — --auto gave each its own preferred
+        # mode: a 1080p panel "mirroring" a 1440p monitor showed a part of it)
+        same = _common_mode(conn) if mode == "mirror" else None
         args, prev = [], None
         for o in conn:
-            args += ["--output", o, "--auto"]
+            args += ["--output", o["output"]] + (["--mode", same] if same else ["--auto"])
             if mode == "mirror" and prev:
                 args += ["--same-as", prev]
             elif mode == "extend" and prev:
                 args += ["--right-of", prev]
             if not prev:
                 args += ["--primary"]
-            prev = o
+            prev = o["output"]
         rc, out = await _xrandr(args)
     else:  # single-output set
         out_name = body.get("output")
@@ -1101,6 +1094,14 @@ async def display_set(body):
         args = ["--output", out_name]
         if body.get("off"):
             args += ["--off"]
+            # [R90] the menu bar and the dock live on the primary: switching it off hands "primary" to the next
+            # monitor that stays on (left-to-right), so the desktop never loses them
+            me = next((o for o in outs if o["output"] == out_name), None)
+            if me and me["primary"]:
+                rest = sorted((o for o in outs if o["connected"] and o["resolution"] and o["output"] != out_name),
+                              key=lambda o: (o["position"][0], o["position"][1]))
+                if rest:
+                    args += ["--output", rest[0]["output"], "--primary"]
         else:
             args += ["--auto"] if not body.get("resolution") else \
                     ["--mode", body["resolution"]]
@@ -1128,15 +1129,14 @@ async def display_set(body):
                 i = full.index(out_name) + 1
                 full[i:i] = ["--brightness", args[args.index("--brightness") + 1]]
             saved = full
-    try:  # persist the xrandr args so .xinitrc re-applies the layout on boot,
-        # then ask the kiosk supervisor to relaunch one Chromium per screen
+    try:  # persist the xrandr args so .xinitrc re-applies the layout on boot. [R90] No kiosk relaunch: the X side
+        # resizes the one desktop window to the new X screen and the shell re-lays out its monitors live
         import json as _json
         DISPLAY_STATE.parent.mkdir(parents=True, exist_ok=True)
         DISPLAY_STATE.write_text(_json.dumps({"xrandr_args": saved, "request": body}))
-        _touch_reload()
     except Exception:
         pass
-    return {"ok": True, "reloading_kiosk": True}
+    return {"ok": True, "relayout": "live"}
 
 
 # ---------------------------------------------------------------- date / time (timedatectl) [R54]

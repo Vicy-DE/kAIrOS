@@ -1,13 +1,16 @@
 <!-- keywords: display, screen, monitor, multiscreen, multi-monitor, resolution, rotate, rotation, mirror, extend, projector, brightness, backlight -->
 # kAIrOS API — displays & multiscreen
 
-kAIrOS runs one fullscreen desktop per connected monitor (extended, left-to-right).
-Changing the layout makes the OS relaunch its screens automatically.
+kAIrOS is ONE desktop over every connected monitor: windows move between monitors like on any
+OS, the menu bar and the dock live on the primary monitor. A layout change applies live — no
+restart, no window lost (a monitor that goes away hands its windows to the primary).
 
 ```js
 const d = await vibe.hw.display.list();
 // {available, count, multiscreen, displays:[{output,connected,primary,
-//   resolution:"1920x1080", position:[x,y], rotation, modes:[…]}]}
+//   resolution:"1920x1080", position:[x,y], rotation, modes:[…]}],
+//  monitors:[{id:"eDP", x:0, y:0, w:1920, h:1080, primary:true, outputs:["eDP"]}, …],
+//  desktop:{x:0, y:0, w:4480, h:1440}}          // the area the one desktop spans
 
 await vibe.hw.display.set({output:"HDMI-1", resolution:"2560x1440"});
 await vibe.hw.display.set({output:"eDP-1", primary:true});
@@ -15,11 +18,14 @@ await vibe.hw.display.set({output:"HDMI-1", rotation:"left"});   // normal|left|
 await vibe.hw.display.set({output:"HDMI-1", position:[1920,0]});
 await vibe.hw.display.set({output:"HDMI-1", brightness:70});     // software dim per display
 await vibe.hw.display.set({output:"HDMI-1", off:true});
-await vibe.hw.display.arrange("extend");   // or "mirror" — all connected displays
+await vibe.hw.display.arrange("extend");   // or "mirror": one picture, at the primary's native mode
 ```
 
-- Results are `{ok}` or `{ok:false, error}`; `{available:false, reason}` = headless.
-- After any change the kiosks relaunch (a short black flicker is normal).
+- Results are `{ok, relayout:"live"}` or `{ok:false, error}`; `{available:false, reason}` = headless.
+- `monitors` = what the user sees as screens: mirrored outputs are one, primary first (the
+  numbering of `vibe.vision("screen:N")`). Draw a layout preview from `monitors`, label it
+  with `displays[].output`.
+- Switching the primary off makes the next monitor the primary.
 - **Panel backlight** (the laptop's real brightness) is separate:
   `vibe.hw.brightness.get()/.set(percent)` → power-battery.md.
 - Offer the user the `modes` list of each display as a resolution picker.

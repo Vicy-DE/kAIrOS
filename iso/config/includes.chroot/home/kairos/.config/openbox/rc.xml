@@ -26,11 +26,23 @@
   </mouse>
   <menu></menu>
   <applications>
-    <!-- every client: undecorated, focused when mapped; a window that does not ask for a
-         position (pygame/SDL) opens centred on the monitor of the focused window — the
-         kiosk the user is working in [R52] — instead of top-left (or, without a monitor
-         given, centred across ALL monitors: measured straddling the seam on 2x1280) -->
+    <!-- every client: undecorated, focused when mapped, centred on the monitor that has the
+         POINTER [R90] (a sign-in window, a game before the kernel puts it into its frame) —
+         instead of top-left, or centred across ALL monitors (measured straddling the seam on
+         2x1280). Not "active" (the focused window's monitor): with one desktop window over
+         every monitor that is just the biggest monitor. NB openbox lets this position beat a
+         position the program asks for (PPosition, what Chromium sets) — it is what put R52's
+         two kiosks onto ONE monitor (docs/ONE-DESKTOP-2026-10-19.md) -->
     <application class="*"><decor>no</decor><focus>yes</focus>
-      <position force="no"><x>center</x><y>center</y><monitor>active</monitor></position></application>
+      <position force="no"><x>center</x><y>center</y><monitor>mouse</monitor></position></application>
+    <!-- [R90] the desktop: ONE Chromium window over every monitor (.xinitrc, WM_CLASS class
+         kairos-desktop). At 0,0, undecorated, never fullscreen or maximized (either would
+         shrink it to one monitor), in the NORMAL layer — above nothing: a game (transient for
+         it, R82) and the sign-in window stay above it, a covered game can drop below it.
+         scripts/desktop/kairos-desktop.py sizes it to the X screen. Last: per-app rules merge
+         in order, so this one wins over "*" -->
+    <application class="kairos-desktop"><decor>no</decor><focus>yes</focus><layer>normal</layer>
+      <fullscreen>no</fullscreen><maximized>no</maximized><skip_taskbar>yes</skip_taskbar>
+      <position force="yes"><x>0</x><y>0</y></position></application>
   </applications>
 </openbox_config>

@@ -113,7 +113,7 @@ tar -C "$REPO/iso/config/includes.chroot" -czf - etc usr home \
   | $SSH 'tar -C / --no-same-owner -xzf -
 # the repo tree is owned by the operator (uid 1000 = kairos in the guest); a real
 # build extracts as root — restore root ownership so the test matches a built image
-chown -R root:root /etc/systemd/system /etc/tmpfiles.d /etc/kernel /etc/initramfs /usr/local/sbin 2>/dev/null || true
+chown -R root:root /etc/systemd/system /etc/tmpfiles.d /etc/kernel /etc/initramfs /etc/chromium /usr/local/sbin 2>/dev/null || true
 chown -R kairos:kairos /home/kairos 2>/dev/null || true
 # the failure capture is a per-trigger template now (kairos-bootlog-failure@.service);
 # the old shared unit must not linger in the guest (a built image never has it)

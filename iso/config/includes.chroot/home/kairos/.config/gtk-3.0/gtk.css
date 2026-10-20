@@ -1,0 +1,6 @@
+/* kAIrOS kiosk [R28/R90]: the colour Chromium shows in its window where no page has painted yet — between the
+   boot page (file://) and the shell's first frame (http://localhost: a new renderer) — is GTK's window background.
+   Adwaita's #f6f5f4 flashed white for ~150 ms on every boot-page -> shell handover (measured in the VM at ~45 fps,
+   the v7.5-2 image too); the boot screen's own #0a0a14 makes the handover seamless. Both GTK versions Chromium
+   may load. */
+window, .background, dialog { background-color: #0a0a14; color: #e8e8f2; }

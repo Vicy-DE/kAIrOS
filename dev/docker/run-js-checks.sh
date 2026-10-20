@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # dev/docker/run-js-checks.sh — the shell's JavaScript checks, in the node:24-alpine image (no node needed
 # on the host, none in the kernel-test image either):
-#   1. node --check on shell/shell.js, shell/browser.js, shell/games.js, shell/pictures.js, shell/models.js and shell/bench/host.js (syntax)
+#   1. node --check on shell/shell.js, shell/browser.js, shell/games.js, shell/pictures.js, shell/models.js, shell/monitors.js and shell/bench/host.js (syntax)
 #   2. the app bridge: the BRIDGE_SRC template literal in shell.js is parsed with new Function — a syntax
 #      error there breaks EVERY generated app, and node --check on the file does not see inside the literal
 #   3. tests/bridge-test.js (the bridge's unit tests: storage shims, vibe.* aliases, unknown-member guard, …)
@@ -16,6 +16,15 @@ run node --check /w/shell/browser.js && echo "shell/browser.js OK"          # [R
 run node --check /w/shell/games.js && echo "shell/games.js OK"              # [R82] games in windows
 run node --check /w/shell/pictures.js && echo "shell/pictures.js OK"        # [R85] ✨ improve a picture
 run node --check /w/shell/models.js && echo "shell/models.js OK"            # [R87] Models, downloads & licences
+run node --check /w/shell/monitors.js && echo "shell/monitors.js OK"        # [R90] one desktop: the monitor math
+echo "== inline scripts (index.html boot tiles, boot-wait.html) parse =="
+run node -e '
+const fs = require("fs");
+for (const f of ["/w/shell/index.html", "/w/shell/boot-wait.html"]) {
+  const h = fs.readFileSync(f, "utf8"), m = [...h.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+  for (const x of m) new Function(x[1]);
+  console.log(f.slice(3) + ": " + m.length + " inline script(s) OK");
+}'
 echo "== BRIDGE_SRC parses =="
 run node -e '
 const fs = require("fs");

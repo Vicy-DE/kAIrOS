@@ -1,16 +1,72 @@
 #!/usr/bin/env python3
-"""Mock xrandr: --query prints two connected displays; set-calls are logged."""
-import os, sys
-a = sys.argv[1:]
-log = os.environ.get("MOCK_XRANDR_LOG")
-if log:
-    open(log, "a").write("\t".join(a) + "\n")
-if "--query" in a or not a:
-    print("""Screen 0: minimum 320 x 200, current 3840 x 1080, maximum 16384 x 16384
-eDP-1 connected primary 1920x1080+0+0 (normal left inverted right) 344mm x 194mm
+"""Mock xrandr: --query prints connected displays; set-calls are logged (MOCK_XRANDR_LOG).
+
+The layout [R90]: MOCK_XRANDR_LAYOUT names one of LAYOUTS below (default "2": two 1080p displays side by side — what
+the R53 tests were written against), or MOCK_XRANDR_QUERY is a file whose text is printed as the --query answer
+(a test switches layouts at runtime by rewriting it: a hot-plug)."""
+import os
+import sys
+
+HEAD = "Screen 0: minimum 320 x 200, current {w} x {h}, maximum 16384 x 16384\n"
+LAYOUTS = {
+    # the R53 default: eDP-1 + HDMI-1, 1920x1080 each
+    "2": ("3840x1080", """eDP-1 connected primary 1920x1080+0+0 (normal left inverted right) 344mm x 194mm
    1920x1080     60.01*+  48.00
    1600x900      60.00
 HDMI-1 connected 1920x1080+1920+0 (normal left inverted right) 527mm x 296mm
    1920x1080     60.00*+
    2560x1440     59.95
-DP-1 disconnected (normal left inverted right)""")
+DP-1 disconnected (normal left inverted right)"""),
+    # [R90] the owner's card run: the 1080p panel + a 27" 1440p monitor on USB-C DP, right of it (dead area 1920x360)
+    "2mixed": ("4480x1440", """eDP connected primary 1920x1080+0+0 (normal left inverted right) 355mm x 199mm
+   1920x1080     60.02*+  48.02
+   1280x720      60.00
+DisplayPort-0 connected 2560x1440+1920+0 (normal left inverted right) 597mm x 336mm
+   2560x1440     59.95*+
+   1920x1080     60.00
+HDMI-A-0 disconnected (normal left inverted right)"""),
+    # three monitors of different sizes and offsets: a panel lowered by 360, a 1440p monitor, a 1280x1024 one top right
+    "3": ("5760x1440", """eDP connected primary 1920x1080+0+360 (normal left inverted right) 355mm x 199mm
+   1920x1080     60.02*+
+DisplayPort-0 connected 2560x1440+1920+0 (normal left inverted right) 597mm x 336mm
+   2560x1440     59.95*+
+   1920x1080     60.00
+DisplayPort-1 connected 1280x1024+4480+0 (normal left inverted right) 376mm x 301mm
+   1280x1024     60.02*+
+   1920x1080     60.00"""),
+    # stacked: the 1440p monitor above the panel (primary below, offset 320 to the right)
+    "stacked": ("2560x2520", """DisplayPort-0 connected 2560x1440+0+0 (normal left inverted right) 597mm x 336mm
+   2560x1440     59.95*+
+   1920x1080     60.00
+eDP connected primary 1920x1080+320+1440 (normal left inverted right) 355mm x 199mm
+   1920x1080     60.02*+"""),
+    # mirrored: both at the origin, the panel's mode on both (the display API's arrange "mirror")
+    "mirror": ("1920x1080", """eDP connected primary 1920x1080+0+0 (normal left inverted right) 355mm x 199mm
+   1920x1080     60.02*+
+DisplayPort-0 connected 1920x1080+0+0 (normal left inverted right) 597mm x 336mm
+   2560x1440     59.95 +
+   1920x1080     60.00*"""),
+    # the 1440p monitor unplugged while it still had a picture (before the X side switched it off)
+    "unplugged": ("4480x1440", """eDP connected primary 1920x1080+0+0 (normal left inverted right) 355mm x 199mm
+   1920x1080     60.02*+
+DisplayPort-0 disconnected 2560x1440+1920+0 (normal left inverted right) 0mm x 0mm"""),
+    # a monitor just plugged in: connected, no picture yet
+    "plugged": ("1920x1080", """eDP connected primary 1920x1080+0+0 (normal left inverted right) 355mm x 199mm
+   1920x1080     60.02*+
+DisplayPort-0 connected (normal left inverted right) 597mm x 336mm
+   2560x1440     59.95 +
+   1920x1080     60.00"""),
+}
+
+a = sys.argv[1:]
+log = os.environ.get("MOCK_XRANDR_LOG")
+if log:
+    open(log, "a").write("\t".join(a) + "\n")
+if "--query" in a or not a:
+    q = os.environ.get("MOCK_XRANDR_QUERY")
+    if q and os.path.exists(q):
+        sys.stdout.write(open(q).read())
+    else:
+        size, body = LAYOUTS.get(os.environ.get("MOCK_XRANDR_LAYOUT") or "2", LAYOUTS["2"])
+        w, h = size.split("x")
+        sys.stdout.write(HEAD.format(w=w, h=h) + body + "\n")

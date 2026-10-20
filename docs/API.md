@@ -54,6 +54,7 @@ Missing hardware or tools never error: you get `{available:false, reason}` — r
 | `vibe.hw.bluetooth.*` / `vibe.hw.airplane.*` | devices, scan, pair (+ trust + connect), on/off · both radios at once — see "Bluetooth & airplane mode" below |
 | `vibe.hw.battery()` | `{percent, status, charging, ac_plugged, health_percent}` |
 | `vibe.hw.brightness.get()` / `.set(percent)` | screen backlight 1-100 |
+| `vibe.hw.display.list()` / `.set({output, …})` / `.arrange("extend"\|"mirror")` | the outputs + [R90] `monitors` (`[{id, x, y, w, h, primary, outputs}]`: what the user sees as screens — a mirror is one, primary first) and `desktop` (`{x, y, w, h}`: the area the one desktop spans); a change applies live (`{ok, relayout:"live"}`) — see display.md |
 | `vibe.hw.volume.get()` / `.set(percent, mute?)` | master volume 0-100 |
 | `vibe.hw.power.off()` / `.reboot()` / `.suspend()` | power actions — only on explicit user click; the OS asks the user to confirm outside the app, declined → rejects with `cancelled: …` |
 
@@ -483,8 +484,8 @@ The music model is a downloadable add-on: `try/catch` it and keep the app usable
 a `data:image/<type>;base64,…` URL (≤ 6 MB decoded — a canvas `toDataURL()`, a photo), a
 kernel-served path (`/files/images/x.png`, `/genimg/<desc>` once rendered — resolved inside
 the media cache only; anything else is `400`, a missing file `404`), or `"screen"` /
-`"screen:N"` (the kiosk display: every monitor as laid out, or monitor N in the `?screen=N`
-numbering). Pictures are fitted to 1280 px (aspect kept, never upscaled) before the model
+`"screen:N"` (the kiosk display: every monitor as laid out, or monitor N in the order of
+`vibe.hw.display.list().monitors` — primary first [R90]). Pictures are fitted to 1280 px (aspect kept, never upscaled) before the model
 sees them, so a phone photo cannot overflow the context. The model is the Qwen3-VL add-on —
 the image model's text encoder plus its `mmproj` projector under `llama-server`; it takes the
 LLM's GPU slot for the call and the coder LLM reloads on the next LLM request. `400
@@ -549,6 +550,16 @@ note?, version?, current?, versions?, elapsed?}}` to its parent frame — `state
 `declined` · `blocked` · `cut` · `leaving` (a link or a form was used). `GET /api/desktop-search` answers an address as
 its first result `{"type": "web", "address"}` and the system apps by name `{"type": "sysapp", "app_id"}`; the
 generated `browser` app is no longer listed in `/api/apps`. These routes are open like the generation routes (R66).
+
+## One desktop across all monitors (what apps see) [R90]
+
+The desktop is ONE page over every monitor (the kiosk window covers the X screen): an app's window can sit on any
+monitor and be dragged across them; the menu bar, the dock and every OS dialog live on the primary monitor. An app
+needs nothing for that. `window.screen` inside an app describes ONE display (Chromium's pick), not the desktop — an
+app that cares about the monitors reads `vibe.hw.display.list()` (`monitors`, `desktop`). The shell's own feed
+(`GET /api/windows` + `/stream`, not for apps) carries the same `monitors` + `desktop` from X RandR and pushes a new
+list on every hot-plug or layout change; the kiosk page starts from the `?mon=` hint `.xinitrc` writes
+(`id:x,y,w,h,primary;…`, root pixels).
 
 ## Games in windows — the shell's routes (not for apps) [R82]
 

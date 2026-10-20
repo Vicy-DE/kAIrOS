@@ -1,5 +1,5 @@
 #!/bin/sh
-# kAIrOS kiosk [R52 multiscreen]: openbox + one fullscreen Chromium per display.
+# kAIrOS kiosk [R90 one desktop]: openbox + ONE Chromium window over every monitor (the X screen).
 # The user must never see Linux [R28]: the boot screen painter (scripts/splash/, started
 # in the initramfs) drew the thick kAIrOS logo + loading bar on the framebuffer until X
 # took the display; X keeps that last frame (-background none) and the kiosk opens a LOCAL
@@ -79,11 +79,22 @@ root_cursor_off                    # openbox is up: its arrow goes until the kio
   if kernel_up; then echo "xinitrc: kernel answered on :1337 after ${i}s"
   else echo "xinitrc: kernel NOT answering on :1337 after ${i}s — the boot page keeps waiting"; fi ) &
 
-# ---- launch one kiosk Chromium per connected monitor, at its geometry ----
-# Each instance gets its own profile dir and a ?screen=N&x=&y=&w=&h= hint that
-# shell/shell.js reads: screen 0 is the PRIMARY output (dock + first-boot setup +
-# machine-level actions live there), the rest are numbered left-to-right / top-
-# to-bottom as extra workspaces. Outputs mirroring one geometry share one kiosk.
+# ---- ONE kiosk Chromium over every monitor [R90] ----
+# The desktop is one page spanning the whole X screen, so windows move between the monitors like
+# on any OS. Chromium's --kiosk / fullscreen covers ONE monitor only: the kiosk is an --app window
+# (class kairos-desktop) at 0,0 with the X screen's size — openbox's rule for that class (rc.xml)
+# keeps it undecorated, in the normal layer (above nothing: games and the sign-in window stay
+# above it) and at 0,0; its profile asks for no Chromium title bar (custom_chrome_frame off); the
+# policy /etc/chromium/policies/managed/kairos-desktop.json allows no fullscreen (F11 would shrink
+# the desktop to one monitor). scripts/desktop/kairos-desktop.py (started below) puts the window
+# at exactly 0,0,W,H once it maps (Chromium maps a screen-sized window clamped to ONE monitor, or
+# 1 px short on a single one; openbox clamps a per-app <size> to one monitor too — measured) and
+# again after every layout change / hot-plug — no relaunch. The page learns the monitors from ?mon= at once
+# (kernel/monitors.py hint: id:x,y,w,h,primary;…), then live from the kernel [R90].
+# R52's one kiosk per monitor is gone: openbox centred every kiosk on the monitor of the focused
+# window / the pointer (the rc.xml "*" rule beat Chromium's position), both kiosks ended up
+# fullscreen on ONE monitor and the other kept the boot frame for good — the "frozen loading bar"
+# of the 2026-10-16 card run (docs/ONE-DESKTOP-2026-10-19.md).
 # [R68/F11] --isolate-sandboxed-iframes + per-document grouping: every generated app
 # (a sandboxed srcdoc iframe) gets its own renderer process. Measured without it
 # (docs/DESKTOP-TECH-EVAL-2026-09.md §8.9): a `while(true){}` in ONE app froze every
@@ -96,20 +107,21 @@ CHROME_FLAGS="--noerrdialogs --disable-infobars --incognito --no-first-run \
 --disable-translate --check-for-update-interval=31536000 \
 --overscroll-history-navigation=0 --disable-pinch \
 --isolate-sandboxed-iframes --enable-features=IsolateSandboxedIframes:grouping/per-document"
+DESK=/opt/vibeos/os/scripts/desktop/kairos-desktop.py
 
-kiosk_geoms() {
-    # one "WxH+X+Y" per surface: primary first, then by x, then y. (Plain sort -u
-    # ordered the STRINGS: "1024x768+1920+0" < "1920x1080+0+0" made a small
-    # external monitor screen 0 and put the dock there.)
+# the monitors (primary first) as the ?mon= hint and the X screen's size; without python3-xlib or
+# the script: the connected outputs' geometries from xrandr --query
+monitor_hint() {
+    python3 "$DESK" monitors --hint 2>/dev/null && return 0
     xrandr --query 2>/dev/null | awk '
         / connected/ && match($0, /[0-9]+x[0-9]+\+[0-9]+\+[0-9]+/) {
-            g = substr($0, RSTART, RLENGTH)
-            if (g in seen) next
-            seen[g] = 1
-            split(g, a, "+")
-            k = ($0 ~ / primary /) ? -1 : a[2] + 0
-            print k, a[3] + 0, g
-        }' | sort -n -k1,1 -k2,2 | cut -d" " -f3
+            split(substr($0, RSTART, RLENGTH), a, /[x+]/)
+            printf "%s%s:%s,%s,%s,%s,%s", (n++ ? ";" : ""), $1, a[3], a[4], a[1], a[2], ($0 ~ / primary /) ? 1 : 0
+        }'
+}
+desktop_size() {
+    python3 "$DESK" monitors --union 2>/dev/null && return 0
+    xrandr --query 2>/dev/null | awk '/^Screen 0:/ { for (i = 1; i < NF; i++) if ($i == "current") { gsub(",", "", $(i+3)); print $(i+1), $(i+3); exit } }'
 }
 
 # [R28/R51] pointer evidence for the boot log (x.log; "no pointer" was reported three times):
@@ -129,9 +141,10 @@ pointer_diag() {
 
 KIOSK_PIDS=""
 launch_all_kiosks() {
-    geoms=$(kiosk_geoms)
-    [ -z "$geoms" ] && geoms="0x0+0+0"   # headless / unknown -> one plain kiosk
-    echo "xinitrc: launching kiosks for: $(echo $geoms)"
+    MON=$(monitor_hint)
+    set -- $(desktop_size)
+    W=${1:-0}; H=${2:-0}
+    echo "xinitrc: one desktop over ${W}x${H}: $MON"
     # runtime flags: /etc/kairos/chromium.flags (persistent) and /run/kairos/chromium.flags
     # (this boot), flags separated by spaces/newlines, # comments. Read on EVERY launch,
     # so `touch /run/kairos/kiosk-reload` picks up an edit — CHROME_FLAGS above is a
@@ -140,25 +153,21 @@ launch_all_kiosks() {
     for f in /etc/kairos/chromium.flags /run/kairos/chromium.flags; do
         [ -r "$f" ] && extra="$extra $(sed 's/#.*//' "$f" | tr '\n' ' ')"
     done
-    KIOSK_PIDS=""; n=0
-    for g in $geoms; do
-        w=${g%%x*}; r=${g#*x}; h=${r%%+*}; r=${r#*+}; x=${r%%+*}; y=${r#*+}
-        if [ "$w" = "0" ]; then
-            chromium --kiosk $CHROME_FLAGS $extra --user-data-dir="/tmp/kiosk-0" \
-                --app="${KIOSK_URL}?screen=0${BOOT_QS}" &
-        else
-            # kiosk mode here too (not the browser-fullscreen switch this path used before):
-            # a browser-fullscreen window shows Chromium's "To exit full screen, press and
-            # hold Esc" bubble for seconds over the boot page and the desktop [R28]; kiosk
-            # mode never shows it (and Esc does not leave). The window is placed on its
-            # monitor first (--window-position), then made fullscreen there.
-            chromium --kiosk $CHROME_FLAGS $extra --user-data-dir="/tmp/kiosk-$n" \
-                --window-position="$x,$y" --window-size="$w,$h" \
-                --app="${KIOSK_URL}?screen=$n&x=$x&y=$y&w=$w&h=$h${BOOT_QS}" &
-        fi
-        KIOSK_PIDS="$KIOSK_PIDS $!"
-        n=$((n + 1))
-    done
+    # [R90] no Chromium title bar on the --app window: the profile's "use the system title bar"
+    # (openbox draws none for this class). A fresh /tmp profile every boot; written before each launch.
+    # ([R28] the window's own colour between the boot page and the shell's first frame is GTK's
+    # window background: ~/.config/gtk-{3,4}.0/gtk.css makes it the boot screen's #0a0a14.)
+    mkdir -p /tmp/kiosk-0/Default
+    printf '{"browser":{"custom_chrome_frame":false}}\n' > /tmp/kiosk-0/Default/Preferences
+    if [ "$W" -gt 0 ] 2>/dev/null && [ "$H" -gt 0 ] 2>/dev/null; then
+        chromium $CHROME_FLAGS $extra --user-data-dir=/tmp/kiosk-0 --class=kairos-desktop \
+            --window-position=0,0 --window-size="$W,$H" \
+            --app="${KIOSK_URL}?mon=${MON}${BOOT_QS}" &
+    else                                  # headless / unknown screen: one plain kiosk, the desktop as before
+        chromium --kiosk $CHROME_FLAGS $extra --user-data-dir=/tmp/kiosk-0 \
+            --app="${KIOSK_URL}?mon=${BOOT_QS}" &
+    fi
+    KIOSK_PIDS=" $!"
     echo "xinitrc: kiosk pids:$KIOSK_PIDS"
     # the POINTER: the kiosk's windows inherit the root window's cursor (Chromium sets none of
     # its own for the plain arrow), and the root carried the invisible boot cursor "for good" —
@@ -166,7 +175,7 @@ launch_all_kiosks() {
     # a real arrow; unclutter hides it after 2 s without movement (R28 stays: nothing shows idle).
     xsetroot -cursor_name left_ptr 2>/dev/null && echo "xinitrc: pointer: left_ptr on the root (unclutter hides it when idle)"
     [ -n "$PTR_DIAG" ] || { PTR_DIAG=1; ( sleep 4; pointer_diag ) & }
-    # a relaunch (display change, browser crash) is not a boot: the page shows the logo
+    # a relaunch (browser crash, kiosk-reload) is not a boot: the page shows the logo
     # without the bar and hands over as soon as the kernel answers
     BOOT_QS="&relaunch=1"
 }
@@ -179,17 +188,26 @@ launch_all_kiosks() {
 # as the retained root background (scripts/splash/root-cover.py, python-xlib). Runs in the
 # background, never holds the kiosk launch; every failure is silent (cosmetic, R63).
 root_cover() {
-    g=$(kiosk_geoms | head -n 1); [ -n "$g" ] && [ "${g%%x*}" != 0 ] || return 0
-    w=${g%%x*}; r=${g#*x}; h=${r%%+*}; r=${r#*+}; x=${r%%+*}; y=${r#*+}
-    d=/run/kairos/splash-cover; mkdir -p "$d/sys" 2>/dev/null || return 0
-    printf '%s,%s\n' "$w" "$h" > "$d/sys/virtual_size"; echo 32 > "$d/sys/bits_per_pixel"
-    echo $((w * 4)) > "$d/sys/stride"; echo rootcover > "$d/sys/name"
+    d=/run/kairos/splash-cover; mkdir -p "$d" 2>/dev/null || return 0
     E=$(cat /run/kairos-splash/expected 2>/dev/null); case "$E" in ''|*[!0-9.]*) E=120 ;; esac
     P=$(cat /run/kairos-splash/progress 2>/dev/null); case "$P" in ''|*[!0-9.]*) P=0.6 ;; esac
-    KAIROS_FB="$d/frame.raw" KAIROS_FB_SYS="$d/sys" KAIROS_TTY=none KAIROS_SPLASH_LOG=- KAIROS_SPLASH_RUN="$d" KAIROS_BGRT=/nonexistent \
-        /usr/local/sbin/kairos-splash --once --no-reexec --phase 2 --progress "$P" --expected "$E" >/dev/null 2>&1 || return 0
-    python3 /opt/vibeos/os/scripts/splash/root-cover.py "$d/frame.raw" "$w" "$h" "$x" "$y" >/dev/null 2>&1 \
-        && echo "xinitrc: root cover: the boot screen frame on the root window (${w}x${h}+$x+$y, progress $P)"
+    # [R90] the frame on EVERY monitor (rendered once per monitor at its size): the boot page then
+    # covers them all, and no monitor ever shows a bare root
+    set --; i=0
+    for g in $(python3 "$DESK" monitors --rects 2>/dev/null || xrandr --query 2>/dev/null | grep -o ' [0-9]*x[0-9]*+[0-9]*+[0-9]*' | head -n 1); do
+        w=${g%%x*}; r=${g#*x}; h=${r%%+*}; r=${r#*+}; x=${r%%+*}; y=${r#*+}
+        [ "$w" -gt 0 ] 2>/dev/null || continue
+        mkdir -p "$d/sys$i" 2>/dev/null || return 0
+        printf '%s,%s\n' "$w" "$h" > "$d/sys$i/virtual_size"; echo 32 > "$d/sys$i/bits_per_pixel"
+        echo $((w * 4)) > "$d/sys$i/stride"; echo rootcover > "$d/sys$i/name"
+        KAIROS_FB="$d/frame$i.raw" KAIROS_FB_SYS="$d/sys$i" KAIROS_TTY=none KAIROS_SPLASH_LOG=- KAIROS_SPLASH_RUN="$d" KAIROS_BGRT=/nonexistent \
+            /usr/local/sbin/kairos-splash --once --no-reexec --phase 2 --progress "$P" --expected "$E" >/dev/null 2>&1 || continue
+        set -- "$@" "$d/frame$i.raw" "$w" "$h" "$x" "$y"
+        i=$((i + 1))
+    done
+    [ $# -gt 0 ] || return 0
+    python3 /opt/vibeos/os/scripts/splash/root-cover.py "$@" >/dev/null 2>&1 \
+        && echo "xinitrc: root cover: the boot screen frame on $i monitor(s) (progress $P)"
     return 0
 }
 
@@ -257,6 +275,9 @@ signin_window() {
 # (openbox, xrandr layout) needs `systemctl restart getty@tty1` = a new X session.
 RELOAD=/run/kairos/kiosk-reload
 ( root_cover ) &
+# [R90] the desktop window's keeper + hot-plug (scripts/desktop/kairos-desktop.py watch): it ends
+# with X; restarted if it dies earlier (a python error must not leave the desktop unsized)
+( while [ -f "$DESK" ]; do python3 "$DESK" watch; sleep 2; done ) &
 while true; do
     pkill -f "chromium.*--user-data-dir=/tmp/kiosk-" 2>/dev/null
     rm -f "$RELOAD"

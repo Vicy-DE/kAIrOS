@@ -36,6 +36,7 @@ import threading
 import time
 
 import hw
+import monitors as monmath
 
 try:                                    # only the connects need python3-xlib: the logic
     from Xlib.error import XError       # must import and be testable without it
@@ -56,7 +57,7 @@ EV_DESTROY, EV_UNMAP, EV_MAP, EV_REPARENT, EV_CONFIGURE, EV_PROPERTY = 17, 18, 1
 CHANGE_EVENTS = {EV_DESTROY, EV_UNMAP, EV_MAP, EV_REPARENT, EV_CONFIGURE, EV_PROPERTY}
 SOURCE_PAGER = 2            # EWMH source indication: a pager/taskbar (WM-trusted) request
 
-# never listed — they ARE the desktop: the kiosk Chromium (one per monitor [R52], WM_CLASS
+# never listed — they ARE the desktop: the kiosk Chromium (ONE window over every monitor [R90], WM_CLASS
 # "chromium"/"Chromium", also its --app helper windows), the boot-animation player, the
 # cursor hider, the testrig's VNC publisher
 DESKTOP_CLASSES = ("chrom", "mpv", "unclutter", "x11vnc")
@@ -114,10 +115,36 @@ def _client_message(window, client_type, data):
 
 
 def _randr_monitors(root):
-    """[(x, y, w, h, primary)] from RandR 1.5 (the heads openbox consumes); [] without RandR"""
+    """[(x, y, w, h, primary, name)] from RandR 1.5 (the heads openbox consumes; one per active output / CRTC);
+    [] without RandR. A 5-tuple without the name is accepted everywhere (the tests' fake X)."""
     from Xlib.ext import randr
-    return [(m.x, m.y, m.width_in_pixels, m.height_in_pixels, bool(m.primary))
-            for m in randr.get_monitors(root, True).monitors]
+    from Xlib.protocol import request
+    ms = randr.get_monitors(root, True).monitors
+    out = []
+    for i, m in enumerate(ms):
+        try:
+            name = request.GetAtomName(display=root.display, atom=m.name).name   # the output's name ("eDP", "DP-1")
+        except Exception as e:
+            if _lost(e):
+                raise
+            name = f"monitor-{i}"
+        out.append((m.x, m.y, m.width_in_pixels, m.height_in_pixels, bool(m.primary), name))
+    return out
+
+
+def _randr_watch(d, root):
+    """[R90] select RandR's screen/CRTC/output change events on root -> the event codes to treat as a change ({} when
+    the server has no RandR: the monitor list then only changes with the root window itself)"""
+    try:
+        from Xlib.ext import randr
+        ext = d.query_extension("RANDR")
+        if not ext or not ext.present:
+            return set()
+        root.xrandr_select_input(randr.RRScreenChangeNotifyMask | randr.RRCrtcChangeNotifyMask
+                                 | randr.RROutputChangeNotifyMask)
+        return {ext.first_event + randr.RRScreenChangeNotify, ext.first_event + randr.RRNotify}
+    except Exception:
+        return set()
 
 
 def _proc_name(pid, cache=None):
@@ -346,20 +373,25 @@ class EWMH:
             return None
         return (-t.x, -t.y, g.width, g.height, mapped)
 
-    def monitors(self):
-        """[(x, y, w, h)] primary first, then left-to-right / top-to-bottom — the
-        numbering .xinitrc gives the kiosks (?screen=N) [R52]"""
+    def monitor_list(self):
+        """[R90] the monitors the one desktop spans (kernel/monitors.py: a mirror is one, exactly one primary, primary
+        first then left-to-right / top-to-bottom — the numbering of /api/vision "screen:N")"""
         try:
             ms = _randr_monitors(self.root)
         except Exception as e:
             if self.lost(e):
                 raise
             ms = []                      # no RandR 1.5 on this server: the root geometry
-        rects = [(x, y, w, h) for _, x, y, w, h in sorted((not p, x, y, w, h) for x, y, w, h, p in ms)]
-        if not rects:
+        mons = monmath.from_rects([(t[5] if len(t) > 5 else f"monitor-{i}", t[0], t[1], t[2], t[3], t[4])
+                                   for i, t in enumerate(ms)])
+        if not mons:
             g = self.root.get_geometry()  # only a dead connection can fail here: let it raise
-            rects = [(0, 0, g.width, g.height)]
-        return rects
+            mons = monmath.from_rects([("screen", 0, 0, g.width, g.height, True)])
+        return mons
+
+    def monitors(self):
+        """[(x, y, w, h)] of monitor_list(), in its order"""
+        return [(m["x"], m["y"], m["w"], m["h"]) for m in self.monitor_list()]
 
     def grab(self, rect):
         """the framebuffer pixels of the root rect (x, y, w, h): XGetImage, ZPixmap — the
@@ -438,9 +470,10 @@ class EWMH:
         return best[0], best[1]
 
     def kiosk_for(self, rect):
-        """the kiosk Chromium window that shows the monitor rect (x, y, w, h): the largest mapped Chromium window
-        whose centre lies on it -> (xid, (x, y, w, h)) or (0, None). Its geometry maps the page's CSS pixels to
-        root pixels (kiosk mode: no browser chrome, the viewport IS the window)."""
+        """the kiosk Chromium window that shows the monitor rect (x, y, w, h): the mapped Chromium window covering
+        most of it -> (xid, (x, y, w, h)) or (0, None). Its geometry maps the page's CSS pixels to root pixels (no
+        browser chrome: the viewport IS the window). [R90] By overlap, not by the window's centre: the one desktop
+        window spans every monitor and its centre may lie on another monitor or in a dead area."""
         best, names = (0, None, 0), {}
         for xid in self.clients():
             inst, cls = self.wm_class(xid)
@@ -449,11 +482,12 @@ class EWMH:
             g = self.geom(xid)
             if g is None or not g[4]:
                 continue
-            cx, cy = g[0] + g[2] // 2, g[1] + g[3] // 2
-            if not (rect[0] <= cx < rect[0] + rect[2] and rect[1] <= cy < rect[1] + rect[3]):
+            ow = min(g[0] + g[2], rect[0] + rect[2]) - max(g[0], rect[0])
+            oh = min(g[1] + g[3], rect[1] + rect[3]) - max(g[1], rect[1])
+            if ow <= 0 or oh <= 0:
                 continue
-            if g[2] * g[3] > best[2]:
-                best = (xid, g[:4], g[2] * g[3])
+            if ow * oh > best[2]:
+                best = (xid, g[:4], ow * oh)
         return best[0], best[1]
 
     # ---- EWMH client messages
@@ -552,7 +586,8 @@ class EWMH:
 
     # ---- the list the shell's taskbar renders
     def snapshot(self, registry=None):
-        rects = self.monitors()
+        mons = self.monitor_list()
+        rects = [(m["x"], m["y"], m["w"], m["h"]) for m in mons]
         active = self.active()
         out, names = [], {}                 # comm cache for this snapshot only (pids recycle)
         for xid in self.clients():
@@ -573,7 +608,9 @@ class EWMH:
                         "icon": game["icon"] if game else None, "kind": kind,
                         "x": g[0], "y": g[1], "w": g[2], "h": g[3], "minimized": not g[4],
                         "active": xid == active, "screen": screen_of(rects, g[0] + g[2] // 2, g[1] + g[3] // 2)})
-        return {"wm": self.wm_name(), "screens": [list(r) for r in rects], "windows": out}
+        # [R90] monitors + desktop: the shell's live monitor list (a hot-plug / a layout change pushes a new one)
+        return {"wm": self.wm_name(), "screens": [list(r) for r in rects], "monitors": mons,
+                "desktop": monmath.union(mons), "windows": out}
 
 
 class _XThread:
@@ -641,7 +678,7 @@ class WindowService:
 
     def unavailable(self, reason, name=None):
         return {"available": False, "reason": reason, "display": name or self.display()[0],
-                "wm": None, "screens": [], "windows": []}
+                "wm": None, "screens": [], "monitors": [], "desktop": None, "windows": []}
 
     async def _run(self, fn, *args):
         loop = asyncio.get_running_loop()
@@ -953,7 +990,7 @@ class WindowService:
     async def screenshot(self, screen=None):
         """The kiosk display as raw BGRX pixels + its root rect [R70]: every monitor as X
         lays them out (the root cropped to the monitors' bounding box) or one monitor by
-        the number .xinitrc gives the kiosks [R52]. -> (data, (x, y, w, h)); WMError
+        its number in the monitor list (primary first) [R90]. -> (data, (x, y, w, h)); WMError
         without X or for an unknown screen; the caller fits/encodes (server.fit_image)."""
         name, sock = self.display()
         if not sock.exists():
@@ -1067,7 +1104,7 @@ class WindowService:
 
     def _body_root(self, c, f, refresh=False):
         """the frame body's rect in root pixels. CSS -> root through the page's own kiosk window: the Chromium window
-        at the origin the page reports (window.screenX/Y), else the one on the monitor of the frame's screen [R52]
+        at the origin the page reports (window.screenX/Y), else the one covering most of the frame's monitor [R90]
         (its origin; scale = its width / the page's viewport width, i.e. the device pixel ratio); without a kiosk
         window (a test page in a plain window) through the monitor's rect. Cached per frame; refresh re-reads X."""
         if refresh or f.get("origin") is None:
@@ -1338,6 +1375,9 @@ class WindowService:
                 d.set_error_handler(self._xerror)
                 root = d.screen().root
                 root.change_attributes(event_mask=SUBSTRUCTURE_NOTIFY_MASK | PROPERTY_CHANGE_MASK)
+                # [R90] RandR: a monitor plugged / unplugged / moved / made primary changes the desktop's monitor list
+                # (the shell lays itself out from the snapshot's `monitors`) — often without any window event
+                rr_events = _randr_watch(d, root)
                 d.flush()
                 client_list = d.intern_atom("_NET_CLIENT_LIST")
                 watched = set()
@@ -1355,6 +1395,9 @@ class WindowService:
                 while True:
                     ev = d.next_event()
                     t = ev.type & 0x7f
+                    if t in rr_events:
+                        self._notify()
+                        continue
                     if t not in CHANGE_EVENTS:
                         continue
                     if t == EV_MAP:                     # mapped again by anyone: a frozen game must paint

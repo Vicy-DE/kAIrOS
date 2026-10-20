@@ -895,7 +895,7 @@ def t_docs():
     """the sheet + recipes a generated app gets carry the render-ready fields (bars, needs,
     connectivity, kind, code) and the flows (no password for OWE, Sign in for a portal, a
     keyboard's code); the dock Settings prompt covers Bluetooth + airplane; the dock prompt's
-    doc pack still fits the 8 GB budget with room to spare"""
+    doc pack still fits the 8 GB budget with room to spare (≥ 1000 chars since the 2026-10-19 trim)"""
     net = (REPO / "docs" / "api" / "network.md").read_text()
     for n in ("vibe.hw.wifi.status()", "vibe.hw.wifi.scan(", "vibe.hw.wifi.connect(", "vibe.hw.wifi.disconnect(",
               "vibe.hw.wifi.forget(", "vibe.hw.wifi.saved()", "vibe.hw.wifi.signin()", "vibe.hw.wifi.on()",
@@ -934,6 +934,8 @@ def t_docs():
     used = (len("Open this app: " + dock) + 2400 + 70 + len(prompts.API_HEADER) + sum(len(t) + 20 for _, t in api_docs)
             + len(prompts.WIKI_HEADER) + sum(len(t) + 20 for _, t in wiki) + 1700)
     assert used <= budget, f"dock prompt would overflow: {used} > {budget}"
+    # the 2026-10-19 trim (28198 → 23281): the pack may not grow back into the last 1000 chars of the budget
+    assert used <= budget - 1000, f"dock prompt headroom < 1000 chars: {used} > {budget} - 1000 — trim before adding"
     assert server.wiki_pages_for("a bluetooth manager to pair my headphones")[0][0] == "bluetooth-manager"
     assert server.wiki_pages_for("a wifi manager to connect to my router")[0][0] == "wifi-manager"
     assert server.api_docs_for("pair bluetooth headphones")[0][0] == "network"
@@ -953,7 +955,7 @@ def t_xinit():
     fn = re.search(r"^signin_window\(\) \{\n.*?^\}\n", xi, re.M | re.S).group(0)
     loop = xi.split("while true; do\n        sleep 3", 1)[1].split("done", 1)[0]
     assert "signin_window" in loop, "the supervisor loop must check the flags every round"
-    assert xi.count("chromium --kiosk ") == 2, "the sign-in window is not a kiosk"
+    assert xi.count("chromium --kiosk ") == 1, "the sign-in window is not a kiosk (the one --kiosk: the headless desktop fallback, R90)"
     with tempfile.TemporaryDirectory() as td:
         t = Path(td)
         (t / "bin").mkdir()

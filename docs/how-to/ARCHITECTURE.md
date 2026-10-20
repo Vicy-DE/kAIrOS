@@ -10,7 +10,7 @@ research notes), [API.md](../API.md) (the app-facing API) and [REQUIREMENTS.md](
    USB stick / internal disk: Debian 13 + systemd-boot, ext4 root grows on first boot   [R8/R28/R48]
    ─────────────────────────────────────────────────────────────────────────────────────
    boot: initramfs painter (boot screen, R73) → tty1 autologin → startx → openbox
-         → ONE fullscreen Chromium kiosk per connected display  →  http://localhost:1337   [R52]
+         → ONE Chromium window over every monitor (one desktop)  →  http://localhost:1337   [R90]
    ─────────────────────────────────────────────────────────────────────────────────────
    kernel/server.py (Python, aiohttp, runs as root, binds 127.0.0.1 by default [R66])
      ├─ ModelManager + GpuScheduler: who owns the GPU now (LLM / expander / image / video / music),
