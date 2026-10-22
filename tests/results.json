@@ -1,5 +1,5 @@
 {
- "at": "2026-10-19 19:37:53",
+ "at": "2026-10-22 08:23:15",
  "base": "http://127.0.0.1:1338",
  "tests": {
   "unit_prompts_style_mandate": {
@@ -163,14 +163,14 @@
     "R22"
    ],
    "status": "pass",
-   "detail": "2 Krea-2 images generated, seeds differ (352590901 vs 1268737457); engine crash -> error + idle"
+   "detail": "2 Krea-2 images generated, seeds differ (1633477966 vs 1385863022); engine crash -> error + idle"
   },
   "http_video": {
    "reqs": [
     "R6"
    ],
    "status": "pass",
-   "detail": "mp4 produced and served: /files/videos/d3e0aafa6222.mp4"
+   "detail": "mp4 produced and served: /files/videos/869c5bf7d07e.mp4"
   },
   "unit_finish_video_drops_intermediate": {
    "reqs": [
@@ -214,7 +214,7 @@
     "R14"
    ],
    "status": "pass",
-   "detail": "20250 bytes of self-documentation served"
+   "detail": "20383 bytes of self-documentation served"
   },
   "http_search_offline_mode": {
    "reqs": [
@@ -262,7 +262,7 @@
     "R23"
    ],
    "status": "pass",
-   "detail": "never empty; create-actions present; 4 distinct sparks in 6 calls"
+   "detail": "never empty; create-actions present; 5 distinct sparks in 6 calls"
   },
   "http_desktop_search_web_address": {
    "reqs": [
@@ -294,7 +294,7 @@
     "R31"
    ],
    "status": "pass",
-   "detail": "ace-lm -> request0.json -> ace-synth (turbo DiT, wav) served: /files/music/1be272f92f06.wav"
+   "detail": "ace-lm -> request0.json -> ace-synth (turbo DiT, wav) served: /files/music/f74b96a0b8de.wav"
   },
   "unit_music_language_default_en": {
    "reqs": [
@@ -553,7 +553,7 @@
     "R44"
    ],
    "status": "pass",
-   "detail": "3 session-painted wallpapers; random keep/discard differs per run (e.g. 4 fragments kept)"
+   "detail": "3 session-painted wallpapers; random keep/discard differs per run (e.g. 3 fragments kept)"
   },
   "http_remote_needs_token": {
    "reqs": [
@@ -992,7 +992,7 @@
     "R45"
    ],
    "status": "pass",
-   "detail": "dock prompt: api sheet 5931 + recipe 7441 chars injected whole; 23281 of 28278 budget chars used (4997 spare, pinned \u2265 1000; -c 16384)"
+   "detail": "dock prompt: api sheet 6064 + recipe 7441 chars injected whole; 23414 of 28278 budget chars used (4864 spare, pinned \u2265 1000; -c 16384)"
   },
   "unit_translation_manifest_and_specs": {
    "reqs": [
@@ -1053,7 +1053,7 @@
     "R59"
    ],
    "status": "pass",
-   "detail": "translator 6764 chars identical in shell + bridge (inert literal); handlers in both host pages; settings hook + translate=no spots; settings sheet 5931 + recipe 7441 chars carry keys/picker/switch/download/vibe.translate"
+   "detail": "translator 6764 chars identical in shell + bridge (inert literal); handlers in both host pages; settings hook + translate=no spots; settings sheet 6064 + recipe 7441 chars carry keys/picker/switch/download/vibe.translate"
   },
   "unit_p3_dictionaries_wiktionary_manifests": {
    "reqs": [
@@ -1089,6 +1089,33 @@
    "status": "pass",
    "detail": "quality = the loaded LLM: en\u2192de / en\u2192ja / de\u2192en on :8081 with the benchmark's body (no system, temp 0, thinking off, the kernel's max_tokens, no vendor sampling), no translation launch, loaded = llm; dom batch, English hop and quality=fast stay on the 2B (:8085)"
   },
+  "http_translation_quality_without_gpu_goes_fast": {
+   "reqs": [
+    "R89",
+    "R71",
+    "R72"
+   ],
+   "status": "pass",
+   "detail": "with GPU: quality on the LLM (:8081); device off the bus: fast in 0.51 s; no driver: fast in 0.00 s (:8085, reason 'no GPU', logged); GPU back: the LLM again"
+  },
+  "unit_translation_quality_gpu_rules": {
+   "reqs": [
+    "R89",
+    "R71",
+    "R30"
+   ],
+   "status": "pass",
+   "detail": "no device / no driver / forced cuda without one / the LLM started on the CPU \u2192 'no GPU' (fast); device, Vulkan, another key's CPU server \u2192 none; no fast file \u2192 quality stays; 16 GB's 9B: same rule, key 'translation'"
+  },
+  "unit_names_hosts_resolv_overlay": {
+   "reqs": [
+    "R28",
+    "R51",
+    "R78"
+   ],
+   "status": "pass",
+   "detail": "/etc/hosts: localhost v4+v6, localhost.localdomain on 127.0.1.1; resolv.conf: systemd-tmpfiles --root turned a baked resolv.conf into the link (twice: idempotent); NM symlink + no hostname; build-img step ran on a scratch root"
+  },
   "unit_r89_docs_and_sheets_static": {
    "reqs": [
     "R89",
@@ -1096,7 +1123,7 @@
     "R59"
    ],
    "status": "pass",
-   "detail": "R89 entry, FAST-MODELS record (no personal paths), index line, addendum, API.md; sheet 5931 / recipe 7441 chars without a fast model"
+   "detail": "R89 entry, FAST-MODELS record (no personal paths), index line, addendum, API.md; sheet 6064 / recipe 7441 chars without a fast model"
   },
   "unit_knowledge_multi_zim_sources": {
    "reqs": [
@@ -1114,7 +1141,7 @@
     "R12"
    ],
    "status": "pass",
-   "detail": "vibe.dict + dom flag in bridge/shell/host; API.md + core + settings sheet 5931 / recipe 7441 chars carry the add-ons; requirement (h) + log section; kernel appends --cache-ram"
+   "detail": "vibe.dict + dom flag in bridge/shell/host; API.md + core + settings sheet 6064 / recipe 7441 chars carry the add-ons; requirement (h) + log section; kernel appends --cache-ram"
   },
   "unit_bake_flagged_addons_in_image": {
    "reqs": [

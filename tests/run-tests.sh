@@ -56,6 +56,12 @@ echo 1         > $TESTDIR/sys/class/power_supply/AC/online
 echo 128       > $TESTDIR/sys/class/backlight/mock_panel/brightness
 echo 255       > $TESTDIR/sys/class/backlight/mock_panel/max_brightness
 mkdir -p $TESTDIR/sys/class/bluetooth/hci0          # the Bluetooth controller hw.py looks for [R78]
+# [fix 2026-10-22] the GPU the mock engines stand for: a fake NVIDIA driver dir that lists one device
+# (/proc/driver/nvidia/gpus/<bus id>), so every kernel of the suite runs as the appliance WITH its GPU (quality
+# translation = the loaded LLM [R89]); tests/test_kernel.py takes the device away to prove the no-GPU path
+# (quality → the fast translator, "reason": "no GPU") and puts it back. A test that wants no driver sets its own.
+mkdir -p "$TESTDIR/nvidia/gpus/0000:01:00.0"
+export VIBEOS_NVIDIA_PROC=$TESTDIR/nvidia
 for r in "0 bluetooth hci0" "1 wlan phy0"; do set -- $r
     mkdir -p $TESTDIR/sys/class/rfkill/rfkill$1
     echo $2 > $TESTDIR/sys/class/rfkill/rfkill$1/type; echo $3 > $TESTDIR/sys/class/rfkill/rfkill$1/name

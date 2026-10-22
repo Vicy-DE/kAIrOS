@@ -291,6 +291,24 @@ for f in usr/local/sbin/kairos-esp-sync etc/kernel/postinst.d/zz-kairos-esp etc/
 done
 echo "chroot step verified: bootlog/growroot/nvidia-load/firstboot enabled, persistenced not, gpu-setup intact, ssh keys present, kernel-install off"
 
+# --- names [fix 2026-10-22, docs/FIXES-2026-10-22.md]: /etc/hosts names the host (startx's xauth looked
+# localhost.localdomain up over DNS: X started 40 s late where DNS is dropped) and /etc/resolv.conf is NetworkManager's
+# /run file, never a file baked by the build machine (v7.5-3: "nameserver 10.0.2.3"). live-build's chroot_hosts /
+# chroot_resolv steps rewrite both at the end of the ISO build, so the image sets them here, from the overlay, after
+# the chroot step (which may still want the build's resolver); tmpfiles.d/kairos.conf re-links resolv.conf at boot.
+install -D -m 644 "$INC/etc/hosts" "$MNT/etc/hosts"
+install -D -m 644 "$INC/etc/NetworkManager/conf.d/20-kairos-dns.conf" "$MNT/etc/NetworkManager/conf.d/20-kairos-dns.conf"
+install -D -m 644 "$INC/etc/tmpfiles.d/kairos.conf" "$MNT/etc/tmpfiles.d/kairos.conf"
+HN=$(tr -d '[:space:]' < "$MNT/etc/hostname" 2>/dev/null || true); [ -n "$HN" ] || HN=localhost.localdomain
+sed -i -E "s/^127\.0\.1\.1[[:space:]].*$/127.0.1.1\t$HN/" "$MNT/etc/hosts"     # the line names THIS image's hostname
+rm -f "$MNT/etc/resolv.conf"
+ln -s /run/NetworkManager/resolv.conf "$MNT/etc/resolv.conf"
+grep -qxF "$(printf '127.0.1.1\t%s' "$HN")" "$MNT/etc/hosts" \
+  || { echo "FATAL: /etc/hosts does not name the image's hostname ($HN)"; exit 99; }
+[ "$(readlink "$MNT/etc/resolv.conf")" = /run/NetworkManager/resolv.conf ] \
+  || { echo "FATAL: /etc/resolv.conf is not NetworkManager's /run file"; exit 99; }
+echo "names: /etc/hosts names $HN on 127.0.1.1; /etc/resolv.conf -> /run/NetworkManager/resolv.conf"
+
 # --- install systemd-boot to the ESP manually (operate on the mounted image) ---
 ESP="$MNT/boot/efi"
 KVER=$(ls "$MNT/lib/modules" | sort -V | tail -1)

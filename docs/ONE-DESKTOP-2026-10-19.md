@@ -241,7 +241,10 @@ white handover frame (gtk.css); the game offset after a mirror (placed again whi
 - **Seen in the VM, not R90's**: before X the second head has no picture at all (the VM's fbdev drives head 0 only; on
   the laptop amdgpu's fbcon is expected to clone); X's own start shows the painter's last frame, static, on every
   monitor (the card's X took 23 s — R73's painter cannot draw under X); a ~200-300 ms #3c3c3c frame remains at the
-  boot page → shell navigation (Chromium's own, cross-process; it was white 140 ms + grey before); fast QMP capture
+  boot page → shell navigation (Chromium's own, cross-process; it was white 140 ms + grey before) — [2026-10-22] gone:
+  it was Chromium's pre-paint colour (the incognito profile ignores the GTK theme) at the window's first map / after
+  the span, see
+  `docs/FIXES-2026-10-22.md` §2; fast QMP capture
   (5–45 fps) slows the VM's X start (glamor/llvmpipe probe 10–47 s) — only the 1-fps capture was used for the boot
   sequences.
 - **Not changed**: a Chromium `Ctrl+N`/`Ctrl+T` window opens a normal browser window (as with `--kiosk` before); the X

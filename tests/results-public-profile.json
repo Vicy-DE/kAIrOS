@@ -1,5 +1,5 @@
 {
- "at": "2026-10-19 19:46:39",
+ "at": "2026-10-22 08:31:54",
  "tests": {
   "pp_static_overlay_and_wiring": {
    "reqs": [
@@ -99,7 +99,15 @@
     "R66"
    ],
    "status": "pass",
-   "detail": "verify: 52 FAIL lines incl. 37 categories + repo text WARN; prepare -> PASS, kept files; 2nd run 0 changes; unfixable stays FAIL"
+   "detail": "verify: 53 FAIL lines incl. 37 categories + repo text WARN; prepare -> PASS, kept files; 2nd run 0 changes; unfixable stays FAIL"
+  },
+  "pp_names_hosts_and_resolv": {
+   "reqs": [
+    "R87",
+    "R28"
+   ],
+   "status": "pass",
+   "detail": "empty hosts + baked resolv.conf: verify FAILs both, prepare adds the kairos line + the NM link (PASS, idempotent); overlay hosts renamed"
   },
   "pp_r88_runtime_ships_no_tests": {
    "reqs": [

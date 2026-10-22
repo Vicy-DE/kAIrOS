@@ -103,7 +103,11 @@ root_cursor_off                    # openbox is up: its arrow goes until the kio
 # apps of one kiosk shared one process. Per-document costs one renderer per open app;
 # the memory price is measured in the next VM run. Also what lets a closed app's
 # memory go back at once: its process simply exits (R68 e).
-CHROME_FLAGS="--noerrdialogs --disable-infobars --incognito --no-first-run \
+# [fix 2026-10-22] no --incognito: an incognito window ignores the GTK theme and paints its fixed dark grey
+# (#3c3c3c) where no page frame exists yet — at the window's first map and after the span resize, the "grey frame"
+# of R90. The profile below is wiped before every launch instead (nothing survives a relaunch, as with incognito)
+# and follows the GTK theme, whose view colour (gtk.css) is the boot screen's #0a0a14 (docs/FIXES-2026-10-22.md).
+CHROME_FLAGS="--noerrdialogs --disable-infobars --no-first-run \
 --disable-translate --check-for-update-interval=31536000 \
 --overscroll-history-navigation=0 --disable-pinch \
 --isolate-sandboxed-iframes --enable-features=IsolateSandboxedIframes:grouping/per-document"
@@ -154,11 +158,16 @@ launch_all_kiosks() {
         [ -r "$f" ] && extra="$extra $(sed 's/#.*//' "$f" | tr '\n' ' ')"
     done
     # [R90] no Chromium title bar on the --app window: the profile's "use the system title bar"
-    # (openbox draws none for this class). A fresh /tmp profile every boot; written before each launch.
-    # ([R28] the window's own colour between the boot page and the shell's first frame is GTK's
+    # (openbox draws none for this class). ([R28] the window's own colour before Chromium draws is GTK's
     # window background: ~/.config/gtk-{3,4}.0/gtk.css makes it the boot screen's #0a0a14.)
+    # [fix 2026-10-22] a FRESH profile for every launch (the kiosk runs without --incognito: nothing — cookies,
+    # cache, history, a crashed session's "restore" state — survives a relaunch) with the GTK system theme
+    # (extensions.theme.system_theme 1 = GTK; use_system = the older key): the colour Chromium paints where the
+    # page has no frame yet is then GTK's view background, #0a0a14 (gtk.css), not the dark theme's grey.
+    rm -rf /tmp/kiosk-0
     mkdir -p /tmp/kiosk-0/Default
-    printf '{"browser":{"custom_chrome_frame":false}}\n' > /tmp/kiosk-0/Default/Preferences
+    printf '{"browser":{"custom_chrome_frame":false},"extensions":{"theme":{"system_theme":1,"use_system":true}}}\n' \
+        > /tmp/kiosk-0/Default/Preferences
     if [ "$W" -gt 0 ] 2>/dev/null && [ "$H" -gt 0 ] 2>/dev/null; then
         chromium $CHROME_FLAGS $extra --user-data-dir=/tmp/kiosk-0 --class=kairos-desktop \
             --window-position=0,0 --window-size="$W,$H" \

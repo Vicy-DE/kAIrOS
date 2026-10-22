@@ -1077,6 +1077,8 @@ naming the superseding ID. `update-progress.py` copies these notes into PROGRESS
     through the 9B (swapped in like vision, 18.8 s on the CPU), switch-off stopped the fast server and
     unloaded the 9B. A human still judges the single-word labels (verbatim in the log); the model choice
     stays provisional until the EN↔X benchmark. Open: P3 (`/api/dict`, the Wiktionary ZIMs).
+  - **Status note (2026-10-22): quality without a GPU goes to the fast translator** — see R89's note of the same day
+    (`docs/FIXES-2026-10-22.md` §3).
 
 ## Parallel LLM requests (request 28, 2026-10-06)
 - **R72 — several LLM requests run at once on the loaded model**: owner: *"build the prompt
@@ -1160,6 +1162,14 @@ naming the superseding ID. `update-progress.py` copies these notes into PROGRESS
   (Noto Sans, the shell's font) into `shell/splash/*.png` + the embedded `logo_data.h`. Nothing
   here can fail or block the boot (R63): the initramfs scripts and the unit exit 0 on every path,
   the serial-debug entry (no `quiet`) and `kairos.splash=0` leave the console alone.
+  - **Status note (2026-10-22): X no longer waits on DNS for the hostname** — the image's `/etc/hosts` was empty and its
+    `/etc/resolv.conf` a baked file (`nameserver 10.0.2.3`, a build VM's), so startx's `xauth` looked
+    `localhost.localdomain` up over DNS: 20 s per lookup where DNS is dropped, X 40 s late with the loading bar held at
+    the "startx" mark (v7.5-3 two-monitor run). Now: `/etc/hosts` names localhost and the hostname (127.0.1.1),
+    `/etc/resolv.conf` is a link to NetworkManager's runtime file (tmpfiles.d `L+`; NetworkManager `rc-manager=symlink`,
+    `hostname-mode=none`), set by `iso/build-img.sh` and `scripts/public-image-prep.sh` too. VM (the DNS-dropping rig):
+    `.xinitrc` started at 47.00 s → 7.12 s, desktop ready 49.2 s → 8.3 s, every local name in 0.00–0.02 s, verdict PASS.
+    `docs/FIXES-2026-10-22.md` §1.
 - **R76 — decensored Krea 2 default**: owner: *"embedd a decencored krea2 in the image"*, after the
   v7.3 stick run: *"cencored krea2 images"*. The default image model (`image`, settings key `default`,
   shown as "Krea 2 (uncensored)") is Krea 2 Turbo + lodestones' Kroma v0.3 as a LoRA
@@ -1789,6 +1799,15 @@ numbers are listed by title only — each gets its real entry when it is built (
     generation sharing the slots with a batch (all mock-proven).
   - **Status note (2026-10-19): fast-mode wording consolidated** — one "no fast model" line per Settings document (the
     dock prompt keeps "no fast mode"); part of the Settings prompt trim, 28198 → 23281 of 28278 chars (see R78).
+  - **Status note (2026-10-22): quality without a GPU → the fast translator** — with the GPU off the v7.5-3 verification
+    boot ran the heretic on the CPU for a quality translation (200 after 134 s). Now, when the LLM cannot run on a GPU
+    (no CUDA device listed by the driver — the 4070 off the bus — and no Vulkan set, or the LLM's llama-server already
+    started in CPU mode), `translation_quality = quality` is served by the 2B on the CPU: `/api/translate` answers
+    `"model": "fast", "via": "mt", "reason": "no GPU"`, `/api/translate/status` shows `effective: fast`,
+    `fallback_reason: "no GPU"` and the sentence; with a GPU nothing changes; without the fast file quality stays.
+    Tests: `http_translation_quality_without_gpu_goes_fast`, `unit_translation_quality_gpu_rules` (the suite's kernels
+    now run with a fake GPU, `VIBEOS_NVIDIA_PROC` in `tests/run-tests.sh`); VM, GPU off, the real kernel: 0.7–1.5 s warm
+    (10.3 s with the 2B's start), no LLM launched. `docs/FIXES-2026-10-22.md` §3.
 
 ## One desktop across all monitors (owner, 2026-10-19)
 - **R90 — one desktop across all monitors (+ the second screen's boot freeze)**: owner (2026-10-19): *"make multiple screen
@@ -1852,3 +1871,12 @@ numbers are listed by title only — each gets its real entry when it is built (
     extend and stacked live through the display API (`docs/ONE-DESKTOP-2026-10-19.md` §5). Not proven: the real
     USB-C DisplayPort hot-plug on the 780M, GPU compositing of a 4480-px Chromium window, the HDMI port (NVIDIA,
     reverse PRIME — open).
+  - **Status note (2026-10-22): the grey frame is gone** — the ~0.2–0.3 s `#3c3c3c` was the colour Chromium's
+    incognito profile paints where the page has no frame yet (at the kiosk's first map and on the other monitor after
+    the span), not CSS: `--default-background-color`, `--deadline-to-synchronize-surfaces=-1` and GTK widget colours did
+    not change it (A/B on kiosk relaunches, VM, ~40 frames/s per head). The kiosk now runs WITHOUT `--incognito`, its
+    profile wiped before every launch (nothing survives a relaunch), with the GTK system theme
+    (`extensions.theme.system_theme` 1), and gtk.css gives GTK's view background `#0a0a14`: 0 grey frames in 80
+    relaunches (before: 2 of 6), the pre-paint frames are the boot screen's colour; `prefers-color-scheme` stays dark.
+    Left: one pure-white ~33 ms frame at the boot page → shell navigation in 1 of 80 (source not found; none in 37
+    incognito captures). `docs/FIXES-2026-10-22.md` §2.

@@ -1,5 +1,5 @@
 {
- "at": "2026-10-19 19:45:46",
+ "at": "2026-10-22 08:31:00",
  "tests": {
   "gw_frame_bmp": {
    "reqs": [
@@ -34,7 +34,7 @@
     "R68"
    ],
    "status": "pass",
-   "detail": "follow lag over 24 real drag steps: p50 6.3 ms, p95 16.7 ms, max 18.7 ms (pointer event -> X window in place); drop verified; resize keeps it centred, min [962, 576]; maximize centred"
+   "detail": "follow lag over 24 real drag steps: p50 15.5 ms, p95 17.2 ms, max 19.9 ms (pointer event -> X window in place); drop verified; resize keeps it centred, min [962, 576]; maximize centred"
   },
   "gw_e2e_cover_screenshot_uncover": {
    "reqs": [
@@ -44,7 +44,7 @@
     "R68"
    ],
    "status": "pass",
-   "detail": "sysmenu_cover_ms 32.4; sysmenu_uncover_ms 9.4; apps_cover_ms 22.0; apps_uncover_ms 51.7; window_cover_ms 17.8; window_uncover_ms 37.4; toast_cover_ms 24.0; shell_cover_ms_median 21.9; shell_uncover_ms_median 6.7; screenshot = game colour (150, 30, 40); process T while covered; keyboard back to the k"
+   "detail": "sysmenu_cover_ms 35.3; sysmenu_uncover_ms 20.1; apps_cover_ms 22.3; apps_uncover_ms 52.5; window_cover_ms 18.9; window_uncover_ms 41.2; toast_cover_ms 23.3; shell_cover_ms_median 22.7; shell_uncover_ms_median 5.4; screenshot = game colour (150, 30, 40); process T while covered; keyboard back to the "
   },
   "gw_e2e_minimize_restore_dock": {
    "reqs": [
@@ -53,7 +53,7 @@
     "R68"
    ],
    "status": "pass",
-   "detail": "_ -> unmapped in 38 ms, process T, dock icon scale 1.33; dock click -> mapped in 8 ms, running, focused"
+   "detail": "_ -> unmapped in 28 ms, process T, dock icon scale 1.33; dock click -> mapped in 9 ms, running, focused"
   },
   "gw_e2e_improve_versions_close": {
    "reqs": [
@@ -63,7 +63,7 @@
     "R86"
    ],
    "status": "pass",
-   "detail": "✨ note covered the game; 'make the background green' -> v2 (green) in the same frame after 8.4 s, v1 ended without a crash record; v▾ v2●/v1 -> v1 (red) again; ✕ ended it in 57 ms, frame + icon gone"
+   "detail": "✨ note covered the game; 'make the background green' -> v2 (green) in the same frame after 8.8 s, v1 ended without a crash record; v▾ v2●/v1 -> v1 (red) again; ✕ ended it in 50 ms, frame + icon gone"
   },
   "gw_e2e_second_monitor": {
    "reqs": [
@@ -77,21 +77,21 @@
  },
  "numbers": {
   "lag": {
-   "p50": 6.3,
-   "p95": 16.7,
-   "max": 18.7,
+   "p50": 15.5,
+   "p95": 17.2,
+   "max": 19.9,
    "n": 24
   },
   "cover": {
-   "sysmenu_cover_ms": 32.4,
-   "sysmenu_uncover_ms": 9.4,
-   "apps_cover_ms": 22.0,
-   "apps_uncover_ms": 51.7,
-   "window_cover_ms": 17.8,
-   "window_uncover_ms": 37.4,
-   "toast_cover_ms": 24.0,
-   "shell_cover_ms_median": 21.9,
-   "shell_uncover_ms_median": 6.7
+   "sysmenu_cover_ms": 35.3,
+   "sysmenu_uncover_ms": 20.1,
+   "apps_cover_ms": 22.3,
+   "apps_uncover_ms": 52.5,
+   "window_cover_ms": 18.9,
+   "window_uncover_ms": 41.2,
+   "toast_cover_ms": 23.3,
+   "shell_cover_ms_median": 22.7,
+   "shell_uncover_ms_median": 5.4
   }
  }
 }

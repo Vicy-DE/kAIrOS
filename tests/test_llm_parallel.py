@@ -1126,6 +1126,9 @@ class Kernel:
         t = self.tmp
         for d in ("bin", "cache", "models", "games", "manifests", "log", "mock"):
             (t / d).mkdir()
+        # [fix 2026-10-22] the kernel runs WITH its GPU (a fake driver dir listing one device): quality translation is
+        # the loaded LLM only where an LLM can run on a GPU — without one it goes to the fast translator
+        (t / "nvidia" / "gpus" / "0000:01:00.0").mkdir(parents=True)
         wrapper = t / "bin" / "llama-server"
         wrapper.write_text(f"#!/bin/bash\nexec {sys.executable} {Path(__file__).resolve()} --mock-llama \"$@\"\n")
         wrapper.chmod(0o755)
@@ -1155,7 +1158,7 @@ class Kernel:
                    VIBEOS_MANIFEST=str(t / "manifests" / "tier-8gb.json"), VIBEOS_PORT=str(KPORT),
                    VIBEOS_LLAMA_PORT=str(LPORT), VIBEOS_SD_PORT="8088", VIBEOS_TRANSLATE_PORT="8089",
                    VIBEOS_FORCE_OFFLINE="1", KAIROS_LOG_DIR=str(t / "log"), VIBEOS_TOKEN_FILE=str(t / "token"),
-                   VIBEOS_NVIDIA_PROC="/nonexistent", MOCK_SD_ARGLOG=str(t / "sd-args.log"),
+                   VIBEOS_NVIDIA_PROC=str(t / "nvidia"), MOCK_SD_ARGLOG=str(t / "sd-args.log"),
                    PAR_MOCK_LOG=str(self.mock), PAR_MOCK_START_DELAY="0.8", PYTHONUNBUFFERED="1")
         self.logf = open(t / "kernel.log", "wb")
         self.proc = subprocess.Popen([sys.executable, str(REPO / "kernel" / "server.py")], env=env,

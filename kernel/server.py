@@ -151,6 +151,23 @@ def engine_info() -> dict:
             "forced": os.environ.get("VIBEOS_ENGINE", "").strip().lower() or None}
 
 
+def cuda_device_present() -> bool:
+    """[fix 2026-10-22] the NVIDIA driver lists at least one GPU (/proc/driver/nvidia/gpus/<bus id>). A loaded driver
+    alone is not a device: with the 4070 off the bus (it dropped off twice on quick restarts) or handed to vfio, the
+    CUDA build of llama-server finds no device and runs the model on the CPU."""
+    try:
+        return any((NVIDIA_PROC / "gpus").iterdir())
+    except OSError:
+        return False
+
+
+def llm_gpu_now() -> bool:
+    """[fix 2026-10-22] would an LLM started now run on a GPU? Vulkan = the iGPU set; CUDA (detected or forced) needs a
+    device; "cpu" (no driver, no Vulkan set) never."""
+    backend = engine_backend()
+    return backend == "vulkan" or (backend == "cuda" and cuda_device_present())
+
+
 def engine_path(name: str) -> Path:
     """The binary to exec for engine `name` under the selected backend. A Vulkan set
     that lacks the binary (older set without sd-cli/ace-*) falls back to bin/<name>."""
@@ -2001,6 +2018,7 @@ class ModelManager:
         self.llama_proc = None
         self.llama_model_key = None  # "llm" or "python_llm"
         self.llama_ready = False     # /health answered since the current llama_proc started
+        self.llama_on_gpu = None     # [fix 2026-10-22] llm_gpu_now() when the current llama_proc started (None: none runs)
         self.state = "idle"          # idle | llm | image | video
         self._sd_open = None         # [R79] the sd-server session in its idle window (_SdSession)
         self._prewarm_checked = False   # [R79] the first llama-server start looked at kairos-prewarm
@@ -2135,6 +2153,7 @@ class ModelManager:
         self.llama_proc = None
         self.llama_model_key = None
         self.llama_ready = False
+        self.llama_on_gpu = None
         self._gpu_clear(*LLAMA_GPU_KINDS)                 # [R80]
 
     # ---- parallel slots [R72] ----------------------------------------------------------
@@ -2304,6 +2323,7 @@ class ModelManager:
                 log.close()                            # the engine holds its own descriptor
         self.llama_model_key = key
         self.llama_ready = False
+        self.llama_on_gpu = llm_gpu_now()              # [fix 2026-10-22] a server started on the CPU stays there
         self._gpu_set("expander" if key.startswith("expander:") else key, key, spec["name"])   # [R80] loading
         await self.wait_llama_health()
 
@@ -6776,7 +6796,31 @@ def translation_choice(settings=None) -> dict:
                         "(vibe.models.download('translation') fetches both)")
         else:
             fallback = f"this tier has no {want} translation model — using the {other} one"
-    return {"setting": want, "effective": other if fallback else want, "fallback": fallback}
+    effective, reason = (other if fallback else want), None
+    if effective == "quality" and translation_mode_present("fast"):
+        reason = quality_translation_gpu_missing()
+        if reason:                                                   # [fix 2026-10-22] quality needs the GPU
+            effective = "fast"
+            fallback = (f"{reason} — the quality translator ("
+                        f"{'the loaded LLM' if translation_quality_llm() else 'the quality translation model'}) would run "
+                        "on the CPU and take minutes; the fast translator answers until the GPU is back")
+    return {"setting": want, "effective": effective, "fallback": fallback, "reason": reason}
+
+
+def quality_translation_gpu_missing():
+    """[fix 2026-10-22] "no GPU" when a quality translation would run on the CPU, else None. The quality translator
+    (R89: the loaded LLM; 16 GB and up: the 9B) goes through llama-server on the GPU path; with the GPU off it ran the
+    heretic Gemma on the CPU and answered after 134 s (build-v7.5-3 verification). Two cases: no GPU for a server
+    started now (no CUDA device — the 4070 off the bus, no driver — and no Vulkan set), or the kernel already runs the
+    LLM in CPU mode (its llama-server was started while there was none: it stays on the CPU until it restarts). With a
+    GPU nothing changes."""
+    if not llm_gpu_now():
+        return "no GPU"
+    if MM.llama_on_gpu is False and MM.llama_proc is not None and MM.llama_proc.returncode is None:
+        keys = {"llm", quality_llm_section()[0]} if translation_quality_llm() else {"translation"}
+        if MM.llama_model_key in keys:
+            return "no GPU"
+    return None
 
 
 def translation_unavailable_reason(check_setting: bool = True):
@@ -7017,7 +7061,9 @@ async def translate_texts(texts: list, to: str, frm=None, settings=None, prefer=
     `prefer="fast"` keeps the kernel's own helper calls (a search query, an image prompt) off
     the GPU when the fast file is there. Returns (translations, {"model", "via", "calls", "cached",
     "ms"}) — `via` = "llm" when the loaded LLM translated [R89], "mt" for a translation model, None
-    when nothing ran. Raises RuntimeError with a clean sentence when no model can run, and
+    when nothing ran; [fix 2026-10-22] plus "reason": "no GPU" when quality was selected and the fast
+    translator answered because the quality one would run on the CPU (translation_choice() says so).
+    Raises RuntimeError with a clean sentence when no model can run, and
     MinorBlockError [R89, R86 check points 4/3] when the narrow minors block hits a text the LLM
     would translate."""
     t0 = time.monotonic()
@@ -7035,9 +7081,15 @@ async def translate_texts(texts: list, to: str, frm=None, settings=None, prefer=
             continue
         todo.setdefault(text, []).append(i)
     if todo:
-        mode = translation_choice(s)["effective"]
+        choice = translation_choice(s)
+        mode = choice["effective"]
         if prefer == "fast" and translation_mode_present("fast"):
             mode = "fast"
+        elif choice["reason"]:
+            # [fix 2026-10-22] quality selected but no GPU: the fast CPU translator answers, and the answer says why
+            info["reason"] = choice["reason"]
+            print(f"[kernel] translation: quality → fast ({choice['reason']}: the quality translator would run on the "
+                  f"CPU) — {len(todo)} text(s)", flush=True)
         via_llm = mode == "quality" and translation_quality_llm()  # [R89] the loaded LLM is the quality translator
         info["model"], info["via"] = mode, ("llm" if via_llm else "mt")
         language = LANGUAGES[to]
@@ -7174,6 +7226,7 @@ def translation_status() -> dict:
     return {"enabled": ts["enabled"], "language": ts["language"], "language_name": LANGUAGES[ts["language"]],
             "active": translation_active(s), "languages": list(LANGUAGES), "names": dict(LANGUAGES),
             "quality": ts["quality"], "effective": choice["effective"], "fallback": choice["fallback"],
+            "fallback_reason": choice["reason"],   # [fix 2026-10-22] "no GPU": quality is served by the fast translator
             "modes": list(TRANSLATION_QUALITY),
             "quality_llm": qllm,           # [R89] true: quality = the loaded LLM (no download, no swap)
             "present": {m: translation_mode_present(m) for m in TRANSLATION_QUALITY},
@@ -7191,7 +7244,9 @@ async def h_translate(request):
     """POST /api/translate {"text" | "texts": [...], "to"?, "from"?} → {"text" | "texts", "to",
     "from", "model", "calls", "cached", "ms"} [R71]. `to` defaults to the `language` setting,
     `from` is optional (the model detects it). Off → 400 naming the setting; add-on missing →
-    400 naming the download (vision_unavailable_reason's shape); an engine failure → 502."""
+    400 naming the download (vision_unavailable_reason's shape); an engine failure → 502.
+    [fix 2026-10-22] quality selected without a GPU → the fast translator answers with
+    "model": "fast", "reason": "no GPU"."""
     body = await request.json()
     if not isinstance(body, dict):
         return web.json_response({"error": 'expected {"text": "…"} or {"texts": ["…"]}'}, status=400)

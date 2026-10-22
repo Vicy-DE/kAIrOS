@@ -2434,6 +2434,9 @@ class Kernel:
         t = self.tmp
         for d in ("bin", "cache", "models", "games", "manifests", "log", "run"):
             (t / d).mkdir()
+        # [fix 2026-10-22] the kernel runs WITH its GPU (a fake driver dir listing one device): quality translation is
+        # the loaded LLM only where an LLM can run on a GPU — without one it goes to the fast translator
+        (t / "nvidia" / "gpus" / "0000:01:00.0").mkdir(parents=True)
         (t / "bin" / "llama-server").symlink_to(REPO / "tests" / "mock-llama-server")
         (t / "bin" / "sd-cli").symlink_to(REPO / "tests" / "mock-sd-cli")
         (t / "bin" / "sd-server").symlink_to(REPO / "tests" / "mock-sd-server")
@@ -2471,7 +2474,7 @@ class Kernel:
                         VIBEOS_MANIFEST=str(t / "manifests" / "tier-8gb.json"), VIBEOS_PORT=str(KPORT),
                         VIBEOS_LLAMA_PORT=str(LPORT), VIBEOS_SD_PORT=str(SDPORT), VIBEOS_TRANSLATE_PORT=str(TRPORT),
                         VIBEOS_FORCE_OFFLINE="1", KAIROS_LOG_DIR=str(t / "log"), VIBEOS_TOKEN_FILE=str(t / "token"),
-                        VIBEOS_NVIDIA_PROC="/nonexistent", MOCK_SD_ARGLOG=str(t / "sd-args.log"),
+                        VIBEOS_NVIDIA_PROC=str(t / "nvidia"), MOCK_SD_ARGLOG=str(t / "sd-args.log"),
                         MOCK_SDSERVER_LOG=str(t / "sd-server.log"), MOCK_SDSERVER_LOAD_S="0.1",
                         MOCK_SDSERVER_RENDER_S="0.1", MOCK_LLAMA_ARGLOG=str(t / "llama-args.log"),
                         MOCK_LLAMA_MSGLOG=str(t / "llama-msgs.log"), PYTHONUNBUFFERED="1",

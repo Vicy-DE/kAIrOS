@@ -369,7 +369,8 @@ def t_xinit(ctx):
         a = launches[0]
         w, h = (4480, 1440) if lay == "2mixed" else (5760, 1440)
         assert "--kiosk" not in a.split() and "--class=kairos-desktop" in a and "--window-position=0,0" in a, a
-        assert f"--window-size={w},{h}" in a and "--user-data-dir=/tmp/kiosk-0" in a and "--incognito" in a, a
+        # [fix 2026-10-22] no --incognito (it ignores the GTK theme: the #3c3c3c pre-paint frame); a fresh profile instead
+        assert f"--window-size={w},{h}" in a and "--user-data-dir=/tmp/kiosk-0" in a and "--incognito" not in a, a
         hint = monmath.hint(monmath.from_outputs(monmath.parse_xrandr(subprocess.run(
             [str(MOCK_XRANDR), "--query"], capture_output=True, text=True,
             env=dict(os.environ, MOCK_XRANDR_LAYOUT=lay, MOCK_XRANDR_QUERY="")).stdout)))
@@ -380,6 +381,19 @@ def t_xinit(ctx):
     code = "\n".join(l for l in xi.splitlines() if not l.lstrip().startswith("#"))
     assert re.search(r"^openbox-session &$", code, re.M) and not re.search(r"openbox-session [^&\n]", code)
     assert '"custom_chrome_frame":false' in xi and "/tmp/kiosk-0/Default/Preferences" in xi
+    # [fix 2026-10-22] the profile is wiped before EVERY launch (nothing survives a relaunch, as with incognito) and
+    # follows the GTK theme (the pre-paint colour = gtk.css's view background); proven on the launch function's output
+    lk = xi[xi.index("launch_all_kiosks() {"):xi.index("# [R73/R28] the painter's picture on the root window")]
+    assert lk.index("rm -rf /tmp/kiosk-0\n") < lk.index("mkdir -p /tmp/kiosk-0/Default") < lk.index("chromium $CHROME_FLAGS")
+    assert "--incognito" not in flags
+    with tempfile.TemporaryDirectory() as td:
+        pre = lk[lk.index("rm -rf /tmp/kiosk-0"):lk.index("    if [ \"$W\" -gt 0 ]")].replace("/tmp/kiosk-0", f"{td}/kiosk-0")
+        Path(td, "kiosk-0", "Default").mkdir(parents=True)
+        Path(td, "kiosk-0", "Default", "Cookies").write_text("x")              # a previous launch's state
+        subprocess.run(["sh", "-c", pre], check=True, timeout=10)
+        assert sorted(p.name for p in Path(td, "kiosk-0").rglob("*")) == ["Default", "Preferences"]
+        prefs = json.loads(Path(td, "kiosk-0", "Default", "Preferences").read_text())
+        assert prefs == {"browser": {"custom_chrome_frame": False}, "extensions": {"theme": {"system_theme": 1, "use_system": True}}}, prefs
     assert '( while [ -f "$DESK" ]; do python3 "$DESK" watch; sleep 2; done ) &' in xi and "DESK=/opt/vibeos/os/scripts/desktop/kairos-desktop.py" in xi
     rc = xi[xi.index("root_cover() {"):xi.index("# liveness of the BROWSERS")]
     assert 'python3 "$DESK" monitors --rects' in rc and 'set -- "$@" "$d/frame$i.raw" "$w" "$h" "$x" "$y"' in rc and "root-cover.py \"$@\"" in rc
@@ -418,6 +432,8 @@ def t_rc(ctx):
     for v in ("3.0", "4.0"):
         css = (INC / "home" / "kairos" / ".config" / f"gtk-{v}" / "gtk.css").read_text()
         assert re.search(r"window[^{]*\{[^}]*background-color: #0a0a14", css), v
+        # [fix 2026-10-22] the web area before a page's first frame: GTK's VIEW background (the kiosk follows the GTK theme)
+        assert re.search(r"^\.view, textview[^{]*\{[^}]*background-color: #0a0a14", css, re.M), v
     shell = (REPO / "shell" / "shell.js").read_text() + (REPO / "shell" / "games.js").read_text()
     assert "SCREEN" not in shell and "screen-secondary" not in (REPO / "shell" / "shell.css").read_text()
     html = (REPO / "shell" / "index.html").read_text()

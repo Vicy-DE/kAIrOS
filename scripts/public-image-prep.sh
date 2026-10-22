@@ -15,10 +15,12 @@
 # What it does (prepare) / checks (verify):
 #   network   NetworkManager system-connections (the build's rendered WiFi, iso/secrets/wifi.env) and its state
 #             (leases, seen BSSIDs, secret key), wpa_supplicant configs with a network/psk, DHCP leases, Bluetooth pairings
+#             [fix 2026-10-22] /etc/resolv.conf = NetworkManager's /run file (a baked one names the build network's resolver)
 #   ssh       root's and every user's authorized_keys (iso/secrets/authorized_keys), private keys + known_hosts in their
 #             ~/.ssh, the SSH host keys (+ the first-boot flags: kairos-public-firstboot.service makes new keys and a new
 #             snakeoil certificate on the first boot), sshd DISABLED (users: systemctl enable --now ssh)
-#   identity  /etc/machine-id emptied (systemd's first boot), the random seeds, hostname "kairos"
+#   identity  /etc/machine-id emptied (systemd's first boot), the random seeds, hostname "kairos" (+ its /etc/hosts line,
+#             127.0.1.1 — [fix 2026-10-22] added when missing: startx's xauth would look the name up over DNS)
 #   logs      every file under /var/log (journals included), the ESP's KAIROS-LOGS, core dumps, /tmp, /var/tmp
 #   history   shell / editor histories of root and every user, root's caches, the kiosk browser profile + caches
 #   testrig   the remote-UI exposure drop-in, the rig's VNC unit, the build stamps (/opt/vibeos/HOTFIX: build-host paths),
@@ -162,6 +164,13 @@ for f in "$ROOT"/etc/wpa_supplicant/*.conf; do
 done
 rm_paths "DHCP leases" "$ROOT"/var/lib/dhcp/*.leases "$ROOT"/var/lib/dhcp/dhclient*.lease* "$ROOT"/var/lib/NetworkManager/*.lease
 rm_paths "Bluetooth pairing" "$ROOT"/var/lib/bluetooth/*
+# [fix 2026-10-22] NetworkManager owns /etc/resolv.conf (rc-manager=symlink, tmpfiles.d/kairos.conf): a regular file
+# here was written on the build machine and names its resolver (v7.5-3: the build VM's 10.0.2.3)
+if [ "$(readlink "$ROOT/etc/resolv.conf" 2>/dev/null)" != /run/NetworkManager/resolv.conf ]; then
+  if [ "$MODE" = verify ]; then fail "resolv.conf is not NetworkManager's /run file (a baked one names the build's resolver): /etc/resolv.conf"
+  else mkdir -p "$ROOT/etc"; rm -f -- "$ROOT/etc/resolv.conf"; ln -s /run/NetworkManager/resolv.conf "$ROOT/etc/resolv.conf"
+       fixed "resolv.conf -> /run/NetworkManager/resolv.conf: /etc/resolv.conf"; fi
+fi
 
 # ------------------------------------------------------------------------------------------------ ssh
 for h in "${USERS[@]}"; do
@@ -205,6 +214,18 @@ if [ -f "$ROOT/etc/hosts" ] && grep -qE '^127\.0\.1\.1[[:space:]]' "$ROOT/etc/ho
    && ! grep -qE '^127\.0\.1\.1[[:space:]]+kairos[[:space:]]*$' "$ROOT/etc/hosts"; then
   if [ "$MODE" = verify ]; then fail "/etc/hosts names another host on 127.0.1.1"
   else sed -i -E 's/^127\.0\.1\.1[[:space:]].*$/127.0.1.1\tkairos/' "$ROOT/etc/hosts"; fixed "hostname in /etc/hosts"; fi
+fi
+# [fix 2026-10-22] the host must be named at all: with no 127.0.1.1 line (v7.5-3's /etc/hosts was empty) startx's xauth
+# looked the hostname up over DNS — 2 x 20 s where a network drops DNS
+if ! grep -qE '^127\.0\.1\.1[[:space:]]' "$ROOT/etc/hosts" 2>/dev/null; then
+  if [ "$MODE" = verify ]; then fail "/etc/hosts does not name the host (no 127.0.1.1 line): /etc/hosts"
+  else
+    mkdir -p "$ROOT/etc"
+    grep -qE '^127\.0\.0\.1[[:space:]]+localhost([[:space:]]|$)' "$ROOT/etc/hosts" 2>/dev/null || printf '127.0.0.1\tlocalhost\n' >> "$ROOT/etc/hosts"
+    printf '127.0.1.1\tkairos\n' >> "$ROOT/etc/hosts"
+    grep -qE '^::1[[:space:]]' "$ROOT/etc/hosts" || printf '::1\tlocalhost ip6-localhost ip6-loopback\n' >> "$ROOT/etc/hosts"
+    chmod 0644 "$ROOT/etc/hosts"; fixed "hostname added to /etc/hosts: /etc/hosts"
+  fi
 fi
 
 # ------------------------------------------------------------------------------------------------ logs

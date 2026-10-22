@@ -1,0 +1,11 @@
+# kAIrOS [fix 2026-10-22]: the machine's own names resolve here, never over DNS. With this file empty, startx's
+# `xauth` looked the hostname (localhost.localdomain) up over DNS; where a network drops DNS silently each lookup
+# waited 20 s and X started 40 s late (docs/FIXES-2026-10-22.md). 127.0.1.1 = the hostname (/etc/hostname), the
+# Debian convention; scripts/public-image-prep.sh renames that line with the host ("kairos" on public images).
+127.0.0.1	localhost
+127.0.1.1	localhost.localdomain
+
+# The following lines are desirable for IPv6 capable hosts
+::1	localhost ip6-localhost ip6-loopback
+ff02::1	ip6-allnodes
+ff02::2	ip6-allrouters

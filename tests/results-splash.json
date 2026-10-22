@@ -1,5 +1,5 @@
 {
- "at": "2026-10-19 19:39:21",
+ "at": "2026-10-22 08:24:43",
  "painter": "committed binary",
  "tests": {
   "splash_bgrt_fullscreen_hp_style": {
@@ -73,7 +73,7 @@
     "R73"
    ],
    "status": "pass",
-   "detail": "ENODEV -> closed + silent; reopened amdgpudrmfb 1920x1080 scale 1.35, repainted; SIGUSR1 -> rc 0, mode untouched; state 'phase=2 t=248312.4 expected=90.0 progress=0.970 fb=amdgpudrm'"
+   "detail": "ENODEV -> closed + silent; reopened amdgpudrmfb 1920x1080 scale 1.35, repainted; SIGUSR1 -> rc 0, mode untouched; state 'phase=2 t=467034.2 expected=90.0 progress=0.970 fb=amdgpudrm'"
   },
   "splash_signals_and_stop": {
    "reqs": [
@@ -89,7 +89,7 @@
     "R28"
    ],
    "status": "pass",
-   "detail": "phase 1 1300 logo px -> fade-out (0 left, 0 wordmark px) -> fade-in (0 logo px) -> phase 2 (1755 wordmark px)"
+   "detail": "phase 1 1300 logo px -> fade-out (1300 left, 0 wordmark px) -> fade-in (0 logo px) -> phase 2 (1755 wordmark px)"
   },
   "splash_root_cover_hermetic": {
    "reqs": [

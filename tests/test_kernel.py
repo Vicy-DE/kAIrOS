@@ -7066,6 +7066,253 @@ async def t_r89_quality_via_llm(s):
             "and quality=fast stay on the 2B (:8085)")
 
 
+@run_test("http_translation_quality_without_gpu_goes_fast", ["R89", "R71", "R72"])
+async def t_translation_no_gpu(s):
+    """[fix 2026-10-22] translation_quality=quality without a GPU: the fast CPU translator answers, and the answer says
+    so ("model": "fast", "via": "mt", "reason": "no GPU"); /api/translate/status shows effective fast, the fallback
+    sentence and fallback_reason "no GPU". Both ways the GPU can be missing are driven on the suite's kernel through
+    its fake driver dir (VIBEOS_NVIDIA_PROC, tests/run-tests.sh): the device gone from gpus/ (the 4070 off the bus, the
+    driver still loaded) and the whole driver gone (engine "cpu"). With the device back nothing changes: quality is
+    the loaded LLM again (:8081, no reason). Before: the heretic Gemma on the CPU, 134 s per sentence."""
+    import shutil
+    nv = Path(os.environ.get("VIBEOS_NVIDIA_PROC", ""))
+    dev = nv / "gpus" / "0000:01:00.0"
+    if not os.environ.get("VIBEOS_NVIDIA_PROC") or not dev.is_dir():
+        raise SkipTest("the suite's fake GPU (VIBEOS_NVIDIA_PROC with gpus/<bus id>, tests/run-tests.sh) is not set up")
+    msglog, klog = VDIR / "llama-msgs.log", VDIR / "kernel.log"
+    msgs = lambda: [json.loads(ln) for ln in (msglog.read_text().splitlines() if msglog.exists() else [])]
+    parked, parked_drv = nv.parent / "nvidia-gpu-parked", nv.parent / "nvidia-driver-parked"
+    await _translation_reset(s)
+    async with s.post(f"{BASE}/api/settings", json={"translation": "on", "language": "de", "translation_quality": "quality"}) as r:
+        assert r.status == 200
+    stamp = f"{time.time():.3f}"
+    out = []
+    try:
+        # with the GPU: unchanged (R89)
+        async with s.get(f"{BASE}/api/translate/status") as r:
+            st = await r.json()
+        assert st["effective"] == "quality" and st["fallback"] is None and st["fallback_reason"] is None, st
+        m0 = len(msgs())
+        async with s.post(f"{BASE}/api/translate", json={"text": f"With the GPU {stamp}"}) as r:
+            j = await r.json()
+        assert r.status == 200 and j["model"] == "quality" and j["via"] == "llm" and "reason" not in j, j
+        assert [m["port"] for m in msgs()[m0:]] == [8081], msgs()[m0:]
+        for case in ("device off the bus", "no driver"):
+            if case == "device off the bus":
+                shutil.move(str(dev), str(parked))                     # the driver stays, its GPU list is empty
+            else:
+                shutil.move(str(nv), str(parked_drv))                  # /proc/driver/nvidia gone: engine "cpu"
+            async with s.get(f"{BASE}/api/status") as r:
+                full = await r.json()
+            st = full["translation"]
+            assert st["quality"] == "quality" and st["effective"] == "fast" and st["fallback_reason"] == "no GPU" \
+                and st["fallback"].startswith("no GPU — the quality translator (the loaded LLM) would run on the CPU"), st
+            assert full["engine"] == ("cuda" if case == "device off the bus" else "cpu"), full["engine"]
+            m0, k0 = len(msgs()), len(klog.read_text())
+            t0 = time.monotonic()
+            async with s.post(f"{BASE}/api/translate", json={"text": f"Good morning, {case} {stamp}"}) as r:
+                j = await r.json()
+            took = time.monotonic() - t0
+            assert r.status == 200 and j["model"] == "fast" and j["via"] == "mt" and j["reason"] == "no GPU" \
+                and j["text"] == f"[de] Good morning, {case} {stamp}" and j["calls"] == 1, j
+            new = msgs()[m0:]
+            assert [m["port"] for m in new] == [8085] and new[0]["system"] is None, new        # the 2B on the CPU only
+            assert "translation: quality → fast (no GPU: the quality translator would run on the CPU) — 1 text(s)" \
+                in klog.read_text()[k0:], klog.read_text()[k0:][-600:]
+            # a UI batch: fast as always, no reason (nothing was redirected)
+            async with s.post(f"{BASE}/api/translate", json={"texts": [f"Open {case} {stamp}"], "dom": True}) as r:
+                jd = await r.json()
+            assert r.status == 200 and jd["model"] == "fast" and "reason" not in jd, jd
+            out.append(f"{case}: fast in {took:.2f} s")
+            if case == "device off the bus":
+                shutil.move(str(parked), str(dev))
+            else:
+                shutil.move(str(parked_drv), str(nv))
+        # the GPU back: quality = the loaded LLM again, nothing else changed
+        async with s.get(f"{BASE}/api/translate/status") as r:
+            st = await r.json()
+        assert st["effective"] == "quality" and st["fallback_reason"] is None, st
+        m0 = len(msgs())
+        async with s.post(f"{BASE}/api/translate", json={"text": f"The GPU is back {stamp}"}) as r:
+            j = await r.json()
+        assert r.status == 200 and j["model"] == "quality" and j["via"] == "llm" and "reason" not in j, j
+        assert [m["port"] for m in msgs()[m0:]] == [8081], msgs()[m0:]
+    finally:
+        if parked_drv.exists() and not nv.exists():
+            shutil.move(str(parked_drv), str(nv))
+        if parked.exists() and not dev.exists():
+            shutil.move(str(parked), str(dev))
+        await _translation_reset(s)
+    return "with GPU: quality on the LLM (:8081); " + "; ".join(out) + " (:8085, reason 'no GPU', logged); GPU back: the LLM again"
+
+
+@run_test("unit_translation_quality_gpu_rules", ["R89", "R71", "R30"])
+async def t_translation_gpu_rules(_):
+    """[fix 2026-10-22] quality_translation_gpu_missing() / translation_choice() in-process: "no GPU" without a CUDA
+    device (driver loaded, gpus/ empty), without a driver (engine cpu), with VIBEOS_ENGINE=cuda forced on a machine
+    without one, and while the LLM's llama-server was started on the CPU and still runs (it stays there until it
+    restarts) — None with a device, on the Vulkan set (the iGPU), and for a CPU-started server of another key (an
+    expander). Without the fast file quality stays quality (the slow CPU answer beats none); the 16 GB tier's 9B
+    (quality = a translation model) follows the same rule under its own key."""
+    import tempfile
+    sys.path.insert(0, str(REPO / "kernel"))
+    import server
+    MM = server.MM
+
+    class Running:                                    # a llama_proc that is alive
+        returncode = None
+    saved = (server.BIN, server.NVIDIA_PROC, os.environ.pop("VIBEOS_ENGINE", None),
+             MM.llama_proc, MM.llama_model_key, MM.llama_on_gpu, MM.manifest["translation"]["quality"])
+    q = {"translation": "on", "language": "de", "translation_quality": "quality"}
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            server.BIN, server.NVIDIA_PROC = td, td / "nvidia"
+            (td / "nvidia" / "gpus" / "0000:01:00.0").mkdir(parents=True)
+            MM.llama_proc = MM.llama_model_key = MM.llama_on_gpu = None
+            assert server.cuda_device_present() and server.llm_gpu_now() and server.quality_translation_gpu_missing() is None
+            assert server.translation_choice(q) == {"setting": "quality", "effective": "quality", "fallback": None, "reason": None}
+            (td / "nvidia" / "gpus" / "0000:01:00.0").rmdir()          # driver loaded, no device
+            assert server.engine_backend() == "cuda" and not server.cuda_device_present() and not server.llm_gpu_now()
+            c = server.translation_choice(q)
+            assert c["effective"] == "fast" and c["reason"] == "no GPU" and c["setting"] == "quality" and "no GPU" in c["fallback"], c
+            (td / "nvidia" / "gpus").rmdir(); (td / "nvidia").rmdir()   # no driver at all
+            assert server.engine_backend() == "cpu" and server.quality_translation_gpu_missing() == "no GPU"
+            os.environ["VIBEOS_ENGINE"] = "cuda"                       # forced CUDA on a machine without a device
+            assert server.engine_backend() == "cuda" and server.quality_translation_gpu_missing() == "no GPU"
+            os.environ.pop("VIBEOS_ENGINE")
+            (td / "vulkan").mkdir(); (td / "vulkan" / "llama-server").touch()   # the iGPU set: a GPU
+            assert server.engine_backend() == "vulkan" and server.quality_translation_gpu_missing() is None
+            (td / "vulkan" / "llama-server").unlink(); (td / "vulkan").rmdir()
+            # a GPU now, but the LLM's server was started on the CPU and still runs
+            (td / "nvidia" / "gpus" / "0000:01:00.0").mkdir(parents=True)
+            section = server.quality_llm_section()[0]
+            MM.llama_proc, MM.llama_model_key, MM.llama_on_gpu = Running(), section, False
+            assert server.quality_translation_gpu_missing() == "no GPU" and server.translation_choice(q)["effective"] == "fast"
+            MM.llama_on_gpu = True
+            assert server.quality_translation_gpu_missing() is None
+            MM.llama_model_key, MM.llama_on_gpu = "expander:image/x.gguf", False
+            assert server.quality_translation_gpu_missing() is None, "another key's CPU server says nothing about the LLM"
+            MM.llama_proc = MM.llama_model_key = MM.llama_on_gpu = None
+            # no fast file: quality stays (slow beats none)
+            fast = server.MODELS_DIR / server.translation_llm_spec("fast")["file"]
+            (td / "nvidia" / "gpus" / "0000:01:00.0").rmdir()
+            parked = fast.with_name(fast.name + ".parked")
+            fast.rename(parked)
+            try:
+                c = server.translation_choice(q)
+                assert c["effective"] == "quality" and c["reason"] is None, c
+            finally:
+                parked.rename(fast)
+            # the 16 GB tier's 9B: quality = a translation model, the same rule, its own key
+            q16 = json.loads((REPO / "manifests" / "tier-16gb.json").read_text())["translation"]["quality"]
+            MM.manifest["translation"]["quality"] = q16
+            nine = server.MODELS_DIR / q16["file"]
+            made = not nine.exists()
+            nine.parent.mkdir(parents=True, exist_ok=True); nine.touch()
+            try:
+                assert not server.translation_quality_llm()
+                c = server.translation_choice(q)
+                assert c["effective"] == "fast" and c["reason"] == "no GPU" and "the quality translation model" in c["fallback"], c
+                (td / "nvidia" / "gpus" / "0000:01:00.0").mkdir(parents=True)
+                MM.llama_proc, MM.llama_model_key, MM.llama_on_gpu = Running(), "translation", False
+                assert server.quality_translation_gpu_missing() == "no GPU"
+                MM.llama_on_gpu = True
+                assert server.translation_choice(q)["effective"] == "quality"
+            finally:
+                if made:
+                    nine.unlink()
+    finally:
+        server.BIN, server.NVIDIA_PROC = saved[0], saved[1]
+        os.environ.pop("VIBEOS_ENGINE", None)
+        if saved[2] is not None:
+            os.environ["VIBEOS_ENGINE"] = saved[2]
+        MM.llama_proc, MM.llama_model_key, MM.llama_on_gpu = saved[3], saved[4], saved[5]
+        MM.manifest["translation"]["quality"] = saved[6]
+    return ("no device / no driver / forced cuda without one / the LLM started on the CPU → 'no GPU' (fast); device, "
+            "Vulkan, another key's CPU server → none; no fast file → quality stays; 16 GB's 9B: same rule, key 'translation'")
+
+
+@run_test("unit_names_hosts_resolv_overlay", ["R28", "R51", "R78"])
+async def t_names_overlay(_):
+    """[fix 2026-10-22] X must not wait on DNS for the hostname: the overlay's /etc/hosts names localhost (v4 + v6) and
+    the image's hostname localhost.localdomain on 127.0.1.1 (the Debian line scripts/public-image-prep.sh renames);
+    /etc/resolv.conf is NetworkManager's /run file — a tmpfiles.d L+ rule (proven with the real systemd-tmpfiles on a
+    scratch root: a baked regular file becomes the link) and NetworkManager rc-manager=symlink + hostname-mode=none;
+    iso/build-img.sh installs the three files, re-points the hosts line at the image's hostname and links
+    resolv.conf (live-build rewrites both files); sync-guest.sh carries the overlay and runs the tmpfiles rules; the
+    startx path in .bash_profile/.xinitrc names no host (only :0 and localhost)."""
+    import configparser, shutil, subprocess, tempfile
+    inc = REPO / "iso" / "config" / "includes.chroot"
+    hosts = (inc / "etc" / "hosts").read_text()
+    lines = [ln.split() for ln in hosts.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    names = {}
+    for ln in lines:
+        for n in ln[1:]:
+            names.setdefault(n, []).append(ln[0])
+    assert names["localhost"] == ["127.0.0.1", "::1"] and names["localhost.localdomain"] == ["127.0.1.1"], names
+    assert [ln for ln in lines if ln[0] == "127.0.1.1"] == [["127.0.1.1", "localhost.localdomain"]], lines
+    assert {"ip6-localhost", "ip6-loopback", "ip6-allnodes", "ip6-allrouters"} <= set(names), names
+    # the public prep's rename regex finds the line (the same pattern as scripts/public-image-prep.sh)
+    prep = (REPO / "scripts" / "public-image-prep.sh").read_text()
+    assert r"s/^127\.0\.1\.1[[:space:]].*$/127.0.1.1\tkairos/" in prep and "/run/NetworkManager/resolv.conf" in prep
+    assert re.sub(r"^127\.0\.1\.1[ \t].*$", "127.0.1.1\tkairos", hosts, flags=re.M).count("127.0.1.1\tkairos") == 1
+    # NetworkManager: owns resolv.conf through its /run file, never sets the hostname
+    cp = configparser.ConfigParser()
+    cp.read_string((inc / "etc" / "NetworkManager" / "conf.d" / "20-kairos-dns.conf").read_text())
+    assert dict(cp["main"]) == {"rc-manager": "symlink", "hostname-mode": "none"}, dict(cp["main"])
+    tmpf = (inc / "etc" / "tmpfiles.d" / "kairos.conf").read_text()
+    rule = [ln for ln in tmpf.splitlines() if "resolv.conf" in ln and not ln.startswith("#")]
+    assert rule == ["L+ /etc/resolv.conf - - - - /run/NetworkManager/resolv.conf"], rule
+    assert not (inc / "etc" / "resolv.conf").exists() and not (inc / "etc" / "resolv.conf").is_symlink(), \
+        "no resolv.conf in the overlay (a tracked link would be read through by make-bundle.sh)"
+    tool = shutil.which("systemd-tmpfiles")
+    proven = "systemd-tmpfiles absent: rule text only"
+    if tool:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "etc").mkdir()
+            (root / "etc" / "resolv.conf").write_text("# Generated by NetworkManager\nnameserver 10.0.2.3\n")   # v7.5-3's
+            conf = root / "rule.conf"
+            conf.write_text(rule[0] + "\n")
+            r = subprocess.run([tool, f"--root={root}", "--create", str(conf)], capture_output=True, text=True, timeout=30)
+            assert r.returncode == 0 and (root / "etc" / "resolv.conf").is_symlink() \
+                and os.readlink(root / "etc" / "resolv.conf") == "/run/NetworkManager/resolv.conf", (r.returncode, r.stderr)
+            r = subprocess.run([tool, f"--root={root}", "--create", str(conf)], capture_output=True, text=True, timeout=30)
+            assert r.returncode == 0 and os.readlink(root / "etc" / "resolv.conf") == "/run/NetworkManager/resolv.conf", "idempotent"
+        proven = "systemd-tmpfiles --root turned a baked resolv.conf into the link (twice: idempotent)"
+    # the image build sets both after the chroot step (live-build's chroot_hosts / chroot_resolv rewrite them)
+    bi = (REPO / "iso" / "build-img.sh").read_text()
+    names_step = bi[bi.index("# --- names [fix 2026-10-22"):bi.index("# --- install systemd-boot")]
+    assert bi.index("# --- names [fix 2026-10-22") > bi.index("\nCHROOT\n"), "after the chroot block"
+    for x in ('install -D -m 644 "$INC/etc/hosts" "$MNT/etc/hosts"',
+              'install -D -m 644 "$INC/etc/NetworkManager/conf.d/20-kairos-dns.conf"',
+              'install -D -m 644 "$INC/etc/tmpfiles.d/kairos.conf"', 'rm -f "$MNT/etc/resolv.conf"',
+              'ln -s /run/NetworkManager/resolv.conf "$MNT/etc/resolv.conf"', r"127.0.1.1\t$HN", "exit 99"):
+        assert x in names_step, x
+    # the step's hostname rewrite, run on a scratch root with another hostname
+    with tempfile.TemporaryDirectory() as td:
+        mnt = Path(td)
+        (mnt / "etc").mkdir()
+        (mnt / "etc" / "hostname").write_text("kairos-box\n")
+        r = subprocess.run(["bash", "-euo", "pipefail", "-c", names_step], capture_output=True, text=True, timeout=30,
+                           env=dict(os.environ, INC=str(inc), MNT=str(mnt)))
+        assert r.returncode == 0 and "names: /etc/hosts names kairos-box on 127.0.1.1" in r.stdout, (r.returncode, r.stdout, r.stderr)
+        h = (mnt / "etc" / "hosts").read_text()
+        assert re.findall(r"^127\.0\.1\.1[ \t]+(.*)$", h, re.M) == ["kairos-box"] \
+            and os.readlink(mnt / "etc" / "resolv.conf") == "/run/NetworkManager/resolv.conf", h
+    # the rig's sync carries the whole overlay (so /etc/hosts + the NM conf) and runs the tmpfiles rules
+    sg = (REPO / "dev" / "rig" / "testrig" / "sync-guest.sh").read_text()
+    assert 'tar -C "$REPO/iso/config/includes.chroot" -czf - etc usr home' in sg and "systemd-tmpfiles --create /etc/tmpfiles.d/kairos.conf" in sg
+    # the startx path: startx itself takes `uname -n` (no lookup) and xauth looks up "<hostname>:0" — now in /etc/hosts;
+    # .bash_profile / .xinitrc name no other host than :0 and localhost
+    for f in (inc / "home" / "kairos" / ".bash_profile", inc / "home" / "kairos" / ".xinitrc"):
+        hostsy = set(re.findall(r"https?://([A-Za-z0-9.-]+)", f.read_text()))
+        assert hostsy <= {"localhost"}, (f.name, hostsy)
+    assert "startx -- :0 " in (inc / "home" / "kairos" / ".bash_profile").read_text()
+    return f"/etc/hosts: localhost v4+v6, localhost.localdomain on 127.0.1.1; resolv.conf: {proven}; NM symlink + no hostname; build-img step ran on a scratch root"
+
+
 @run_test("unit_r89_docs_and_sheets_static", ["R89", "R39", "R59"])
 async def t_r89_docs(_):
     """[R89] the documents say what the kernel does: the requirement, the benchmark's lasting record (no personal paths,

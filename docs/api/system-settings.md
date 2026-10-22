@@ -28,11 +28,11 @@ fallback) as one line.
 
 **Language & translation** (a "Language" section) [R71]: `m.translation` = `{enabled, language,
 languages: ["en","de","es","fr","it","ja","ru"], names: {de: "German", …}, quality: "fast"|"quality", effective,
-fallback, quality_llm, model: {fast, quality}, present: {fast, quality}, running, cache}`. A `<select>` over
+fallback, fallback_reason, quality_llm, model: {fast, quality}, present: {fast, quality}, running, cache}`. A `<select>` over
 `languages` (label `names[code]`) → `vibe.settings.set("language", code)`; a switch →
 `vibe.settings.set("translation", "on"|"off")` (off = nothing is translated); `vibe.settings.set("translation_quality",
 "fast"|"quality")` — label them "Fast (small CPU model)" and "Quality (" + `model.quality` + ")" (`quality_llm` true,
-8 GB: the loaded LLM translates, no download). `m.extras` entry `translation`: `present` true = works (the fast model
+8 GB: the loaded LLM translates, no download). Show `fallback` when set (`fallback_reason` "no GPU": quality is answered by the fast model until the GPU is back). `m.extras` entry `translation`: `present` true = works (the fast model
 is built in), `missing_gb` > 0 → "⬇ Download (missing_gb GB)" = `vibe.models.download("translation")`. Any app:
 `await vibe.translate("text")` → the OS language, `vibe.translate(["a", "b"], "en")` → an array into a named
 language; rejects while translation is off. Two more `m.extras` add-ons (a download button each while `present` is

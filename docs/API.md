@@ -345,7 +345,7 @@ searches) is turned into English on the way. Languages: `en de es fr it ja ru`.
 |---|---|---|
 | `translation` | `off` (default) · `on` | the switch. Off = zero change: no model started, prompts untouched, nothing in the DOM |
 | `language` | `en` (default) · `de` · `es` · `fr` · `it` · `ja` · `ru` | the user's language; `en` with translation on = nothing to translate |
-| `translation_quality` | `fast` (default) · `quality` | `fast` = the 2B model on the CPU (its own server: never evicts the GPU model, starts on first use, stops when switched off) · `quality` = **on the 8 GB tier the loaded LLM itself** [R89] (Gemma 4: no download, no model swap — one translation at a time on one of its two slots, so an app generation keeps the other); on 16 GB and up the 9B model on the GPU (takes the coder LLM's slot like vision; falls back to `fast` while its file is missing) |
+| `translation_quality` | `fast` (default) · `quality` | `fast` = the 2B model on the CPU (its own server: never evicts the GPU model, starts on first use, stops when switched off) · `quality` = **on the 8 GB tier the loaded LLM itself** [R89] (Gemma 4: no download, no model swap — one translation at a time on one of its two slots, so an app generation keeps the other); on 16 GB and up the 9B model on the GPU (takes the coder LLM's slot like vision; falls back to `fast` while its file is missing). **Without a GPU** (no CUDA device — e.g. the 4070 dropped off the bus — and no Vulkan set, or the LLM already running on the CPU) `quality` is answered by the fast model, with `"reason": "no GPU"` [fix 2026-10-22]: on the CPU the quality translator took 134 s per sentence |
 
 The models are the `translation` add-on. The fast 2B is **built into the shipped OS** (image
 v7.3+). Quality on the 8 GB tier needs nothing more: the GPU benchmark (`docs/FAST-MODELS-2026-10-17.md`)
@@ -358,12 +358,13 @@ translator is there (8 GB: `quality` = the LLM's file), `missing_gb` what `vibe.
 fetches (0 on the shipped 8 GB OS; the 9B's 9.8 GB on 16 GB+ until downloaded) and `download_gb` the whole add-on
 (1.3 GB on 8 GB, 11.1 GB above). A settings app shows translation as installed while `present` is true and offers a
 download only while `missing_gb` > 0. `vibe.models()` → `translation` = `{enabled, language, languages, names, quality,
-effective, fallback, quality_llm, model: {fast, quality}, present: {fast, quality}, running, cache}` (`quality_llm` true =
+effective, fallback, fallback_reason, quality_llm, model: {fast, quality}, present: {fast, quality}, running, cache}` (`effective` = the translator that answers now, `fallback` the sentence why it is not the chosen one, `fallback_reason` `"no GPU"` when quality waits for the GPU [fix 2026-10-22]; `quality_llm` true =
 quality is the loaded LLM, `model.quality` = "<its name> (the loaded LLM)" — label the choice with it; `present` is the
 per-translator object, the same as `present_modes`). API: `POST /api/translate` — body `{"text": "…"}`
 or `{"texts": ["…", …]}` (≤ 200 texts, ≤ 4000 chars each) + optional `to` / `from` (language
 codes; `to` defaults to `language`) → `{"text" | "texts", to, from, model, via, calls, cached, ms}` (`via`: `llm` =
-the loaded LLM translated, `mt` = a translation model). Where the LLM translates, R86 applies as to any text request:
+the loaded LLM translated, `mt` = a translation model; `model` = the translator that answered; quality selected
+without a GPU → `"model": "fast", "via": "mt", "reason": "no GPU"` — with a GPU nothing changes). Where the LLM translates, R86 applies as to any text request:
 an uncensored LLM's input is checked by the narrow minors block first (`400 {"error"}`, no model call); a sentence the
 LLM declines goes to the fast model, and if that declines too it comes back as typed (never cached).
 Repeats come from a persistent per-language cache (no model call). `400 {"error"}` while

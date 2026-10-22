@@ -4,3 +4,7 @@
    the v7.5-2 image too); the boot screen's own #0a0a14 makes the handover seamless. Both GTK versions Chromium
    may load. */
 window, .background, dialog { background-color: #0a0a14; color: #e8e8f2; }
+/* [fix 2026-10-22] the kiosk profile follows the GTK theme (.xinitrc): before a page's first frame Chromium paints
+   its web area in GTK's VIEW background — measured with probe colours in the VM; incognito painted #3c3c3c there
+   (the grey frame at the first map and after the span resize). The boot screen's #0a0a14 makes it invisible. */
+.view, textview, textview text, treeview { background-color: #0a0a14; color: #e8e8f2; }
