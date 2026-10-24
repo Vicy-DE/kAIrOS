@@ -226,14 +226,16 @@ white handover frame (gtk.css); the game offset after a mirror (placed again whi
 ## 6. Open — and what only the owner's card run can prove
 
 - **HDMI = the NVIDIA 4070** (card1). The desktop renders on the AMD 780M (card2). A monitor on the HDMI port needs
-  *reverse PRIME*: the NVIDIA GPU as an output sink of the amdgpu screen. What it would take: `nvidia-drm.modeset=1`
-  (the image alias-blacklists `nvidia_drm`/`nvidia_modeset` and turns `AutoAddGPU` off on purpose — the 92-s X start on
-  the hybrid laptop), the NVIDIA X driver loaded as a GPU screen with `AllowPRIMEDisplayOffloadSink`, then
-  `xrandr --setprovideroutputsource NVIDIA-G0 <amdgpu provider>` — after which the HDMI output is one more RandR output
-  and this design (the X side's hot-plug layout, the monitor list, the one window) covers it unchanged; the X side's
-  hot-plug path would run the provider step first. Costs to measure on the card: VRAM on the 8 GB card for the scanout
-  buffers (two 4480×1440×4 buffers ≈ 50 MB taken from the model budget), the 4070 never idle while a monitor hangs on it,
-  and whether X still starts reliably with `nvidia-drm` loaded. Not done this round.
+  *reverse PRIME*: the NVIDIA GPU as an output sink of the amdgpu screen. **[2026-10-22] Built as R91,
+  `docs/HDMI-PRIME-2026-10-22.md`**: `kairos-hdmi-prime` (root) loads the NVIDIA display modules only after X is up
+  (`AutoAddGPU` off: X ignores the new DRM device), reads the NVIDIA connectors, and — only with a monitor on them —
+  restarts the X session ONCE with the NVIDIA GPU screen (`15-kairos-hdmi-prime.conf`: `AutoAddGPU on` for that
+  session; the OutputClass gives the GPU to the NVIDIA driver, never to modesetting — a live GPU hotplug into a running
+  X is always modesetting, the 92-s stall of 2026-10-06, so it is not used); the X side binds `NVIDIA-G0` as an output
+  source (`kairos-desktop.py providers --bind` before the layout step and on every RandR change), after which the HDMI
+  output is one more RandR output and this design covers it unchanged. Off switch `kairos.hdmi=0` / the `hdmi`
+  setting; the boot log's `hdmi_prime` check; the costs (VRAM of the sink surfaces, the 4070 never in RTD3 while it
+  drives a display) are measured on the stick — the plan is in that report.
 - **Only the card run can prove**: the USB-C DP monitor plugged at boot and hot-plugged (amdgpu's connector events, DP
   link training), the 2560×1440 monitor as one half of a 4480×1440 Chromium window on the 780M (GPU compositing at that
   size), the gtk.css handover colour with Chromium's GTK on the real image (the VM proved it), the panel + 27" with the

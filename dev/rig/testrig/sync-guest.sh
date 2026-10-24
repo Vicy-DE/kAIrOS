@@ -125,7 +125,7 @@ $SSH 'set -e
 # exec bits — a tar/rsync has dropped one before (203/EXEC, R63)
 chmod +x /usr/local/sbin/kairos-bootlog /usr/local/sbin/kairos-bootlog-early /usr/local/sbin/kairos-prewarm \
          /usr/local/sbin/kairos-display-apply /usr/local/sbin/kairos-install \
-         /usr/local/sbin/kairos-gpu-setup /usr/local/sbin/kairos-esp-sync \
+         /usr/local/sbin/kairos-gpu-setup /usr/local/sbin/kairos-esp-sync /usr/local/sbin/kairos-hdmi-prime \
          /etc/kernel/postinst.d/zz-kairos-esp /etc/initramfs/post-update.d/zz-kairos-esp 2>/dev/null || true
 chown -R kairos: /home/kairos 2>/dev/null || true
 # tmpfiles: /run/kairos (x-attempts, x-failed, kiosk-reload, token) + /var/log/kairos
@@ -161,7 +161,8 @@ $SSH 'systemctl daemon-reload
 systemctl enable kairos-splash.service \
                  kairos-bootlog.service kairos-bootlog-early.service \
                  kairos-bootlog-emergency.service kairos-bootlog-xfail.path \
-                 kairos-bootlog-stall.timer kairos-prewarm.service nvidia-load.service 2>&1 | tail -2
+                 kairos-bootlog-stall.timer kairos-prewarm.service nvidia-load.service \
+                 kairos-hdmi-prime.service 2>&1 | tail -2
 # [D11] the driver package enables persistenced unconditionally: it fails on every
 # machine without an NVIDIA GPU; kairos-gpu-setup starts it once a device is bound
 systemctl disable nvidia-persistenced.service 2>/dev/null || true
@@ -175,7 +176,8 @@ for u in multi-user.target.wants/kairos-bootlog.service \
          sysinit.target.wants/kairos-bootlog-stall.timer \
          sysinit.target.wants/kairos-prewarm.service \
          sysinit.target.wants/kairos-splash.service \
-         multi-user.target.wants/nvidia-load.service; do
+         multi-user.target.wants/nvidia-load.service \
+         multi-user.target.wants/kairos-hdmi-prime.service; do
   [ -L "/etc/systemd/system/$u" ] || echo "WARN: not enabled: $u"
 done
 [ -e /etc/systemd/system/multi-user.target.wants/nvidia-persistenced.service ] && echo "WARN: nvidia-persistenced still enabled" || true

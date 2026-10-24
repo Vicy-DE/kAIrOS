@@ -1880,3 +1880,44 @@ numbers are listed by title only — each gets its real entry when it is built (
     relaunches (before: 2 of 6), the pre-paint frames are the boot screen's colour; `prefers-color-scheme` stays dark.
     Left: one pure-white ~33 ms frame at the boot page → shell navigation in 1 of 80 (source not found; none in 37
     incognito captures). `docs/FIXES-2026-10-22.md` §2.
+
+## HDMI monitor on the NVIDIA port (owner, 2026-10-21)
+- **R91 — a monitor on the HDMI port joins the one desktop (reverse PRIME)**: owner (2026-10-21, "HDMI monitor" ticked
+  after R90). On the hybrid laptop the HDMI connector is wired to the NVIDIA 4070 (`card1`, `HDMI-A-1`) while the AMD
+  780M draws the desktop (eDP + the USB-C DisplayPorts), so a monitor on it stayed dark. **The design**
+  (`docs/HDMI-PRIME-2026-10-22.md`): RandR 1.4 "reverse PRIME" — the NVIDIA X driver as a GPU screen (`NVIDIA-G0`, an
+  output sink) of the amdgpu X screen, bound as an output source, after which the HDMI outputs are ordinary RandR
+  outputs of the R90 desktop (plug/unplug = R90's hot-plug path). It is NOT a live attach: a GPU that appears while X
+  runs is always handed to the modesetting driver by the server (`xf86platformAddDevice`), which is the 92-s stall of
+  2026-10-06 (R41/R50); only at an X start does the OutputClass give the GPU to the NVIDIA driver, and only with
+  `AutoAddGPU` on. So (a) every boot starts X as before — no `nvidia_drm`, `AutoAddGPU` off, the blacklist and
+  `kairos-gpu-setup` untouched; (b) `kairos-hdmi-prime` (root, `kairos-hdmi-prime.service` after `basic.target` — not after `nvidia-load`: it
+  waits for the driver binding itself —, its
+  ExecStartPre before `getty@tty1`) waits for the nvidia module, loads `nvidia_modeset` + `nvidia_drm modeset=1 fbdev=0`
+  AFTER X is up (the running X ignores the new DRM device) and reads the NVIDIA connectors in sysfs — the detection
+  needs no X and no `nvidia-smi` (its `display_mode` query is deprecated in this driver generation); (c) a connected
+  monitor → `attach`: `15-kairos-hdmi-prime.conf` (`ServerFlags AutoAddGPU on` — a later file overrides the earlier
+  one, measured on xserver 21.1), ONE planned restart of `getty@tty1` (a new X session, a few seconds), the new
+  session's `xinitrc: providers:` breadcrumb must say `NVIDIA-G0 bound` (`kairos-desktop.py providers --bind` runs
+  before the layout step and on every RandR change: `xrandr --setprovideroutputsource <sink id> <source id>`), else
+  everything is reverted (config removed, one more planned restart) and the state says `failed` + why; at most one
+  attach per boot; (d) a monitor plugged later, while the desktop is up: the udev rule `80-kairos-hdmi-prime.rules` (DRM change on
+  the NVIDIA card) → `kairos-hdmi-prime-event.service` → the probe, then **no restart without the user** (integrator,
+  2026-10-23): state `consent` → `/api/status` carries it → the shell's toast "HDMI monitor detected — restart the
+  desktop to use it (open windows will close)" with **Restart now** (`POST /api/hw {device: display, op: hdmi,
+  action: restart}` → `kairos-hdmi-prime attach-now`, the same attach with the max-1 guard and the revert) and **Not
+  now** (`action: later` → state `declined`, remembered for this boot: no further toasts; a display-settings entry or
+  the same action attaches later). Only the boot path (no windows yet) restarts on its own. **Off switch** (no rebuild): kernel cmdline `kairos.hdmi=0`
+  (checked by the script on every run; `kairos.hdmi=1` beats the file) or `/etc/kairos/hdmi` = `off`, written by the settings
+  key `hdmi` (`vibe.settings.set("hdmi", "off")`, default `on`). **State**: `/run/kairos/hdmi-prime.json` (`off`,
+  `unsupported`, `absent`, `present`, `pending`, `active`, `failed` + reason, connectors, providers) → the display
+  API's `hdmi` (+ `providers`), the boot log's `hdmi_prime` check (active PASS, failed WARN with the reason, the rest
+  PASS n/a) and its HDMI/PRIME evidence section; the planned restarts are taken off the boot log's `xorg` check
+  (`/run/kairos/x-planned-restarts`). **Costs** (numbers in the report): the sink surfaces in the 4070's VRAM (a
+  1080p monitor ≈ 8 MiB per buffer, a 4K one ≈ 33 MiB, double- to triple-buffered, plus the NVIDIA X driver's own
+  context — against the 8 GB tier's ~0.5 GB headroom at the image pipeline's 7.3 GB peak), and a GPU that drives a
+  display never enters RTD3 (README ch. 21) — on the image the 4070 idles at P8 ~1 W with persistenced holding it
+  anyway; `kairos-hdmi-prime` logs pstate / power / VRAM before and after the attach. **Status: built; needs the
+  stick run** (the suite proves the logic on a fake sysfs + mock xrandr, the VM proves a boot without an NVIDIA GPU is
+  unchanged; only the owner's stick can prove the NVIDIA GPU screen, the binding and the costs — the step-by-step plan
+  is in the report).

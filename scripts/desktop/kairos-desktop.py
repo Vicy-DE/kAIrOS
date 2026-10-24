@@ -8,8 +8,13 @@ maps a window of the screen's size 1 px short, so this keeps the window exactly 
   kairos-desktop.py monitors [--hint | --union | --rects]
       the monitor list (kernel/monitors.py: mirrors = one, primary first): --hint = the kiosk URL's ?mon= start hint,
       --union = "W H" of the X screen, --rects = one "WxH+X+Y" per monitor (the boot frame on every monitor)
+  kairos-desktop.py providers [--bind]
+      [R91] the RandR 1.4 providers on one line; --bind makes every unbound output sink (an NVIDIA GPU screen,
+      NVIDIA-G0, when kairos-hdmi-prime started this session with it) an output source of the main provider first —
+      its HDMI outputs are then ordinary outputs of the one desktop
   kairos-desktop.py watch
-      long-running: (1) the kiosk window — after it maps, after a WM or the browser moved/resized/fullscreened it,
+      long-running: (0) [R91] the same binding at start and after every RandR change;
+      (1) the kiosk window — after it maps, after a WM or the browser moved/resized/fullscreened it,
       after the X screen changed size — is put back to (0, 0, root w, root h), undecorated, not fullscreen, not
       maximized; (2) hot-plug: when the set of CONNECTED outputs changes (a monitor plugged / unplugged), the layout
       is applied: the saved one (/opt/vibeos/cache/display.json, the display API's) when it names exactly the
@@ -37,8 +42,11 @@ STATE = Path(os.environ.get("VIBEOS_DIR", "/opt/vibeos")) / "cache" / "display.j
 SETTLE = 0.25                # s: RandR / WM events come in bursts — act once the burst is over
 
 
+LOG_STREAM = None            # stdout (.xinitrc sends it to x.log); the `providers` command logs to stderr instead
+
+
 def log(msg):
-    print(f"kairos-desktop: {msg}", flush=True)
+    print(f"kairos-desktop: {msg}", file=LOG_STREAM or sys.stdout, flush=True)
 
 
 def xrandr(args):
@@ -235,6 +243,7 @@ class Desktop:
                                           | randr.RROutputChangeNotifyMask)
             rr = {ext.first_event + randr.RRScreenChangeNotify, ext.first_event + randr.RRNotify}
         self.d.sync()
+        bind_providers()                                 # [R91] an NVIDIA GPU screen's outputs join the X screen first
         self.hotplug()                                   # the connected set at start
         self.span()
         log(f"watching (monitors: {monmath.hint(monitor_list(self.d))})")
@@ -254,6 +263,7 @@ class Desktop:
                 else:
                     time.sleep(0.02)
             if pending_rr:
+                bind_providers()                         # [R91] a GPU screen that appeared is bound before its outputs are laid out
                 self.hotplug()
             pending_rr = pending_win = False
             self.span()
@@ -275,11 +285,43 @@ def cmd_watch(_argv):
     return 0
 
 
+# ---------------------------------------------------------------------------------------- RandR providers [R91]
+def providers():
+    rc, out = xrandr(["--listproviders"])
+    return monmath.parse_providers(out) if rc == 0 else []
+
+
+def bind_providers(provs=None):
+    """RandR 1.4 reverse PRIME (docs/HDMI-PRIME-2026-10-22.md): every provider that can be an output sink, is not the
+    main one and is not bound yet — the NVIDIA GPU screen NVIDIA-G0 of a session kairos-hdmi-prime started, whose
+    HDMI port a monitor hangs on — becomes an output source of the main provider; its outputs are RandR outputs of
+    the one desktop from then on, and plan_layout treats them like any other. -> [(sink, source, rc)]"""
+    provs = providers() if provs is None else provs
+    done = []
+    for sink, src, sink_id, src_id in monmath.provider_bind_plan(provs):
+        rc, out = xrandr(["--setprovideroutputsource", sink_id, src_id])
+        log(f"provider {sink} -> output source of {src}: xrandr --setprovideroutputsource {sink_id} {src_id} -> rc {rc}"
+            f"{(' ' + out.strip()[-120:]) if rc else ''}")
+        done.append((sink, src, rc))
+    return done
+
+
+def cmd_providers(argv):
+    """the providers, one line on stdout (the x.log breadcrumb); --bind first binds every unbound sink (logged on stderr)"""
+    global LOG_STREAM
+    LOG_STREAM = sys.stderr
+    provs = providers()
+    if "--bind" in argv and bind_providers(provs):
+        provs = providers()
+    print(monmath.providers_summary(provs))
+    return 0
+
+
 def main(argv):
-    if not argv or argv[0] not in ("monitors", "watch"):
+    if not argv or argv[0] not in ("monitors", "watch", "providers"):
         print(__doc__, file=sys.stderr)
         return 2
-    return {"monitors": cmd_monitors, "watch": cmd_watch}[argv[0]](argv[1:])
+    return {"monitors": cmd_monitors, "watch": cmd_watch, "providers": cmd_providers}[argv[0]](argv[1:])
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 {
- "at": "2026-10-22 08:23:15",
+ "at": "2026-10-23 13:51:52",
  "base": "http://127.0.0.1:1338",
  "tests": {
   "unit_prompts_style_mandate": {
@@ -163,14 +163,14 @@
     "R22"
    ],
    "status": "pass",
-   "detail": "2 Krea-2 images generated, seeds differ (1633477966 vs 1385863022); engine crash -> error + idle"
+   "detail": "2 Krea-2 images generated, seeds differ (1071468244 vs 1372070327); engine crash -> error + idle"
   },
   "http_video": {
    "reqs": [
     "R6"
    ],
    "status": "pass",
-   "detail": "mp4 produced and served: /files/videos/869c5bf7d07e.mp4"
+   "detail": "mp4 produced and served: /files/videos/5f333552820e.mp4"
   },
   "unit_finish_video_drops_intermediate": {
    "reqs": [
@@ -214,7 +214,7 @@
     "R14"
    ],
    "status": "pass",
-   "detail": "20383 bytes of self-documentation served"
+   "detail": "22452 bytes of self-documentation served"
   },
   "http_search_offline_mode": {
    "reqs": [
@@ -222,8 +222,8 @@
     "R10",
     "R20"
    ],
-   "status": "pass",
-   "detail": "offline search returned 4 encyclopedia results"
+   "status": "skip",
+   "detail": "offline shape OK but no ZIM linked in test env \u2014 no kb results"
   },
   "http_browser_imaginary_web": {
    "reqs": [
@@ -262,7 +262,7 @@
     "R23"
    ],
    "status": "pass",
-   "detail": "never empty; create-actions present; 5 distinct sparks in 6 calls"
+   "detail": "never empty; create-actions present; 4 distinct sparks in 6 calls"
   },
   "http_desktop_search_web_address": {
    "reqs": [
@@ -294,7 +294,7 @@
     "R31"
    ],
    "status": "pass",
-   "detail": "ace-lm -> request0.json -> ace-synth (turbo DiT, wav) served: /files/music/f74b96a0b8de.wav"
+   "detail": "ace-lm -> request0.json -> ace-synth (turbo DiT, wav) served: /files/music/81004bc498b0.wav"
   },
   "unit_music_language_default_en": {
    "reqs": [
@@ -385,7 +385,7 @@
     "R63"
    ],
    "status": "pass",
-   "detail": "11 unit exec paths present+executable; capture units boot-safe; build quotes the chroot heredoc + enables/asserts bootlog; scripts run: verdict=FAIL 15 checks, json+breadcrumb ok"
+   "detail": "14 unit exec paths present+executable; capture units boot-safe; build quotes the chroot heredoc + enables/asserts bootlog; scripts run: verdict=FAIL 16 checks, json+breadcrumb ok"
   },
   "unit_appliance_boot_hardening": {
    "reqs": [
@@ -553,7 +553,7 @@
     "R44"
    ],
    "status": "pass",
-   "detail": "3 session-painted wallpapers; random keep/discard differs per run (e.g. 3 fragments kept)"
+   "detail": "3 session-painted wallpapers; random keep/discard differs per run (e.g. 5 fragments kept)"
   },
   "http_remote_needs_token": {
    "reqs": [
@@ -575,7 +575,7 @@
     "R28"
    ],
    "status": "pass",
-   "detail": "32 units modelled (incl. 3 heredoc/drop-in), no cycle; detector proven on the D7 unit"
+   "detail": "34 units modelled (incl. 3 heredoc/drop-in), no cycle; detector proven on the D7 unit"
   },
   "unit_loader_default_single_entry": {
    "reqs": [
@@ -661,6 +661,13 @@
    ],
    "status": "pass",
    "detail": "nvidia_drm/nvidia_modeset alias-blacklisted (explicit load kept for an NVIDIA boot GPU), AutoAddGPU off, xinitrc breadcrumbs, no serial getty on the default entry"
+  },
+  "unit_hdmi_setting_key": {
+   "reqs": [
+    "R91"
+   ],
+   "status": "pass",
+   "detail": "hdmi: default on, bad value 400, off/on stored, the change goes to kairos-hdmi-prime via hw.hdmi_switch; /api/status carries hdmi (n/a here); the hdmi op validates its action"
   },
   "unit_stick_run_boot_llm_pointer": {
    "reqs": [
@@ -754,7 +761,7 @@
     "R26"
    ],
    "status": "pass",
-   "detail": "90 requirements, no holes, all cited ids documented, 20 without a test so far this run"
+   "detail": "91 requirements, no holes, all cited ids documented, 20 without a test so far this run"
   },
   "unit_game_launch_gate_mapped_window": {
    "reqs": [
@@ -992,7 +999,7 @@
     "R45"
    ],
    "status": "pass",
-   "detail": "dock prompt: api sheet 6064 + recipe 7441 chars injected whole; 23414 of 28278 budget chars used (4864 spare, pinned \u2265 1000; -c 16384)"
+   "detail": "dock prompt: api sheet 6778 + recipe 7441 chars injected whole; 24128 of 28278 budget chars used (4150 spare, pinned \u2265 1000; -c 16384)"
   },
   "unit_translation_manifest_and_specs": {
    "reqs": [
@@ -1053,7 +1060,7 @@
     "R59"
    ],
    "status": "pass",
-   "detail": "translator 6764 chars identical in shell + bridge (inert literal); handlers in both host pages; settings hook + translate=no spots; settings sheet 6064 + recipe 7441 chars carry keys/picker/switch/download/vibe.translate"
+   "detail": "translator 6764 chars identical in shell + bridge (inert literal); handlers in both host pages; settings hook + translate=no spots; settings sheet 6778 + recipe 7441 chars carry keys/picker/switch/download/vibe.translate"
   },
   "unit_p3_dictionaries_wiktionary_manifests": {
    "reqs": [
@@ -1096,7 +1103,7 @@
     "R72"
    ],
    "status": "pass",
-   "detail": "with GPU: quality on the LLM (:8081); device off the bus: fast in 0.51 s; no driver: fast in 0.00 s (:8085, reason 'no GPU', logged); GPU back: the LLM again"
+   "detail": "with GPU: quality on the LLM (:8081); device off the bus: fast in 0.52 s; no driver: fast in 0.00 s (:8085, reason 'no GPU', logged); GPU back: the LLM again"
   },
   "unit_translation_quality_gpu_rules": {
    "reqs": [
@@ -1123,7 +1130,7 @@
     "R59"
    ],
    "status": "pass",
-   "detail": "R89 entry, FAST-MODELS record (no personal paths), index line, addendum, API.md; sheet 6064 / recipe 7441 chars without a fast model"
+   "detail": "R89 entry, FAST-MODELS record (no personal paths), index line, addendum, API.md; sheet 6778 / recipe 7441 chars without a fast model"
   },
   "unit_knowledge_multi_zim_sources": {
    "reqs": [
@@ -1141,7 +1148,7 @@
     "R12"
    ],
    "status": "pass",
-   "detail": "vibe.dict + dom flag in bridge/shell/host; API.md + core + settings sheet 6064 / recipe 7441 chars carry the add-ons; requirement (h) + log section; kernel appends --cache-ram"
+   "detail": "vibe.dict + dom flag in bridge/shell/host; API.md + core + settings sheet 6778 / recipe 7441 chars carry the add-ons; requirement (h) + log section; kernel appends --cache-ram"
   },
   "unit_bake_flagged_addons_in_image": {
    "reqs": [

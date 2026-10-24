@@ -1030,19 +1030,61 @@ async def _layout_args(query_text=None):
     return args or None
 
 
+# [R91] the HDMI port of the hybrid laptop's NVIDIA GPU (reverse PRIME): kairos-hdmi-prime (root, the boot unit +
+# the udev rule) leaves its state in /run and takes the switch (the settings key `hdmi`) through its on|off commands
+HDMI_STATE = Path(os.environ.get("KAIROS_HDMI_STATE", "/run/kairos/hdmi-prime.json"))
+HDMI_PRIME = os.environ.get("KAIROS_HDMI_PRIME", "/usr/local/sbin/kairos-hdmi-prime")
+
+
+def hdmi_state():
+    """{state: off|unsupported|absent|present|pending|active|failed|n/a, reason, gpu, connectors, providers, attempts}"""
+    try:
+        import json as _json
+        d = _json.loads(HDMI_STATE.read_text())
+        return d if isinstance(d, dict) and "state" in d else {"state": "n/a", "reason": "unreadable state"}
+    except Exception:
+        return {"state": "n/a", "reason": "kairos-hdmi-prime has not run (no NVIDIA output sink on this machine, or not the appliance)"}
+
+
+async def hdmi_switch(mode: str):
+    """the settings key `hdmi` -> the helper's switch file; `on` also probes/attaches now, `off` applies to the next X
+    start (an attached monitor stays until then). Silent where the helper is not installed (a dev box)."""
+    if not os.access(HDMI_PRIME, os.X_OK):
+        return {"ok": False, "error": "kairos-hdmi-prime not installed"}
+    rc, out = await _run([HDMI_PRIME, "on" if mode == "on" else "off"], timeout=20)
+    return {"ok": rc == 0, "output": out.strip()[-200:]}
+
+
+async def hdmi_action(action: str):
+    """the user's answer to the consent toast (POST /api/hw {device: "display", op: "hdmi", action}): `restart` =
+    attach now (the helper restarts the X session ONCE with the NVIDIA GPU screen, max once per boot, reverted on
+    failure), `later` = Not now (remembered for this boot). A display-settings entry may send `restart` any time."""
+    if action not in ("restart", "later"):
+        return {"ok": False, "error": "action must be restart or later"}
+    if not os.access(HDMI_PRIME, os.X_OK):
+        return {"ok": False, "error": "kairos-hdmi-prime not installed"}
+    rc, out = await _run([HDMI_PRIME, "attach-now" if action == "restart" else "later"], timeout=120)
+    return {"ok": rc == 0, "action": action, "hdmi": hdmi_state(), "output": out.strip()[-200:]}
+
+
 async def display_list():
     """the outputs (R53) + [R90] what the one desktop spans: `monitors` (mirrors = one, primary first, the numbering
-    of /api/vision "screen:N") and `desktop` (their bounding box = the X screen the kiosk window covers)"""
+    of /api/vision "screen:N") and `desktop` (their bounding box = the X screen the kiosk window covers) + [R91] the
+    RandR providers (a bound NVIDIA GPU screen = the HDMI port on the NVIDIA is part of the desktop) and `hdmi`,
+    kairos-hdmi-prime's state"""
     rc, out = await _xrandr(["--query"])
     if rc != 0:
         return {"available": False,
-                "reason": "no X display / xrandr (headless or pre-kiosk)"}
+                "reason": "no X display / xrandr (headless or pre-kiosk)", "hdmi": hdmi_state()}
     outs = _parse_xrandr(out)
     conn = [o for o in outs if o["connected"]]
     mons = monitors.from_outputs(outs)
+    prc, pout = await _xrandr(["--listproviders"])
     return {"available": True, "count": len(conn),
             "multiscreen": len(mons) > 1, "displays": outs,
-            "monitors": mons, "desktop": monitors.union(mons)}
+            "monitors": mons, "desktop": monitors.union(mons),
+            "providers": monitors.parse_providers(pout) if prc == 0 else [],
+            "hdmi": hdmi_state()}
 
 
 def _common_mode(outs):
@@ -1791,6 +1833,8 @@ async def handle(body: dict):
     if device == "power":
         return await power(op, body)
     if device == "display":
+        if op == "hdmi":                                                  # [R91] Restart now / Not now
+            return await hdmi_action(body.get("action", ""))
         if op in ("set", "arrange"):
             return await display_set(body)
         return await display_list()

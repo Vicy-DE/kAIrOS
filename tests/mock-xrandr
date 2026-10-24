@@ -56,13 +56,40 @@ DisplayPort-0 disconnected 2560x1440+1920+0 (normal left inverted right) 0mm x 0
 DisplayPort-0 connected (normal left inverted right) 597mm x 336mm
    2560x1440     59.95 +
    1920x1080     60.00"""),
+    # [R91] the HDMI port on the laptop's NVIDIA GPU, an output of the NVIDIA GPU screen bound as an output source
+    # (reverse PRIME): X names it after the GPU screen, HDMI-1-0 — laid out right of the panel like any other
+    "hdmi": ("3840x1080", """eDP connected primary 1920x1080+0+0 (normal left inverted right) 355mm x 199mm
+   1920x1080     60.02*+
+HDMI-1-0 connected 1920x1080+1920+0 (normal left inverted right) 527mm x 296mm
+   1920x1080     60.00*+
+   1280x720      60.00"""),
+    # the same monitor just plugged in: the output is there (the GPU screen is bound), no picture yet
+    "hdmi-plugged": ("1920x1080", """eDP connected primary 1920x1080+0+0 (normal left inverted right) 355mm x 199mm
+   1920x1080     60.02*+
+HDMI-1-0 connected (normal left inverted right) 527mm x 296mm
+   1920x1080     60.00 +
+   1280x720      60.00"""),
+}
+# [R91] `xrandr --listproviders` (MOCK_XRANDR_PROVIDERS): the AMD alone (the plain laptop), the NVIDIA GPU screen
+# before and after the X side bound it as an output source, and one that cannot be a sink (cap 0x0)
+AMD = "cap: 0xb, Source Output, Sink Output, Sink Offload crtcs: 4 outputs: 6 associated providers: {n} name:AMD Radeon 780M Graphics @ pci:0000:05:00.0"
+PROVIDERS = {
+    "amd": "Providers: number : 1\nProvider 0: id: 0x55 " + AMD.format(n=0),
+    "nvidia-unbound": "Providers: number : 2\nProvider 0: id: 0x55 " + AMD.format(n=0)
+                      + "\nProvider 1: id: 0x1f8 cap: 0x2, Sink Output crtcs: 4 outputs: 1 associated providers: 0 name:NVIDIA-G0",
+    "nvidia-bound": "Providers: number : 2\nProvider 0: id: 0x55 " + AMD.format(n=1)
+                    + "\nProvider 1: id: 0x1f8 cap: 0x2, Sink Output crtcs: 4 outputs: 1 associated providers: 1 name:NVIDIA-G0",
+    "nvidia-nocap": "Providers: number : 2\nProvider 0: id: 0x55 " + AMD.format(n=0)
+                    + "\nProvider 1: id: 0x1f8 cap: 0x0 crtcs: 0 outputs: 0 associated providers: 0 name:NVIDIA-G0",
 }
 
 a = sys.argv[1:]
 log = os.environ.get("MOCK_XRANDR_LOG")
 if log:
     open(log, "a").write("\t".join(a) + "\n")
-if "--query" in a or not a:
+if "--listproviders" in a:
+    sys.stdout.write(PROVIDERS.get(os.environ.get("MOCK_XRANDR_PROVIDERS") or "amd", PROVIDERS["amd"]) + "\n")
+elif "--query" in a or not a:
     q = os.environ.get("MOCK_XRANDR_QUERY")
     if q and os.path.exists(q):
         sys.stdout.write(open(q).read())

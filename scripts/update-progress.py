@@ -265,6 +265,8 @@ def main():
     results = {**results, **load_results(RESULTS.with_name("results-public-profile.json"))[1]}
     # and one desktop across all monitors [R90] (tests/test_one_desktop.py -> results-one-desktop.json)
     results = {**results, **load_results(RESULTS.with_name("results-one-desktop.json"))[1]}
+    # and the HDMI port on the NVIDIA GPU [R91] (tests/test_hdmi_prime.py -> results-hdmi-prime.json)
+    results = {**results, **load_results(RESULTS.with_name("results-hdmi-prime.json"))[1]}
     ids, titles, notes = parse_requirements(REQ_DOC.read_text(encoding="utf-8"))
     lines, c = render(ids, titles, notes, results, ran_at)
     OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")

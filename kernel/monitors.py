@@ -147,3 +147,43 @@ def nearest(mons, x, y):
 def hint(mons):
     """the start hint .xinitrc puts in the kiosk URL (?mon=): id:x,y,w,h,p;… — shell/monitors.js parseHint() reads it"""
     return ";".join(f"{m['id']}:{m['x']},{m['y']},{m['w']},{m['h']},{1 if m['primary'] else 0}" for m in mons)
+
+
+# ------------------------------------------------------------------------------------- RandR 1.4 providers [R91]
+PROVIDER = re.compile(r"^Provider (\d+): id: (0x[0-9a-fA-F]+) cap: (0x[0-9a-fA-F]+)(.*?) crtcs: (\d+) outputs: (\d+) "
+                      r"associated providers: (\d+) name:(.*)$")
+
+
+def parse_providers(text):
+    """`xrandr --listproviders` -> [{index, id, caps, crtcs, outputs, associated, name}]: the main screen's GPU and
+    every GPU screen (an NVIDIA one is "NVIDIA-G0"). A provider with the "Sink Output" capability can show the main
+    provider's picture on its own outputs once it is bound as that provider's output source ("reverse PRIME",
+    docs/HDMI-PRIME-2026-10-22.md); `associated` counts the bindings it has."""
+    provs = []
+    for line in text.splitlines():
+        m = PROVIDER.match(line.strip())
+        if not m:
+            continue
+        provs.append({"index": int(m.group(1)), "id": m.group(2),
+                      "caps": [c.strip() for c in m.group(4).split(",") if c.strip()],
+                      "crtcs": int(m.group(5)), "outputs": int(m.group(6)), "associated": int(m.group(7)),
+                      "name": m.group(8).strip()})
+    return provs
+
+
+def provider_bind_plan(provs):
+    """[(sink name, source name, sink id, source id)] for every provider that can be an output sink, is not the main
+    provider (the first with "Source Output") and is not bound yet — the `xrandr --setprovideroutputsource SINK
+    SOURCE` calls that make its outputs part of the X screen. By XID: a provider name may carry spaces."""
+    src = next((p for p in provs if "Source Output" in p["caps"]), None)
+    if not src:
+        return []
+    return [(p["name"], src["name"], p["id"], src["id"]) for p in provs
+            if p is not src and "Sink Output" in p["caps"] and p["associated"] == 0]
+
+
+def providers_summary(provs):
+    """one line for the x.log breadcrumb (`xinitrc: providers: …`): `NAME bound|unbound (caps); …` — "NVIDIA-G0 bound"
+    is what kairos-hdmi-prime takes as proof of an attached NVIDIA GPU screen"""
+    return "; ".join(f"{p['name']} {'bound' if p['associated'] else 'unbound'} "
+                     f"({', '.join(c.lower().replace(' ', '-') for c in p['caps']) or 'no caps'})" for p in provs) or "none"

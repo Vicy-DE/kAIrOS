@@ -1,5 +1,5 @@
 {
- "at": "2026-10-22 08:29:28",
+ "at": "2026-10-23 13:58:09",
  "tests": {
   "refusal_detector_real_refusals": {
    "reqs": [
@@ -41,7 +41,7 @@
     "R86"
    ],
    "status": "pass",
-   "detail": "8MB plain 9 ms; 8MB nfkc 102 ms; 1MB mixed 15 ms; 50k words 12 ms; 50k \u00e9 5 ms; 50k jp 6 ms; 50k combining 5 ms; 50k 1a 4 ms; parts/dict/bytes judged as text"
+   "detail": "8MB plain 8 ms; 8MB nfkc 99 ms; 1MB mixed 14 ms; 50k words 13 ms; 50k \u00e9 4 ms; 50k jp 6 ms; 50k combining 5 ms; 50k 1a 4 ms; parts/dict/bytes judged as text"
   },
   "refusal_r4b_block_lists": {
    "reqs": [
@@ -62,7 +62,7 @@
     "R86"
    ],
    "status": "pass",
-   "detail": "4010 samples identical to the regex forms; pathological shapes <think> x8000 10 ms, <script> x8000 8 ms, <a x30000 4 ms, <!-- x8000 5 ms"
+   "detail": "4010 samples identical to the regex forms; pathological shapes <think> x8000 13 ms, <script> x8000 10 ms, <a x30000 11 ms, <!-- x8000 10 ms"
   },
   "refusal_r4c_block_k1_k2_k4": {
    "reqs": [
@@ -149,7 +149,7 @@
     "R88"
    ],
    "status": "pass",
-   "detail": "19 negated lists pass (term + flag + picture edit, EN + DE), 18 fire, 4 fire with the flag only; 131 earlier must-fire still fire, 171 must-pass + kernel prompts pass; the bare-number case pinned as known; 4 dense 100 KB lists x2 in 0.26 s"
+   "detail": "19 negated lists pass (term + flag + picture edit, EN + DE), 18 fire, 4 fire with the flag only; 131 earlier must-fire still fire, 171 must-pass + kernel prompts pass; the bare-number case pinned as known; 4 dense 100 KB lists x2 in 0.27 s"
   },
   "r88_fix3_teen_title_rule": {
    "reqs": [
@@ -189,7 +189,7 @@
     "R88"
    ],
    "status": "pass",
-   "detail": "16 nor/noch lists pass (term + flag + picture edit, EN + DE), 8 fire, 3 known limits fire; 149 earlier must-fire, 190 must-pass + kernel prompts hold; bridge words unique; 5 long runs in 0.43 s"
+   "detail": "16 nor/noch lists pass (term + flag + picture edit, EN + DE), 8 fire, 3 known limits fire; 149 earlier must-fire, 190 must-pass + kernel prompts hold; bridge words unique; 5 long runs in 0.44 s"
   },
   "r88_fix4_nor_lists_at_the_sd_floor": {
    "reqs": [

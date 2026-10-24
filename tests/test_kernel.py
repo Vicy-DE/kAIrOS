@@ -3390,6 +3390,33 @@ async def t_hybrid_gpu_single(_):
     return "nvidia_drm/nvidia_modeset alias-blacklisted (explicit load kept for an NVIDIA boot GPU), AutoAddGPU off, xinitrc breadcrumbs, no serial getty on the default entry"
 
 
+@run_test("unit_hdmi_setting_key", ["R91"])
+async def t_hdmi_setting(s):
+    """[R91] the settings key `hdmi` (on | off) — the off switch of the HDMI-port-on-the-NVIDIA path (reverse PRIME,
+    docs/HDMI-PRIME-2026-10-22.md) that needs no rebuild: validated like every known key (a bad value is a 400 naming
+    the rule, nothing stored), default on; a change hands the mode to kairos-hdmi-prime through hw.hdmi_switch (a
+    silent no-op here: the helper is not installed in the test container)."""
+    async with s.get(f"{BASE}/api/settings") as r:
+        before = await r.json()
+    assert before.get("hdmi") == "on", before.get("hdmi")
+    async with s.post(f"{BASE}/api/settings", json={"hdmi": "maybe"}) as r:
+        assert r.status == 400 and "hdmi must be one of on, off" in (await r.json())["error"], r.status
+    async with s.post(f"{BASE}/api/settings", json={"hdmi": "off"}) as r:
+        assert r.status == 200 and (await r.json())["hdmi"] == "off"
+    async with s.get(f"{BASE}/api/settings") as r:
+        assert (await r.json())["hdmi"] == "off"
+    async with s.post(f"{BASE}/api/settings", json={"hdmi": "on"}) as r:
+        assert r.status == 200 and (await r.json())["hdmi"] == "on"
+    src = (REPO / "kernel" / "server.py").read_text()
+    assert 'HDMI_MODES = ("on", "off")' in src and 'hw.hdmi_switch(changes["hdmi"])' in src
+    async with s.get(f"{BASE}/api/status") as r:          # the shell polls this for the consent toast
+        h = (await r.json()).get("hdmi")
+    assert isinstance(h, dict) and h.get("state") == "n/a", h
+    async with s.post(f"{BASE}/api/hw", json={"device": "display", "op": "hdmi", "action": "maybe"}) as r:
+        assert r.status == 200 and (await r.json())["ok"] is False      # validated; the helper is absent here
+    return "hdmi: default on, bad value 400, off/on stored, the change goes to kairos-hdmi-prime via hw.hdmi_switch; /api/status carries hdmi (n/a here); the hdmi op validates its action"
+
+
 @run_test("unit_stick_run_boot_llm_pointer", ["R41", "R73", "R28", "R51"])
 async def t_stick_run_1007(_):
     """Stick run 2026-10-07 (docs/STICK-RUN-2026-10-07.md): no mouse pointer, a slow boot, no LLM.

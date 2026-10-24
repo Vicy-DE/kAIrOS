@@ -1,0 +1,6 @@
+# kAIrOS [R91]: a monitor plugged into (or pulled from) the HDMI port that is wired to the NVIDIA GPU. Once
+# kairos-hdmi-prime has loaded nvidia_drm (modeset=1) the NVIDIA DRM card reports hot-plugs as "change" events;
+# the RUN hook only starts kairos-hdmi-prime-event.service (no-block) and returns, so the udev worker never waits
+# for a probe or an X session restart. Only the NVIDIA card (PCI vendor 0x10de): the AMD's own events (eDP,
+# USB-C DisplayPort) are the X side's business (R90).
+ACTION=="change", SUBSYSTEM=="drm", KERNEL=="card[0-9]*", ATTRS{vendor}=="0x10de", RUN+="/usr/local/sbin/kairos-hdmi-prime event"

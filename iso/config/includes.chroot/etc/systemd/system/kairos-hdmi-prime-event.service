@@ -1,0 +1,12 @@
+[Unit]
+Description=HDMI monitor plugged into the NVIDIA GPU: probe and attach (reverse PRIME) [R91]
+# Started by the udev rule 80-kairos-hdmi-prime.rules (a DRM change event on the NVIDIA card, i.e. a monitor
+# plugged or unplugged once nvidia_drm is loaded) through `kairos-hdmi-prime event`, and by the settings key
+# `hdmi` -> on. Oneshot: a second start while one runs is queued, never parallel. Never on the boot's critical
+# chain, never a boot failure (the script exits 0 on every path).
+After=kairos-hdmi-prime.service
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/local/sbin/kairos-hdmi-prime react
+TimeoutStartSec=180

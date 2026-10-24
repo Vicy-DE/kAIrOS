@@ -49,7 +49,7 @@ await vibe.settings.set("accent", "#ff5cf0");
 
 **Validation**: `accent`/`accent2` a CSS colour (`#ff5cf0`, `rgb(…)`, a name), `os_name` 1–40 characters, `wallpaper`
 an image URL or `null`, `image_steps` 1–150 or null, `image_model`/`image_expand`/`llm_model`/`translation`/`language`/
-`translation_quality` one of their listed values; a bad value rejects the `vibe.settings.set` promise with the rule
+`translation_quality`/`hdmi` one of their listed values; a bad value rejects the `vibe.settings.set` promise with the rule
 and stores nothing. Always pass the value.
 
 **AI image models**: `m.models` → `[{key,name,present,addon,download_gb,active,defaults,expander,licence}]` (+ `m.expand`,
@@ -67,3 +67,12 @@ files-storage.md. Displays → display.md.
 `.set({ntp:true})`, `.set({time:"2026-07-10 21:30:00"})`; `.timezones()` → the full picker list.
 **Volume & audio output**: `vibe.hw.volume.get()/.set(percent, mute?)`; `vibe.hw.sound.list()` → `{sinks:[{name,default}]}`,
 `vibe.hw.sound.set(sinkName)` (e.g. after Bluetooth headphones connect → network.md).
+
+## The HDMI port on the NVIDIA (hybrid laptops) [R91]
+
+`vibe.settings.set("hdmi", "on" | "off")` (default `on`): a monitor on the HDMI port that is wired to the NVIDIA GPU
+joins the desktop through reverse PRIME — the first time one is found the desktop restarts ONCE (a few seconds), then
+it is one more screen; `off` = never load the NVIDIA display modules for it, never restart the desktop for it (from the
+next desktop start; `kairos.hdmi=0` on the kernel command line does the same). What happened is in
+`vibe.hw.display.list().hdmi` (`state`: `active` | `absent` | `off` | `failed` + `reason` | `unsupported` | `n/a`) →
+display.md. Offer the switch in a Settings app as "HDMI monitor (NVIDIA port)".

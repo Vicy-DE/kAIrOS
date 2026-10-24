@@ -1,0 +1,29 @@
+[Unit]
+Description=HDMI monitor on the NVIDIA GPU joins the one desktop (reverse PRIME, non-critical) [R91]
+# Ordered like nvidia-load.service (D7: after basic.target, never after multi-user.target — getty@tty1 lives
+# inside it) but NOT after nvidia-load.service itself: the script waits for the driver binding on its own (120 s),
+# and an After= on nvidia-load would make this unit part of any ordering cycle nvidia-load could ever fall into
+# (the suite's D7 detector self-check plants exactly that cycle).
+# inside it). ExecStartPre runs BEFORE getty@tty1 = before X: it removes the attach session's X config
+# (15-kairos-hdmi-prime.conf), so every boot starts X exactly as before (AutoAddGPU off, no nvidia_drm).
+# The main process is Type=simple: getty does not wait for it. It waits for the nvidia module (loaded in the
+# background by kairos-gpu-setup on the hybrid laptop), loads the NVIDIA display modules, reads the connectors
+# and — only with a monitor on the NVIDIA — restarts the X session once with the NVIDIA GPU screen.
+# A later plug comes through the udev rule 80-kairos-hdmi-prime.rules -> kairos-hdmi-prime-event.service.
+# Off switch: kernel cmdline kairos.hdmi=0 or /etc/kairos/hdmi = off — checked by the script, not by a unit
+# condition: the ExecStartPre must run on EVERY boot so a previous session's attach file is gone before X.
+After=basic.target
+Before=getty@tty1.service
+
+[Service]
+Type=simple
+# the script exits 0 on every path; ExecStart=- and ExecStartPre=- keep a finicky dGPU from failing the boot [R63]
+ExecStartPre=-/usr/local/sbin/kairos-hdmi-prime prestart
+ExecStart=-/usr/local/sbin/kairos-hdmi-prime boot
+# bounds ExecStartPre (the main process of a simple unit counts as started at once); the script itself bounds
+# its waits: the module (120 s), the new X session (60 s)
+TimeoutStartSec=30
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,267 @@
+#!/bin/sh
+# kairos-hdmi-prime [R91] — a monitor on the HDMI port joins the one desktop (R90) on the hybrid laptop, where
+# the HDMI connector is wired to the NVIDIA GPU while the AMD iGPU draws the desktop (docs/HDMI-PRIME-2026-10-22.md).
+#
+# The mechanism is RandR 1.4 "reverse PRIME" (NVIDIA README ch. 33): the NVIDIA X driver runs as a GPU screen of
+# the amdgpu X screen (provider NVIDIA-G0, an output sink), the X side binds it as an output source
+# (`xrandr --setprovideroutputsource NVIDIA-G0 <main provider>`, scripts/desktop/kairos-desktop.py) and the HDMI
+# outputs become ordinary RandR outputs of the one desktop — plug / unplug from then on is R90's hot-plug path.
+#
+# Why it is a RESTART of the X session and not a live attach: X adds a GPU that appears while it runs through
+# xf86platformAddDevice, which force-loads the MODESETTING driver for it (xserver 21.1, hw/xfree86/common/
+# xf86platformBus.c) — glamor on nvidia-drm then failed ("modeset(G0): Failed to create pixmap") and stalled the
+# desktop start for 92 s on the stick run of 2026-10-06 (R41/R50). Only at an X START does the OutputClass
+# (/usr/share/X11/xorg.conf.d/nvidia-drm-outputclass.conf: nvidia-drm -> the nvidia driver) pick the NVIDIA X
+# driver for the GPU screen, and only with AutoAddGPU on. So:
+#   * every boot starts X exactly as before: no nvidia_drm, AutoAddGPU off (10-kairos-single-gpu.conf) — the
+#     ExecStartPre of kairos-hdmi-prime.service (Before=getty@tty1) removes the attach session's config file;
+#   * after the nvidia module is up (kairos-gpu-setup loads it in the background on the hybrid laptop) this script
+#     loads nvidia_modeset + nvidia_drm (modeset=1, no fbdev) — with AutoAddGPU off the running X ignores the new
+#     DRM device — and reads the NVIDIA connectors in sysfs: the detection needs no X and no nvidia-smi
+#     (whose display_mode query is deprecated in this driver generation);
+#   * a connected monitor -> `attach`: 15-kairos-hdmi-prime.conf (ServerFlags AutoAddGPU on; a later file
+#     overrides the earlier one — measured on xserver 21.1), one planned restart of getty@tty1 (= a new X session,
+#     ~5-10 s), then the new session's `xinitrc: providers:` breadcrumb must name NVIDIA-G0 bound; else everything
+#     is reverted (config removed, one more restart) and the state says failed + why. At most ONE attach per boot.
+#   * a monitor plugged later, while the desktop is up: a DRM change event (udev rule 80-kairos-hdmi-prime.rules)
+#     -> `react` -> the probe, then NO restart without the user: state `consent` — the kernel's /api/status carries
+#     it, the shell shows "HDMI monitor detected — restart the desktop to use it (open windows will close)" with
+#     Restart now (-> `attach-now`) and Not now (-> `later`: state `declined`, remembered for this boot; a
+#     display-settings entry or the same button can still attach later). Only the boot path restarts on its own.
+# Off switch (no rebuild): kernel cmdline `kairos.hdmi=0` (and `kairos.hdmi=1` beats the file) or the file
+# /etc/kairos/hdmi containing `off` (the settings key `hdmi`, vibe.settings.set("hdmi", "off"), writes it).
+# Every outcome is logged (/var/log/kairos/hdmi-prime.log, the state in /run/kairos/hdmi-prime.json: the display
+# API's `hdmi` and the boot log's hdmi_prime check read it) and never fails a unit or X: exit 0 on every path.
+#
+#   kairos-hdmi-prime prestart   ExecStartPre: a clean X start (no attach config, state reset)
+#   kairos-hdmi-prime boot       wait for the nvidia module, probe, attach when a monitor is on the NVIDIA
+#   kairos-hdmi-prime react      a DRM change event (udev): probe again, ask the user (state consent) when a monitor is there
+#   kairos-hdmi-prime event      the udev RUN hook: starts kairos-hdmi-prime-event.service (react) and returns
+#   kairos-hdmi-prime probe      load the display modules, read the connectors, write the state (no attach)
+#   kairos-hdmi-prime attach     the X session restart with the NVIDIA GPU screen (when a monitor is present)
+#   kairos-hdmi-prime attach-now the user said "Restart now" (the kernel): the attach, consent given
+#   kairos-hdmi-prime later      the user said "Not now": no restart this boot unless asked again
+#   kairos-hdmi-prime status     print the state JSON
+#   kairos-hdmi-prime on|off     the switch file (+ on: probe/attach now)
+# Overridable paths (the test suite runs this on a fake sysfs with fake modprobe/systemctl):
+SYS=${KAIROS_SYS:-/sys}
+STATE=${KAIROS_HDMI_STATE:-/run/kairos/hdmi-prime.json}
+LOG=${KAIROS_HDMI_LOG:-/var/log/kairos/hdmi-prime.log}
+XCONF=${KAIROS_HDMI_XCONF:-/etc/X11/xorg.conf.d/15-kairos-hdmi-prime.conf}
+SWITCH=${KAIROS_HDMI_SWITCH:-/etc/kairos/hdmi}
+CMDLINE=${KAIROS_HDMI_CMDLINE:-/proc/cmdline}
+XLOG=${KAIROS_HDMI_XLOG:-/var/log/kairos/x.log}
+XCNT=${KAIROS_HDMI_XCNT:-/run/kairos/x-attempts}
+PLANNED=${KAIROS_HDMI_PLANNED:-/run/kairos/x-planned-restarts}   # read by kairos-bootlog: restarts that are no failure
+ATTEMPTS=${KAIROS_HDMI_ATTEMPTS:-/run/kairos/hdmi-prime-attempts}
+DECLINED=${KAIROS_HDMI_DECLINED:-/run/kairos/hdmi-prime-declined}   # "Not now" for this boot
+DDX=${KAIROS_HDMI_DDX:-/usr/lib/xorg/modules/drivers/nvidia_drv.so}
+OUTPUTCLASS=${KAIROS_HDMI_OUTPUTCLASS:-/usr/share/X11/xorg.conf.d/nvidia-drm-outputclass.conf}
+XSOCK=${KAIROS_HDMI_XSOCK:-/tmp/.X11-unix/X0}
+WAIT=${KAIROS_HDMI_WAIT:-120}          # s to wait for the nvidia module (the background load off a USB stick)
+XWAIT=${KAIROS_HDMI_XWAIT:-60}         # s to wait for the new X session's providers breadcrumb
+ATTACH_MAX=${KAIROS_HDMI_ATTACH_MAX:-1}
+GETTY=${KAIROS_HDMI_GETTY:-getty@tty1.service}
+EVENT_UNIT=${KAIROS_HDMI_EVENT_UNIT:-kairos-hdmi-prime-event.service}
+
+log() { printf '%s hdmi-prime: %s\n' "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null)" "$*" >> "$LOG" 2>/dev/null; }
+jstr() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr -d '\n'; }
+# state NAME "reason" — the JSON the display API, the boot log and `status` read; every change is logged
+state() {
+  st=$1; why=${2:-}
+  n=$(cat "$ATTEMPTS" 2>/dev/null); case "$n" in ''|*[!0-9]*) n=0 ;; esac
+  printf '{"state":"%s","reason":"%s","gpu":"%s","connectors":"%s","providers":"%s","attempts":%s,"updated":"%s"}\n' \
+    "$st" "$(jstr "$why")" "$GPU" "$(jstr "$CONN")" "$(jstr "$PROV")" "$n" "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null)" \
+    > "$STATE" 2>/dev/null
+  log "state $st${why:+ — $why}${CONN:+ [$CONN]}"
+}
+
+# ---- facts ----
+switch_off() {   # -> 0 (off) with the reason on stdout
+  c=$(cat "$CMDLINE" 2>/dev/null)
+  case " $c " in
+    *" kairos.hdmi=0 "*) echo "kernel cmdline kairos.hdmi=0"; return 0 ;;
+    *" kairos.hdmi=1 "*) return 1 ;;
+  esac
+  case "$(head -n 1 "$SWITCH" 2>/dev/null | tr -d '[:space:]')" in
+    off|0|no) echo "$SWITCH says off"; return 0 ;;
+  esac
+  return 1
+}
+GPU=""; GPU_BOOT=0
+find_gpu() {   # the NVIDIA GPU's PCI slot; GPU_BOOT=1 when the firmware lit the monitor on it (then X already runs on it)
+  for d in "$SYS"/bus/pci/devices/*; do
+    [ "$(cat "$d/vendor" 2>/dev/null)" = "0x10de" ] || continue
+    case "$(cat "$d/class" 2>/dev/null)" in 0x03*) ;; *) continue ;; esac
+    GPU=${d##*/}
+    [ "$(cat "$d/boot_vga" 2>/dev/null)" = "1" ] && GPU_BOOT=1
+    return 0
+  done
+  return 1
+}
+nvidia_bound() { [ -e "$SYS/bus/pci/drivers/nvidia/$GPU" ]; }
+drm_card() {   # the DRM card of the NVIDIA GPU (exists once nvidia_drm is loaded with modeset=1)
+  for c in "$SYS"/class/drm/card[0-9]*; do
+    [ -e "$c/device" ] || continue
+    case "${c##*/}" in *-*) continue ;; esac          # card1-HDMI-A-1 is a connector, not a card
+    case "$(readlink -f "$c/device" 2>/dev/null)" in */"$GPU") echo "${c##*/}"; return 0 ;; esac
+  done
+  return 1
+}
+CONN=""; PROV=""
+read_connectors() {   # CONN = "HDMI-A-1=connected DP-1=disconnected"; -> 0 when one is connected
+  card=$(drm_card) || { CONN=""; return 1; }
+  CONN=""; any=1
+  for s in "$SYS"/class/drm/"$card"-*/status; do
+    [ -r "$s" ] || continue
+    c=$(dirname "$s"); v=$(cat "$s" 2>/dev/null)
+    CONN="$CONN${CONN:+ }$(basename "$c" | sed "s/^$card-//")=$v"
+    [ "$v" = connected ] && any=0
+  done
+  return $any
+}
+load_display_modules() {   # explicit: the blacklist (kairos-nvidia-hybrid.conf) stops alias autoloading only
+  drm_card >/dev/null 2>&1 && return 0
+  modprobe nvidia_modeset 2>/dev/null || { log "modprobe nvidia_modeset failed"; return 1; }
+  modprobe nvidia_drm modeset=1 fbdev=0 2>/dev/null || { log "modprobe nvidia_drm modeset=1 fbdev=0 failed"; return 1; }
+  i=0; while [ "$i" -lt 50 ] && ! drm_card >/dev/null 2>&1; do i=$((i + 1)); sleep 0.2; done
+  drm_card >/dev/null 2>&1 || { log "nvidia_drm loaded but no DRM card for $GPU"; return 1; }
+  log "nvidia_modeset + nvidia_drm (modeset=1 fbdev=0) loaded: $(drm_card) for $GPU"
+  return 0
+}
+power_note() {   # the cost question: pstate / power / VRAM of the NVIDIA at each step (nvidia-smi, bounded)
+  command -v nvidia-smi >/dev/null 2>&1 || return 0
+  p=$(timeout 8 nvidia-smi --query-gpu=pstate,power.draw,memory.used,memory.total --format=csv,noheader 2>/dev/null | head -n 1)
+  log "power ($1): ${p:-nvidia-smi gave nothing}; runtime_status $(cat "$SYS/bus/pci/devices/$GPU/power/runtime_status" 2>/dev/null)"
+}
+x_attempts() { n=$(cat "$XCNT" 2>/dev/null); case "$n" in ''|*[!0-9]*) n=0 ;; esac; echo "$n"; }
+providers_lines() { n=$(grep -c '^xinitrc: providers:' "$XLOG" 2>/dev/null); case "$n" in ''|*[!0-9]*) n=0 ;; esac; echo "$n"; }
+last_providers() { grep '^xinitrc: providers:' "$XLOG" 2>/dev/null | tail -n 1 | sed 's/^xinitrc: providers: *//'; }
+bump() { n=$(cat "$1" 2>/dev/null); case "$n" in ''|*[!0-9]*) n=0 ;; esac; echo $((n + 1)) > "$1" 2>/dev/null; }
+current_state() { sed -n 's/.*"state": *"\([a-z/]*\)".*/\1/p' "$STATE" 2>/dev/null; }
+
+# preconditions for the whole feature; writes the state and returns 1 when nothing is to be done
+eligible() {
+  if why=$(switch_off); then state off "$why"; return 1; fi
+  if ! find_gpu; then state unsupported "no NVIDIA GPU on the PCI bus"; return 1; fi
+  if [ "$GPU_BOOT" = 1 ]; then state unsupported "the NVIDIA GPU is the boot GPU: X runs on it, its HDMI is a plain output"; return 1; fi
+  if [ ! -r "$DDX" ]; then state unsupported "no NVIDIA X driver ($DDX): nothing can be an output sink"; return 1; fi
+  if [ ! -r "$OUTPUTCLASS" ]; then state unsupported "no OutputClass for nvidia-drm ($OUTPUTCLASS): X would give the GPU to modesetting (the 92-s stall)"; return 1; fi
+  return 0
+}
+
+# probe: the display modules + the connectors -> state present|absent (0 = a monitor is connected)
+probe() {
+  eligible || return 1
+  if ! nvidia_bound; then state absent "nvidia module not bound to $GPU (yet)"; return 1; fi
+  load_display_modules || { state failed "the NVIDIA display modules did not load"; return 1; }
+  if read_connectors; then
+    state present "a monitor is connected to the NVIDIA GPU"; return 0
+  fi
+  state absent "no monitor on the NVIDIA connectors"; return 1
+}
+
+# attach: the X session restart with the NVIDIA GPU screen; the new session must report NVIDIA-G0 bound
+attach() {
+  n=$(cat "$ATTEMPTS" 2>/dev/null); case "$n" in ''|*[!0-9]*) n=0 ;; esac
+  if [ "$n" -ge "$ATTACH_MAX" ]; then
+    log "attach not repeated ($n of $ATTACH_MAX attempts this boot)"; return 1
+  fi
+  bump "$ATTEMPTS"
+  if [ ! -S "$XSOCK" ]; then state failed "no X session on :0 to attach to"; return 1; fi
+  power_note "before attach"
+  mkdir -p "$(dirname "$XCONF")" 2>/dev/null
+  printf '%s\n' \
+    '# written by kairos-hdmi-prime [R91] for THIS X session only (removed before every X start): a monitor is on' \
+    '# the NVIDIA GPU, so X may add it as a GPU screen (the nvidia X driver via nvidia-drm-outputclass.conf) and' \
+    '# the X side binds NVIDIA-G0 as an output source. A later file overrides 10-kairos-single-gpu.conf.' \
+    'Section "ServerFlags"' \
+    '    Option "AutoAddGPU" "on"' \
+    'EndSection' > "$XCONF" 2>/dev/null || { state failed "cannot write $XCONF"; return 1; }
+  before_lines=$(providers_lines); before_att=$(x_attempts)
+  bump "$PLANNED"
+  state pending "restarting the X session with the NVIDIA GPU screen (planned restart $(cat "$PLANNED" 2>/dev/null))"
+  systemctl restart "$GETTY" 2>/dev/null || { rm -f "$XCONF"; state failed "systemctl restart $GETTY failed"; return 1; }
+  i=0
+  while [ "$i" -lt "$XWAIT" ]; do
+    [ "$(providers_lines)" -gt "$before_lines" ] && break
+    [ "$(x_attempts)" -gt $((before_att + 1)) ] && break      # X failed and is being retried: not our session
+    i=$((i + 1)); sleep 1
+  done
+  PROV=$(last_providers)
+  if [ "$(providers_lines)" -gt "$before_lines" ] && [ "$(x_attempts)" -le $((before_att + 1)) ]; then
+    case "$PROV" in
+      *"NVIDIA-G0 bound"*)
+        read_connectors; state active "NVIDIA-G0 is an output source of the desktop; the HDMI outputs are RandR outputs now"
+        power_note "after attach"; return 0 ;;
+      *NVIDIA-G0*)
+        why="NVIDIA-G0 exists but could not be bound as an output source ($PROV)" ;;
+      *)
+        why="the new X session has no NVIDIA-G0 provider ($PROV)" ;;
+    esac
+  elif [ "$(x_attempts)" -gt $((before_att + 1)) ]; then
+    why="X did not come up with the NVIDIA GPU screen (attempt $(x_attempts) after $((before_att + 1)))"
+  else
+    why="the new X session gave no providers breadcrumb within ${XWAIT}s"
+  fi
+  # revert: the plain X session as before, the desktop keeps running without HDMI
+  rm -f "$XCONF"
+  bump "$PLANNED"
+  log "attach failed: $why — reverting (config removed, one more planned restart)"
+  systemctl restart "$GETTY" 2>/dev/null
+  state failed "$why"
+  power_note "after revert"
+  return 1
+}
+
+cmd=${1:-status}
+case "$cmd" in
+  prestart)
+    rm -f "$XCONF" 2>/dev/null; rm -f "$ATTEMPTS" "$PLANNED" "$DECLINED" 2>/dev/null
+    log "prestart: clean X start (no attach config)"; rm -f "$STATE" 2>/dev/null ;;
+  boot)
+    if eligible; then
+      i=0
+      while [ "$i" -lt "$WAIT" ] && ! nvidia_bound; do i=$((i + 1)); sleep 1; done
+      [ "$i" -gt 0 ] && log "waited ${i}s for the nvidia module"
+      if probe; then attach; fi
+    fi ;;
+  react|attach)   # a hot-plug while the desktop is up: the probe, then the USER decides (never a restart on its own)
+    st=$(current_state)
+    case "$st" in
+      unsupported|failed) log "event ignored (state $st)" ;;
+      active) read_connectors; find_gpu; log "event in the attached session: connectors $CONN (R90 lays them out)" ;;
+      consent|declined)   # the question stands (the state keeps its stamp: the shell asks ONCE per stamp) unless the monitor left
+        find_gpu
+        if read_connectors; then log "event while state $st: the monitor is still there (nothing to do)"
+        else state absent "the monitor left the NVIDIA GPU before the user answered"; fi ;;
+      *) if probe; then
+           if [ -e "$DECLINED" ]; then state declined "a monitor is on the NVIDIA GPU; the user said Not now this boot (Restart now in the display settings attaches it)"
+           else state consent "a monitor is on the NVIDIA GPU; the desktop must restart once to use it — waiting for the user (Restart now / Not now)"; fi
+         fi ;;                                  # absent / present / off (the switch is re-read: `on` re-probes) / none
+    esac ;;
+  attach-now)     # "Restart now": consent given (the max-1-per-boot guard and the revert stay)
+    rm -f "$DECLINED" 2>/dev/null
+    st=$(current_state)
+    case "$st" in
+      active) log "attach-now: already attached" ;;
+      unsupported|failed) log "attach-now ignored (state $st)" ;;
+      *) if probe; then attach; else log "attach-now: no monitor on the NVIDIA GPU now"; fi ;;
+    esac ;;
+  later)          # "Not now": remembered for this boot; no toast again, no restart
+    touch "$DECLINED" 2>/dev/null || log "cannot write $DECLINED"     # never `: >`: a failed redirection on a special builtin ends dash
+    find_gpu; read_connectors
+    state declined "the user said Not now: the HDMI monitor stays unused until the next boot or Restart now in the display settings" ;;
+  event)   # from udev: never block the udev worker
+    systemctl start --no-block "$EVENT_UNIT" 2>/dev/null || true ;;
+  probe) if [ "$(current_state)" = active ]; then log "probe: the attached session is active (not probed again)"; else probe; fi ;;
+  status) cat "$STATE" 2>/dev/null || echo '{"state":"n/a","reason":"kairos-hdmi-prime has not run"}' ;;
+  on)
+    mkdir -p "$(dirname "$SWITCH")" 2>/dev/null; echo on > "$SWITCH" 2>/dev/null; log "switch: on ($SWITCH)"
+    systemctl start --no-block "$EVENT_UNIT" 2>/dev/null || true ;;
+  off)
+    mkdir -p "$(dirname "$SWITCH")" 2>/dev/null; echo off > "$SWITCH" 2>/dev/null; log "switch: off ($SWITCH) — applies to the next X start"
+    [ "$(current_state)" = active ] || { find_gpu; state off "$SWITCH says off"; } ;;
+  *) echo "usage: kairos-hdmi-prime prestart|boot|react|event|probe|attach|attach-now|later|status|on|off" >&2 ;;
+esac
+exit 0

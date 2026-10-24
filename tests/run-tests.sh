@@ -212,6 +212,14 @@ python3 "$REPO/tests/test_public_profile.py" || RC=1
 echo "== running tests/test_one_desktop.py =="
 python3 "$REPO/tests/test_one_desktop.py" || RC=1
 
+# the HDMI port on the hybrid laptop's NVIDIA GPU [R91] (reverse PRIME, docs/HDMI-PRIME-2026-10-22.md): the root-side
+# helper kairos-hdmi-prime on a fake sysfs with a fake modprobe / systemctl (the off switch, the unsupported cases, no
+# monitor, the attach = one planned X restart, the failure path + revert, prestart, the udev hook), the X side's provider
+# binding (mock-xrandr --listproviders), the display API's `providers` + `hdmi`, the boot log's hdmi_prime check and
+# planned-restart arithmetic (the real kairos-bootlog on a fake ESP), the units / udev rule / build lists, the docs
+echo "== running tests/test_hdmi_prime.py =="
+python3 "$REPO/tests/test_hdmi_prime.py" || RC=1
+
 if [ -z "${KAIROS_TEST_ONLY:-}" ]; then          # a subset run (iterating on a fix) never rewrites the progress page
     echo "== regenerating docs/PROGRESS.md =="
     python3 "$REPO/scripts/update-progress.py"

@@ -154,6 +154,12 @@ INC="$REPO/iso/config/includes.chroot"
 install -D -m 755 "$INC/usr/local/sbin/kairos-gpu-setup"           "$MNT/usr/local/sbin/kairos-gpu-setup"
 install -D -m 755 "$INC/usr/local/sbin/kairos-esp-sync"            "$MNT/usr/local/sbin/kairos-esp-sync"
 install -D -m 644 "$INC/etc/systemd/system/nvidia-load.service"    "$MNT/etc/systemd/system/nvidia-load.service"
+#   kairos-hdmi-prime + its units + udev rule  [R91] a monitor on the HDMI port of the hybrid laptop's NVIDIA
+#                                           GPU joins the desktop (reverse PRIME); off: kairos.hdmi=0
+install -D -m 755 "$INC/usr/local/sbin/kairos-hdmi-prime"          "$MNT/usr/local/sbin/kairos-hdmi-prime"
+install -D -m 644 "$INC/etc/systemd/system/kairos-hdmi-prime.service"       "$MNT/etc/systemd/system/kairos-hdmi-prime.service"
+install -D -m 644 "$INC/etc/systemd/system/kairos-hdmi-prime-event.service" "$MNT/etc/systemd/system/kairos-hdmi-prime-event.service"
+install -D -m 644 "$INC/etc/udev/rules.d/80-kairos-hdmi-prime.rules"        "$MNT/etc/udev/rules.d/80-kairos-hdmi-prime.rules"
 install -D -m 644 "$INC/etc/kernel/install.conf"                   "$MNT/etc/kernel/install.conf"
 install -D -m 755 "$INC/etc/kernel/postinst.d/zz-kairos-esp"       "$MNT/etc/kernel/postinst.d/zz-kairos-esp"
 install -D -m 755 "$INC/etc/initramfs/post-update.d/zz-kairos-esp" "$MNT/etc/initramfs/post-update.d/zz-kairos-esp"
@@ -237,10 +243,10 @@ systemctl enable kairos-firstboot.service
 # boot diagnostics -> readable EFI partition (KAIROS-LOGS) [R51]: late capture,
 # early breadcrumb (attempt counter), emergency capture, X-loop watcher. The
 # failure capture is pulled in by OnFailure= only. Loud: a missing unit fails the build.
-chmod +x /usr/local/sbin/kairos-bootlog /usr/local/sbin/kairos-bootlog-early /usr/local/sbin/kairos-prewarm
+chmod +x /usr/local/sbin/kairos-bootlog /usr/local/sbin/kairos-bootlog-early /usr/local/sbin/kairos-prewarm /usr/local/sbin/kairos-hdmi-prime
 systemctl enable kairos-bootlog.service kairos-bootlog-early.service \
                  kairos-bootlog-emergency.service kairos-bootlog-xfail.path \
-                 kairos-bootlog-stall.timer kairos-prewarm.service
+                 kairos-bootlog-stall.timer kairos-prewarm.service kairos-hdmi-prime.service
 mkdir -p /var/log/journal /var/log/kairos   # persistent journal (survives a failed boot)
 chown kairos: /var/log/kairos 2>/dev/null || true
 # the boot screen painter [R73] goes into /usr/local/sbin BEFORE the initrd is built: its
@@ -262,6 +268,7 @@ for u in multi-user.target.wants/kairos-bootlog.service \
          sysinit.target.wants/kairos-prewarm.service \
          multi-user.target.wants/kairos-growroot.service \
          multi-user.target.wants/nvidia-load.service \
+         multi-user.target.wants/kairos-hdmi-prime.service \
          multi-user.target.wants/kairos-firstboot.service \
          sysinit.target.wants/kairos-splash.service; do
   [ -L "$W/$u" ] || { echo "FATAL: chroot step did not enable $u (heredoc expanded on the host?)"; exit 94; }
@@ -289,7 +296,7 @@ grep -q '^layout=other' "$MNT/etc/kernel/install.conf" \
 for f in usr/local/sbin/kairos-esp-sync etc/kernel/postinst.d/zz-kairos-esp etc/initramfs/post-update.d/zz-kairos-esp; do
   [ -x "$MNT/$f" ] || { echo "FATAL: $f missing or not executable"; exit 99; }
 done
-echo "chroot step verified: bootlog/growroot/nvidia-load/firstboot enabled, persistenced not, gpu-setup intact, ssh keys present, kernel-install off"
+echo "chroot step verified: bootlog/growroot/nvidia-load/hdmi-prime/firstboot enabled, persistenced not, gpu-setup intact, ssh keys present, kernel-install off"
 
 # --- names [fix 2026-10-22, docs/FIXES-2026-10-22.md]: /etc/hosts names the host (startx's xauth looked
 # localhost.localdomain up over DNS: X started 40 s late where DNS is dropped) and /etc/resolv.conf is NetworkManager's

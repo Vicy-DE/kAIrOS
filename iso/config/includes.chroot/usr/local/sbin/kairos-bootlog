@@ -118,9 +118,13 @@ fi
 # the X / kiosk layer's files are resolved AFTER the wait above (D1): on a normal
 # boot they appear ~1 s after this unit starts, and resolving them first made a
 # healthy boot report "attempts: 0" / "no X log" and a broken X "never attempted"
-XLOG=/var/log/kairos/x.log; [ -r "$XLOG" ] || XLOG=/tmp/kairos-x.log
-XCNT=/run/kairos/x-attempts; [ -r "$XCNT" ] || XCNT=/tmp/kairos-x-attempts
+XLOG=/var/log/kairos/x.log; [ -n "${KAIROS_BOOTLOG_XLOG:-}" ] && XLOG=$KAIROS_BOOTLOG_XLOG; [ -r "$XLOG" ] || XLOG=/tmp/kairos-x.log
+XCNT=${KAIROS_BOOTLOG_XCNT:-/run/kairos/x-attempts}; [ -r "$XCNT" ] || XCNT=/tmp/kairos-x-attempts
 XATT=$(cat "$XCNT" 2>/dev/null); case "$XATT" in ''|*[!0-9]*) XATT=0 ;; esac
+# [R91] X restarts made ON PURPOSE by kairos-hdmi-prime (the session with the NVIDIA GPU screen for a monitor on
+# the HDMI port, and the revert of a failed attach) are no failures: counted in /run, taken off the X checks
+PLANNED=$(cat "${KAIROS_BOOTLOG_PLANNED:-/run/kairos/x-planned-restarts}" 2>/dev/null); case "$PLANNED" in ''|*[!0-9]*) PLANNED=0 ;; esac
+HDMIST=${KAIROS_BOOTLOG_HDMI:-/run/kairos/hdmi-prime.json}
 
 # kernel crash records of an earlier boot (EFI pstore -> systemd-pstore): normally
 # kairos-bootlog-early copied them already; this is the fallback when it did not run
@@ -306,17 +310,20 @@ if [ -n "$MODF" ]; then check modules WARN "module load failures: $MODF"; else c
 # (".xinitrc: displays:" = the display setup finished; the last breadcrumb says where it stopped)
 XSESS=$(grep -c '^xinitrc: displays:' "$XLOG" 2>/dev/null); case "$XSESS" in ''|*[!0-9]*) XSESS=0 ;; esac
 XLAST=$(grep '^xinitrc: ' "$XLOG" 2>/dev/null | tail -n 1 | cut -c1-120)
+# [R91] the planned restarts (kairos-hdmi-prime) come off the attempt count the thresholds judge; the raw count stays in the text
+XEFF=$((XATT - PLANNED)); [ "$XEFF" -lt 0 ] && XEFF=0
+PLN=""; [ "$PLANNED" -gt 0 ] && PLN=", $PLANNED planned restart(s) by kairos-hdmi-prime (HDMI/PRIME)"
 if [ "$XATT" -gt 0 ] && [ "$XSESS" -eq 0 ] && { [ -S /tmp/.X11-unix/X0 ] || pgrep -x Xorg >/dev/null 2>&1 || [ "$REASON" = shutdown ]; }; then
   case "$REASON" in boot|shutdown|stalled) st=FAIL ;; *) st=WARN ;; esac
   check xorg $st "X server started but its session never got past the display setup (last breadcrumb: ${XLAST:-none — .xinitrc never ran}) — X stuck? see Xorg.0.log (EE) lines"
 elif [ -S /tmp/.X11-unix/X0 ] || pgrep -x Xorg >/dev/null 2>&1; then
-  check xorg PASS "X server up on :0 (attempts this boot: $XATT)"
+  check xorg PASS "X server up on :0 (attempts this boot: $XATT$PLN)"
 elif [ "$REASON" = shutdown ]; then
   # X stops before/while the shutdown capture runs: judge the run's start attempts, not
   # "now" — every clean reboot headlined "FAIL xorg: X failed to start" (2026-10-06)
-  if [ "$XATT" -ge 6 ]; then check xorg FAIL "X kept failing during this run ($XATT start attempts) — see X LOG"
-  elif [ "$XATT" -ge 2 ]; then check xorg WARN "X was restarted $((XATT - 1)) time(s) during this run — see X LOG"
-  elif [ "$XATT" -eq 1 ]; then check xorg PASS "X ran this boot (1 start), stopped for shutdown"
+  if [ "$XEFF" -ge 6 ]; then check xorg FAIL "X kept failing during this run ($XATT start attempts$PLN) — see X LOG"
+  elif [ "$XEFF" -ge 2 ]; then check xorg WARN "X was restarted $((XEFF - 1)) time(s) during this run$PLN — see X LOG"
+  elif [ "$XATT" -ge 1 ]; then check xorg PASS "X ran this boot ($XATT start(s)$PLN), stopped for shutdown"
   else check xorg WARN "X never started this boot (tty1 autologin -> startx did not run)"; fi
 elif [ "$XATT" -gt 0 ]; then
   check xorg FAIL "X failed to start ($XATT attempt(s) this boot) — see X LOG / Xorg.0.log below"
@@ -346,6 +353,25 @@ elif [ "$REASON" = shutdown ]; then
 else
   case "$REASON" in boot) st=FAIL ;; *) st=WARN ;; esac
   check kiosk $st "no kiosk Chromium running — see X LOG (.xinitrc output)"
+fi
+
+# [R91] a monitor on the HDMI port that is wired to the NVIDIA GPU (the hybrid laptop; reverse PRIME through
+# kairos-hdmi-prime): the state it left in /run. off / unsupported / absent = nothing to do; active = the HDMI
+# outputs are part of the one desktop; failed = the desktop runs WITHOUT the HDMI monitor and the reason says why
+# (a WARN: the boot itself is fine); no state = the helper never ran (no NVIDIA sink here, or kairos.hdmi=0)
+if [ -r "$HDMIST" ]; then
+  HST=$(sed -n 's/.*"state": *"\([a-z/]*\)".*/\1/p' "$HDMIST" 2>/dev/null)
+  HWHY=$(sed -n 's/.*"reason": *"\([^"]*\)".*/\1/p' "$HDMIST" 2>/dev/null)
+  HCON=$(sed -n 's/.*"connectors": *"\([^"]*\)".*/\1/p' "$HDMIST" 2>/dev/null)
+  case "$HST" in
+    active)  check hdmi_prime PASS "HDMI monitor on the NVIDIA GPU is part of the desktop (reverse PRIME; $HCON)" ;;
+    failed)  check hdmi_prime WARN "HDMI/PRIME attach failed — the desktop runs without the HDMI monitor: $HWHY" ;;
+    pending) check hdmi_prime PASS "HDMI monitor on the NVIDIA GPU: attach in progress ($HWHY)" ;;
+    present) check hdmi_prime WARN "HDMI monitor on the NVIDIA GPU seen but not attached: $HWHY" ;;
+    *)       check hdmi_prime PASS "n/a (${HST:-?}): $HWHY${HCON:+ — connectors $HCON}" ;;
+  esac
+else
+  check hdmi_prime PASS "n/a: kairos-hdmi-prime left no state (not run: no NVIDIA output sink on this machine, or kairos.hdmi=0)"
 fi
 
 NET=$(ip -brief addr 2>/dev/null | awk '$1!="lo" && ($2=="UP"||$2=="UNKNOWN") && $3!="" {printf "%s %s; ", $1, $3}')
@@ -473,6 +499,15 @@ else VERDICT=PASS; WHY="all checks passed"; fi
     printf '%s: %s enabled=%s edid=%sB modes: %s\n' "$(basename "$c")" "$(cat "$s")" "$(cat "$c/enabled" 2>/dev/null)" "$(wc -c < "$c/edid" 2>/dev/null)" "$(head -n 3 "$c/modes" 2>/dev/null | tr '\n' ' ')"
   done
   echo
+  # [R91] the HDMI port on the NVIDIA GPU: the helper's state + log, the attach session's X config (gone after a
+  # clean X start), the providers breadcrumbs, and what Xorg said about the GPU screen
+  echo "---------- HDMI / reverse PRIME (kairos-hdmi-prime) [R91] ----------"
+  cat "$HDMIST" 2>/dev/null || echo "(no state: kairos-hdmi-prime did not run this boot)"
+  tail -n 40 /var/log/kairos/hdmi-prime.log 2>/dev/null
+  ls -l /etc/X11/xorg.conf.d/ 2>/dev/null; cat /etc/X11/xorg.conf.d/15-kairos-hdmi-prime.conf 2>/dev/null
+  grep -a '^xinitrc: providers:' "$XLOG" 2>/dev/null | tail -n 3
+  grep -a -E 'NVIDIA\(G0\)|modeset\(G0\)|AutoAddGPU|adding GPU devices|setprovideroutputsource|PRIME|nvidia-drm' /home/kairos/.local/share/xorg/Xorg.0.log 2>/dev/null | sed 's/^\[ *[0-9.]*\] //' | tail -n 14
+  echo
   echo "---------- disks / partitions / memory ----------"
   lsblk -f -o NAME,FSTYPE,LABEL,UUID,SIZE,MOUNTPOINTS 2>/dev/null || lsblk -f 2>/dev/null
   df -h / "$ESP" /opt/vibeos 2>/dev/null
@@ -567,7 +602,7 @@ cat > "$LOGDIR/README.txt" <<'R'
 kAIrOS boot logs — open latest.txt first (newest capture; boot/shutdown/failure/
 emergency/stalled). Its SUMMARY / VERDICT block on top says which check failed first
 (trigger, boot target, failed units, systemd job failures, kernel crash, root grow, GPU
-driver, firmware, modules, X, kernel :1337, kiosk, network, EFI mount); the evidence
+driver, firmware, modules, X, kernel :1337, kiosk, HDMI/PRIME, network, EFI mount); the evidence
 follows (timing, pending jobs, lspci -nnk drivers, X log, kernel log, LLM engine log,
 dmesg, this + previous boot journal). latest.json = same verdict as JSON.
 boot-*.txt: the last 16 captures (each boot + shutdown + every failure/emergency).

@@ -105,11 +105,12 @@ echo "[kairos-hook] boot diagnostics -> KAIROS-LOGS on the EFI partition [R51]"
 # and kairos-esp-sync + its kernel hooks (D4) are used by the appliance image.
 chmod +x /usr/local/sbin/kairos-bootlog /usr/local/sbin/kairos-bootlog-early /usr/local/sbin/kairos-prewarm \
          /usr/local/sbin/kairos-display-apply /usr/local/sbin/kairos-install \
-         /usr/local/sbin/kairos-gpu-setup /usr/local/sbin/kairos-esp-sync \
+         /usr/local/sbin/kairos-gpu-setup /usr/local/sbin/kairos-esp-sync /usr/local/sbin/kairos-hdmi-prime \
          /etc/kernel/postinst.d/zz-kairos-esp /etc/initramfs/post-update.d/zz-kairos-esp
+# [R91] kairos-hdmi-prime.service: the HDMI port on the hybrid laptop's NVIDIA GPU (reverse PRIME) — non-critical
 systemctl enable kairos-bootlog.service kairos-bootlog-early.service \
                  kairos-bootlog-emergency.service kairos-bootlog-xfail.path \
-                 kairos-bootlog-stall.timer kairos-prewarm.service
+                 kairos-bootlog-stall.timer kairos-prewarm.service kairos-hdmi-prime.service
 mkdir -p /var/log/journal /var/log/kairos && chown ${KIOSK_USER}: /var/log/kairos
 
 echo "[kairos-hook] unified memory: nvidia_uvm loads via nvidia-load.service (appliance image);"

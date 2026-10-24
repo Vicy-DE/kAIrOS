@@ -135,6 +135,37 @@ function toast(msg, isErr = false) {
   $("#toasts").appendChild(t);
   setTimeout(() => t.remove(), isErr ? 8000 : 4000);
 }
+/* [R91] a toast that waits for a click: `buttons` = [[label, fn], …]; it stays until one is pressed */
+function toastAction(msg, buttons) {
+  const t = document.createElement("div");
+  t.className = "toast";
+  const text = document.createElement("div"); text.textContent = msg; t.appendChild(text);
+  const row = document.createElement("div");
+  row.style.cssText = "display:flex;gap:8px;margin-top:8px;justify-content:flex-end";
+  for (const [label, fn] of buttons) {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.onclick = () => { try { fn(); } finally { t.remove(); } };
+    row.appendChild(b);
+  }
+  t.appendChild(row);
+  $("#toasts").appendChild(t);
+  return t;
+}
+/* [R91] a monitor on the HDMI port that is wired to the NVIDIA GPU (the hybrid laptop): using it needs ONE desktop
+   restart (open windows close), which never happens without the user while the desktop is up. The kernel's status
+   carries kairos-hdmi-prime's state (docs/HDMI-PRIME-2026-10-22.md): `consent` = ask, once per state change;
+   Restart now -> the attach (max once per boot, reverted on failure), Not now -> remembered for this boot. */
+let hdmiAsked = "";
+function hdmiNotice(h) {
+  if (!h || h.state !== "consent" || hdmiAsked === (h.updated || "asked")) return;
+  hdmiAsked = h.updated || "asked";
+  const act = (action) => fetch("/api/hw", { method: "POST", headers: apiHeaders(),
+    body: JSON.stringify({ device: "display", op: "hdmi", action }) }).catch(() => {});
+  toastAction("HDMI monitor detected — restart the desktop to use it (open windows will close)",
+              [["Not now", () => act("later")],
+               ["Restart now", () => { act("restart"); toast("restarting the desktop with the HDMI monitor…"); }]]);
+}
 
 /* ---------------- in-page prompt ----------------
    Chromium --kiosk suppresses native window.prompt/alert/confirm, so any UI that
@@ -2789,6 +2820,7 @@ async function pollStatus() {
     $("#mb-state").textContent = s.state + (s.online ? " · ◉ web" : s.knowledge ? " · ◎ offline kb" : " · ◌ no kb");
     $("#mb-dot").classList.toggle("busy", s.state !== "idle");
     if (typeof kairosModels !== "undefined") kairosModels.status(s);   // [R87] the ⬇ chip of a public image
+    hdmiNotice(s.hdmi);                                                 // [R91] a monitor on the NVIDIA's HDMI: ask before the restart
   } catch { $("#mb-state").textContent = "kernel offline"; }
 }
 setInterval(pollStatus, 4000);

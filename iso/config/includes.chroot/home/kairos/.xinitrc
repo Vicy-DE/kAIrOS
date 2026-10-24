@@ -32,6 +32,14 @@ printf '#define b_width 1\n#define b_height 1\n#define b_x_hot 0\n#define b_y_ho
 root_cursor_off() { [ -f "$BLANK" ] && xsetroot -cursor "$BLANK" "$BLANK" 2>/dev/null; }
 root_cursor_off; ( sleep 3; root_cursor_off ) &
 
+# [R91] an NVIDIA GPU screen (the HDMI port is wired to the NVIDIA on the hybrid laptop; kairos-hdmi-prime
+# restarted this session with that GPU screen when a monitor hangs on it) becomes an output source of the X
+# screen FIRST — reverse PRIME, `xrandr --setprovideroutputsource` by the X side — so its outputs are in the
+# layout below like any other; the watcher (kairos-desktop.py watch) repeats this after every RandR change. The
+# breadcrumb is what kairos-hdmi-prime judges the attach by ("NVIDIA-G0 bound"); with one GPU it names that one.
+DESK=/opt/vibeos/os/scripts/desktop/kairos-desktop.py
+echo "xinitrc: providers: $(python3 "$DESK" providers --bind 2>/dev/null || xrandr --listproviders 2>/dev/null | tr '\n' ';')"
+
 # ---- extend every connected display, left-to-right (no mirroring) ----
 # kairos-display-apply re-applies the saved layout from the display API; if it is
 # not present or has no saved layout, fall back to a plain auto-extend.
@@ -111,7 +119,7 @@ CHROME_FLAGS="--noerrdialogs --disable-infobars --no-first-run \
 --disable-translate --check-for-update-interval=31536000 \
 --overscroll-history-navigation=0 --disable-pinch \
 --isolate-sandboxed-iframes --enable-features=IsolateSandboxedIframes:grouping/per-document"
-DESK=/opt/vibeos/os/scripts/desktop/kairos-desktop.py
+# (DESK, the X side script, is set above the layout step [R91])
 
 # the monitors (primary first) as the ?mon= hint and the X screen's size; without python3-xlib or
 # the script: the connected outputs' geometries from xrandr --query

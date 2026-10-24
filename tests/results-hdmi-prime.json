@@ -1,0 +1,136 @@
+{
+ "at": "2026-10-23 14:00:52",
+ "tests": {
+  "hp_helper_and_units_contracts": {
+   "reqs": [
+    "R91",
+    "R41",
+    "R50",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "helper + units + udev rule + build/hook/sync lists wired; modeset=1 fbdev=0, AutoAddGPU on only in the attach file; default X config + blacklist unchanged"
+  },
+  "hp_switch_off": {
+   "reqs": [
+    "R91"
+   ],
+   "status": "pass",
+   "detail": "kairos.hdmi=0 and the file -> off, nothing loaded; kairos.hdmi=1 beats the file; on/off write the file, on probes via the event unit"
+  },
+  "hp_unsupported_machines": {
+   "reqs": [
+    "R91",
+    "R41"
+   ],
+   "status": "pass",
+   "detail": "no NVIDIA / NVIDIA = boot GPU / no nvidia_drv.so / no OutputClass -> unsupported, no modprobe, no restart"
+  },
+  "hp_no_monitor_then_plug": {
+   "reqs": [
+    "R91",
+    "R90"
+   ],
+   "status": "pass",
+   "detail": "absent: modules loaded once (modeset=1 fbdev=0), no restart; plug -> react -> consent (no restart) -> attach-now -> active with one planned restart; power noted"
+  },
+  "hp_waits_for_the_nvidia_module": {
+   "reqs": [
+    "R91",
+    "R50"
+   ],
+   "status": "pass",
+   "detail": "unbound: waited 2.0 s, absent + reason, no modprobe; bound later + react -> consent -> attach-now -> active"
+  },
+  "hp_attach_one_planned_restart": {
+   "reqs": [
+    "R91",
+    "R90",
+    "R51"
+   ],
+   "status": "pass",
+   "detail": "config (AutoAddGPU on) + 1 planned restart + the breadcrumb -> active; react/attach afterwards restart nothing"
+  },
+  "hp_attach_failure_reverts": {
+   "reqs": [
+    "R91",
+    "R63"
+   ],
+   "status": "pass",
+   "detail": "dead / looping X / no NVIDIA-G0 / unbound -> failed + reason, config removed, 1 revert restart, no retry; no X -> failed, no restart"
+  },
+  "hp_prestart_clean_x_start": {
+   "reqs": [
+    "R91",
+    "R41"
+   ],
+   "status": "pass",
+   "detail": "prestart removes the attach config, the state and the counters; status says n/a"
+  },
+  "hp_udev_event_hook": {
+   "reqs": [
+    "R91"
+   ],
+   "status": "pass",
+   "detail": "event -> systemctl start --no-block kairos-hdmi-prime-event.service, nothing else"
+  },
+  "hp_hotplug_needs_consent": {
+   "reqs": [
+    "R91",
+    "R90"
+   ],
+   "status": "pass",
+   "detail": "react -> consent (no restart, kept on a 2nd event); later -> declined, remembered; attach-now -> active once; prestart forgets; monitor gone -> nothing; boot path automatic"
+  },
+  "hp_providers_parse_and_bind_plan": {
+   "reqs": [
+    "R91",
+    "R90"
+   ],
+   "status": "pass",
+   "detail": "providers parsed (4 tables + the README's), bind plan by XID only for an unbound sink, summary; HDMI-1-0 laid out right of the panel"
+  },
+  "hp_x_side_binds_once": {
+   "reqs": [
+    "R91",
+    "R90"
+   ],
+   "status": "pass",
+   "detail": "unbound -> one --setprovideroutputsource 0x1f8 0x55; bound/amd/no-cap -> none; the watcher binds at start and on RandR events"
+  },
+  "hp_xinitrc_binds_before_layout": {
+   "reqs": [
+    "R91",
+    "R90",
+    "R51"
+   ],
+   "status": "pass",
+   "detail": "bind + breadcrumb before the layout, DESK defined first, the awk-free fallback prints xrandr's own list"
+  },
+  "hp_display_api_providers_and_hdmi": {
+   "reqs": [
+    "R91",
+    "R53",
+    "R90"
+   ],
+   "status": "pass",
+   "detail": "display.list: providers (bound NVIDIA-G0) + hdmi state (active / n/a); hdmi_switch on|off and the hdmi op restart|later reach the helper, absent -> ok false"
+  },
+  "hp_settings_key_and_docs": {
+   "reqs": [
+    "R91",
+    "R59"
+   ],
+   "status": "pass",
+   "detail": "settings key hdmi (on|off) wired; /api/status + the consent toast in the shell; display.md (hdmi op), system-settings.md, REQUIREMENTS R91, the dated report present"
+  },
+  "hp_bootlog_hdmi_check_and_planned_restarts": {
+   "reqs": [
+    "R91",
+    "R51"
+   ],
+   "status": "pass",
+   "detail": "hdmi_prime: active PASS / failed WARN / none PASS n/a; evidence section; xorg: 2 starts with 1 planned = PASS, without = WARN, 3 with 2 = PASS"
+  }
+ }
+}

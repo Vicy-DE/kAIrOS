@@ -800,7 +800,11 @@ SETTINGS_DEFAULTS = {"wallpaper": None, "accent": "#7c5cff", "accent2": "#41e2ff
                      # no swap, no extra model), else the tier's 9B through the GPU swap path (like vision).
                      "translation": "off",            # off | on
                      "language": "en",                # en | de | es | fr | it | ja | ru
-                     "translation_quality": "fast"}   # fast | quality
+                     "translation_quality": "fast",   # fast | quality
+                     # [R91] a monitor on the HDMI port that is wired to the NVIDIA GPU (the hybrid laptop) joins
+                     # the desktop through reverse PRIME (kairos-hdmi-prime, docs/HDMI-PRIME-2026-10-22.md); off =
+                     # never load the NVIDIA display modules, never restart X for it (also: kairos.hdmi=0)
+                     "hdmi": "on"}                    # on | off
 
 # [R71] the translation layer's languages (settings key `language`, /api/translate `to`/`from`)
 # and the two setting enums — the names are what the MT prompt says ("… into German")
@@ -808,6 +812,7 @@ LANGUAGES = {"en": "English", "de": "German", "es": "Spanish", "fr": "French",
              "it": "Italian", "ja": "Japanese", "ru": "Russian"}
 TRANSLATION_MODES = ("off", "on")
 TRANSLATION_QUALITY = ("fast", "quality")
+HDMI_MODES = ("on", "off")                 # [R91]
 
 # settings alias -> manifest section for the image model choice. [R76 → Muse, 2026-10-10] default = Muse
 # v3.5 Extended Q4_0 (an uncensored Krea 2 fine-tune, no LoRA, krea-neutral expander); safe = image_safe =
@@ -902,6 +907,9 @@ def validate_setting(key, value):
     elif key == "translation_quality":
         if value not in TRANSLATION_QUALITY:
             return f"translation_quality must be one of {', '.join(TRANSLATION_QUALITY)}; got {value!r}"
+    elif key == "hdmi":                                                          # [R91]
+        if value not in HDMI_MODES:
+            return f"hdmi must be one of {', '.join(HDMI_MODES)}; got {value!r}"
     elif key == "image_steps":
         if value is not None and not (isinstance(value, int) and not isinstance(value, bool) and 1 <= value <= 150):
             return f"image_steps must be an integer 1–150 or null (the model's tuned default); got {value!r}"
@@ -3611,6 +3619,7 @@ async def h_status(request):
         **({"downloads": downloads_summary()} if PROFILE.public else {}),
         "loaded": MM.llama_model_key,
         "gpu": MM.gpu_status(),              # [R80] what is resident on the GPU now — the menubar shows it
+        "hdmi": hw.hdmi_state(),             # [R91] the HDMI port on the NVIDIA: `consent` = the shell asks before the restart
         "last_fallback": REFUSALS["last"],   # [R86] {at, from, to, kind, reason, prompt} of the last refusal fallback
         "refusal_fallback": refusal_fallback_status(),
         "online": await KB.online(),
@@ -8461,6 +8470,9 @@ async def h_settings_set(request):
         print(f"[kernel] translation -> {'on' if ts['enabled'] else 'off'}, language {ts['language']}, "
               f"{translation_choice(settings)['effective']} model", flush=True)
         asyncio.create_task(TR.reconfigure(settings))
+    if "hdmi" in changes:                                                                  # [R91]
+        print(f"[kernel] hdmi -> {changes['hdmi']} (kairos-hdmi-prime: on = probe/attach now, off = from the next X start)", flush=True)
+        asyncio.create_task(hw.hdmi_switch(changes["hdmi"]))
     return web.json_response(settings)
 
 
