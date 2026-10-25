@@ -22,6 +22,7 @@ import hmac
 import ipaddress
 import json
 import os
+import html
 import random
 import re
 import secrets
@@ -88,6 +89,45 @@ BIN = VIBEOS_DIR / "bin"
 # to x.log; the cache dir is wiped by the image build and sd-server.log there is per session.
 LOG_DIR = Path(os.environ.get("KAIROS_LOG_DIR", "/var/log/kairos"))
 ENGINE_LOG_MAX = 20 * 1024 * 1024        # rotated to <name>.1 past this size
+
+# ---- the system prompts' overrides [R92] (the registry in kernel/prompts.py; docs/PROMPTS-2026-10-24.md) ------------
+# <NAME>.txt files in this directory replace the shipped prompts. They are read HERE, before anything below copies a
+# prompt value (EXPANDERS, LANGUAGE_PROMPTS, TRANSLATE_PROMPT), and changed live through /api/prompts (the desktop's
+# ✎ Prompts panel, scripts/prompt-sync.py from a terminal; prompts_apply refreshes the copies). The dock apps' forge
+# requests (the data-prompt attributes of shell/index.html) join the registry as DOCK_<APP>: an override of one is
+# substituted where the shell's text arrives (_app_generate) — the app is built with it when it is first generated or
+# ✨ improved after its cached version was removed.
+PROMPTS_DIR = Path(os.environ.get("KAIROS_PROMPTS_DIR", str(VIBEOS_DIR / "prompts")))
+PROMPTS_LOADED = prompts.load_overrides(PROMPTS_DIR)
+_DOCK_PROMPT_RE = re.compile(r'data-app="([a-z0-9-]+)"\s+data-prompt="([^"]*)"')
+
+
+def register_dock_prompts(index_html: Path = None) -> dict:
+    """DOCK_<APP> = the forge request of every system-app button in shell/index.html (the dock and the system-apps
+    template), registered with the prompt registry; returns {app_id: name}"""
+    path = index_html or (SHELL_DIR / "index.html")
+    out = {}
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return out
+    for i, line in enumerate(text.splitlines(), 1):
+        for app, raw in _DOCK_PROMPT_RE.findall(line):
+            name = f"DOCK_{app.upper().replace('-', '_')}"
+            prompts.register(name, html.unescape(raw), f"shell/index.html:{i}",
+                             f"the dock's {app} app: the forge request the shell sends (POST /api/app, app_id {app}); an "
+                             f"override is used when the app is generated anew", kind="dock")
+            out[app] = name
+    return out
+
+
+DOCK_PROMPTS = register_dock_prompts()
+
+
+def dock_prompt(app_id: str, prompt: str) -> str:
+    """a dock app's forge request: the override when one is set, else the text the shell sent"""
+    name = DOCK_PROMPTS.get(app_id or "")
+    return prompts.get(name) if name and name in prompts.OVERRIDES else prompt
 
 
 def open_engine_log(name: str, title: str):
@@ -279,6 +319,272 @@ def music_language(value) -> str:
         return code
     raise ValueError(f"unknown language {value!r}: use an ISO 639-1 code the music model knows "
                      f"({', '.join(sorted(MUSIC_LANGUAGES))}) or \"auto\" to let it guess")
+
+
+# ---- the music request, as the music session proved it on the 4070 (docs/MUSIC-FIXES-2026-10-23.md) ----------
+MUSIC_DURATION_MAX = 512   # s — the longest song rendered through acestep daf7644 on the 8 GB card with 512-frame VAE
+                           # tiles (two 512 s takes: 34 tiles, 4296 MiB peak); upstream documents 600 s, unmeasured here
+MUSIC_CAPTION_MAX = 512    # chars — ACE-Step's caption limit (upstream docs/en/Tutorial.md); BPM / key / time signature
+                           # never belong in the caption, they are the request fields bpm / keyscale / timesignature
+MUSIC_LYRICS_MAX = 4096    # chars — its lyrics limit
+MUSIC_SEED_MAX = 2**31 - 1  # `seed` and `lm_seed` are int64 in the engine; the planner consumes the low 32 bits
+MUSIC_BPM_RANGE = (30, 300)
+
+# what the kernel's post-check lifts out of a caption (an LLM-written one above all) into the request fields
+_CAPTION_BPM = re.compile(r"(?:\b(?:at|around|about|approx\.?|roughly)\s+|~\s*)?\b(\d{2,3})\s*(?:bpm|beats\s+per\s+minute)\b"
+                          r"|\b(?:bpm|tempo)\s*(?:of|:|=|at|is)?\s*~?\s*(\d{2,3})\b", re.I)
+_CAPTION_KEY = re.compile(r"(?P<ctx>(?i:\b(?:in|key)\b\s*(?:of\s+|:\s*|=\s*)?(?:the\s+key\s+of\s+)?))?"
+                          r"\b(?P<note>[A-G])(?P<acc>[#\u266fb\u266d])?\s*(?P<q>(?i:major|minor|maj|min))\b(?!-)")
+_CAPTION_TIMESIG = re.compile(r"(?:\b(?:in|time\s*signature|time\s*sig\.?|meter)\b\s*(?:of\s+|:\s*|=\s*)?)?"
+                              r"\b(\d{1,2})\s*/\s*(\d{1,2})\b(?:\s*(?:time\s*signature|time|meter))?", re.I)
+# "x2" / "(repeat)" markers in lyrics: ACE-Step sings them (parentheses are backing vocals), so they go
+_LYRIC_MARK_BRACKETED = r"[\(\[\{]\s*(?:repeat(?:\s+\w+){0,2}|(?:x|\u00d7)\s*\d+|\d+\s*(?:x|\u00d7)|\d+\s*times)\s*[\)\]\}]"
+_LYRIC_MARK_BARE = r"(?:(?:x|\u00d7)\s*\d+|\d+\s*(?:x|\u00d7)\b|repeat\s+(?:\d+\s*(?:x|\u00d7|times)|twice|chorus|verse|line|hook)|\d+\s*times)"
+_LYRIC_REPEAT_TAIL = re.compile(r"(?:(?:^|(?<=\s)|(?<=[,.!?\-\u2013]))\s*" + _LYRIC_MARK_BARE + r"|\s*" + _LYRIC_MARK_BRACKETED + r")\s*$", re.I)
+_LYRIC_REPEAT_LINE = re.compile(r"^\s*(?:" + _LYRIC_MARK_BRACKETED + r"|" + _LYRIC_MARK_BARE + r"|repeat(?:\s+\w+){0,3})\s*$", re.I)
+_LYRIC_TAG_REPEAT = re.compile(r"^(\s*\[[^\]]*?)\s*(?:[-\u2013,:]\s*)?(?:(?:x|\u00d7)\s*\d+|\d+\s*(?:x|\u00d7)|repeat(?:ed)?(?:\s+\d+\s*(?:x|\u00d7|times))?|twice)\s*\]", re.I)
+
+
+def music_seed(value) -> int:
+    """The request's `seed`: the kernel sends it as `seed` (DiT noise) AND `lm_seed` (the planner), so the same
+    request plus the seed reproduces the plan. The engine's own default (`lm_seed` -1 = std::random_device,
+    src/request.cpp:568) made two runs of one request plan different keys and bar counts. None / "" -> a fresh
+    one, reported in the job; else an int 0..2**31-1; garbage -> ValueError (the API's 400)."""
+    if value is None or value == "":
+        return random.randint(1, MUSIC_SEED_MAX)
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        seed = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"seed must be an integer 0..{MUSIC_SEED_MAX}, got {value!r}") from None
+    if not 0 <= seed <= MUSIC_SEED_MAX:
+        raise ValueError(f"seed must be an integer 0..{MUSIC_SEED_MAX}, got {value!r}")
+    return seed
+
+
+def music_meta(bpm=None, keyscale=None, timesignature=None) -> dict:
+    """The planner's metadata a caller may pin: `bpm` (int 30..300), `keyscale` ("D minor", "F# major", "Am"),
+    `timesignature` ("4", "3/4" -> the engine's numerator string). Only the given ones come back, normalised
+    the way ace-lm writes them (request0.json: `"keyscale": "D minor", "timesignature": "4"`); what is
+    absent the LM still plans (`use_cot_caption: false` locks the caption only). Garbage -> ValueError."""
+    out = {}
+    if bpm not in (None, "", 0):
+        try:
+            if isinstance(bpm, bool):
+                raise ValueError
+            b = int(bpm)
+        except (TypeError, ValueError):
+            raise ValueError(f"bpm must be an integer {MUSIC_BPM_RANGE[0]}..{MUSIC_BPM_RANGE[1]}, got {bpm!r}") from None
+        if not MUSIC_BPM_RANGE[0] <= b <= MUSIC_BPM_RANGE[1]:
+            raise ValueError(f"bpm must be an integer {MUSIC_BPM_RANGE[0]}..{MUSIC_BPM_RANGE[1]}, got {bpm!r}")
+        out["bpm"] = b
+    if keyscale not in (None, ""):
+        m = re.fullmatch(r"\s*([A-Ga-g])\s*([#\u266fb\u266d])?\s*(major|minor|maj|min|m)?\s*", str(keyscale), re.I)
+        if not m:
+            raise ValueError(f"keyscale must be a key like 'D minor' or 'F# major', got {keyscale!r}")
+        acc = {"\u266f": "#", "\u266d": "b"}.get(m.group(2), m.group(2) or "")
+        quality = "minor" if (m.group(3) or "").lower() in ("minor", "min", "m") else "major"
+        out["keyscale"] = f"{m.group(1).upper()}{acc} {quality}"
+    if timesignature not in (None, ""):
+        m = re.fullmatch(r"\s*(\d{1,2})(?:\s*/\s*(\d{1,2}))?\s*", str(timesignature))
+        if not m or not 1 <= int(m.group(1)) <= 32:
+            raise ValueError(f"timesignature must be a count like '4' or '3/4', got {timesignature!r}")
+        out["timesignature"] = str(int(m.group(1)))
+    return out
+
+
+def _tidy_caption(s: str) -> str:
+    s = re.sub(r"[ \t]+", " ", s)
+    s = re.sub(r"\(\s*\)|\[\s*\]", "", s)
+    s = re.sub(r"\s*,(?:\s*,)+", ",", s)
+    s = re.sub(r"\s+([,.;:])", r"\1", s)
+    s = re.sub(r",\s*([.;])", r"\1", s)
+    s = re.sub(r"\s{2,}", " ", s)
+    return s.strip(" ,;:")
+
+
+def music_caption_check(caption) -> tuple:
+    """The cheap deterministic post-check every caption gets before the engine (the LLM-written ones of the
+    forge's <audio data-gen-music> above all — ACE-Step's rules, upstream docs/en/Tutorial.md): BPM, key and
+    time signature are lifted out of the text into the request fields (the text encoder is not where they
+    belong; with `use_cot_caption: false` the caption goes to it verbatim) and the text is trimmed to 512
+    chars at a word boundary, keeping the kernel's MUSIC_PROMPT_HINT suffix. Returns (caption, found)."""
+    s = str(caption or "")
+    found = {}
+    m = _CAPTION_BPM.search(s)
+    if m:
+        bpm = int(m.group(1) or m.group(2))
+        if MUSIC_BPM_RANGE[0] <= bpm <= MUSIC_BPM_RANGE[1]:
+            found["bpm"] = bpm
+            s = s[:m.start()] + " " + s[m.end():]
+    for m in _CAPTION_KEY.finditer(s):
+        # a bare "A major" / "A minor" without "in" / "key" before it or an accidental is as likely the article
+        # ("A major-key anthem", "A minor masterpiece"); B–G and every "in D minor" are keys
+        if m.group("note") == "A" and not m.group("acc") and not m.group("ctx"):
+            continue
+        acc = {"\u266f": "#", "\u266d": "b"}.get(m.group("acc"), m.group("acc") or "")
+        found["keyscale"] = f"{m.group('note')}{acc} {'minor' if m.group('q').lower() in ('minor', 'min') else 'major'}"
+        s = s[:m.start()] + " " + s[m.end():]
+        break
+    m = _CAPTION_TIMESIG.search(s)
+    if m and 1 <= int(m.group(1)) <= 32 and int(m.group(2)) in (2, 4, 8, 16):
+        found["timesignature"] = str(int(m.group(1)))
+        s = s[:m.start()] + " " + s[m.end():]
+    s = _tidy_caption(s)
+    if len(s) > MUSIC_CAPTION_MAX:
+        tail = prompts.MUSIC_PROMPT_HINT if s.endswith(prompts.MUSIC_PROMPT_HINT) else ""
+        room = MUSIC_CAPTION_MAX - len(tail)
+        cut = s[:len(s) - len(tail)][:room]
+        sep = cut.rfind(", ")                       # a tag boundary when one is near, else a word boundary
+        if sep < room - 80:
+            sep = cut.rfind(" ")
+        if sep > room - 80:
+            cut = cut[:sep]
+        s = cut.rstrip(" ,;:") + tail
+    return s, found
+
+
+def music_lyrics_check(lyrics) -> str:
+    """The lyrics' post-check: "x2" / "2x" / "(repeat)" / "[Chorus x2]" markers go (the model sings them — "twice,
+    twice, twice" on 2026-10-22), marker-only lines are dropped, the text is trimmed to 4096 chars at a line
+    boundary. Section tags, (backing vocals), UPPERCASE and "[Instrumental]" pass untouched."""
+    out = []
+    for line in str(lyrics or "").splitlines():
+        if _LYRIC_REPEAT_LINE.match(line):
+            continue
+        line = _LYRIC_TAG_REPEAT.sub(r"\1]", line)
+        line = _LYRIC_REPEAT_TAIL.sub("", line).rstrip()
+        out.append(line)
+    text = "\n".join(out).strip("\n")
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    if len(text) > MUSIC_LYRICS_MAX:
+        cut = text[:MUSIC_LYRICS_MAX]
+        nl = cut.rfind("\n")
+        text = (cut[:nl] if nl > MUSIC_LYRICS_MAX - 400 else cut).rstrip()
+        text = re.sub(r"\n\s*\[[^\]\n]*\]\s*$", "", text)     # no dangling section tag as the last line
+    return text
+
+
+# ---- the songwriter [R93] (prompts.LYRICS_SYSTEM; docs/PROMPTS-2026-10-24.md): the LLM writes the lyrics AND plans ----
+LYRICS_SAMPLING = {"temperature": 1.2, "top_k": 80}   # the owner's choice (2026-10-24): a per-call override on top of the
+                                                      # vendor sampling of the LLM section (Gemma: 1.0 / 64 / top_p 0.95)
+LYRICS_MAX_TOKENS = 2400                              # ~3500 chars of lyrics + the plan fields
+LYRICS_ATTEMPTS = 3                                   # a broken song (no JSON, no lyrics, nothing singable) is asked again
+LYRICS_DURATION_MIN = 20
+LYRICS_SCHEMA = {"type": "object",                    # llama-server's json_schema grammar pins the answer's shape
+                 "properties": {"title": {"type": "string"}, "caption": {"type": "string"}, "lyrics": {"type": "string"},
+                                "language": {"type": "string"}, "duration": {"type": "integer"}, "bpm": {"type": "integer"},
+                                "keyscale": {"type": "string"}, "timesignature": {"type": "string"}},
+                 "required": ["title", "caption", "lyrics", "language", "duration", "bpm", "keyscale", "timesignature"]}
+# ACE-Step 1.5's tags (upstream docs/en/Tutorial.md): sections in Title Case, vocal and energy tags in lower case.
+# Anything else in brackets is sung, so lyrics_tag_fix repairs what the model wrote and drops what it cannot place.
+LYRICS_TAG_CANON = {"intro": "Intro", "verse": "Verse", "pre-chorus": "Pre-Chorus", "chorus": "Chorus",
+                    "post-chorus": "Post-Chorus", "bridge": "Bridge", "build": "Build", "drop": "Drop",
+                    "breakdown": "Breakdown", "instrumental": "Instrumental", "guitar solo": "Guitar Solo",
+                    "piano interlude": "Piano Interlude", "final chorus": "Final Chorus", "outro": "Outro",
+                    "fade out": "Fade Out", "silence": "Silence",
+                    "spoken word": "spoken word", "whispered": "whispered", "falsetto": "falsetto",
+                    "powerful belting": "powerful belting", "harmonies": "harmonies", "ad-lib": "ad-lib",
+                    "low energy": "low energy", "building energy": "building energy", "high energy": "high energy",
+                    "explosive": "explosive", "aggressive": "aggressive"}
+LYRICS_TAG_ALIASES = {"refrain": "chorus", "hook": "chorus", "prechorus": "pre-chorus", "pre chorus": "pre-chorus",
+                      "postchorus": "post-chorus", "post chorus": "post-chorus", "ending": "outro", "coda": "outro",
+                      "solo": "guitar solo", "interlude": "instrumental", "instrumental break": "instrumental",
+                      "break": "breakdown", "last chorus": "final chorus", "fadeout": "fade out", "fade": "fade out",
+                      "spoken": "spoken word", "whisper": "whispered", "adlib": "ad-lib", "ad lib": "ad-lib",
+                      "belting": "powerful belting", "harmony": "harmonies", "strophe": "verse", "refrain 1": "chorus"}
+_LYRIC_TAG_LINE = re.compile(r"^\s*\[([^\]\n]*)\]\s*$")
+
+
+def lyrics_tag_fix(lyrics: str) -> tuple:
+    """Bracket lines against ACE-Step's tag list, repaired: aliases ("[Hook]" -> "[Chorus]"), a verse/chorus number
+    kept, the case normalised, a descriptor cut to ONE short one ("[Chorus - anthemic, with strings]" -> "[Chorus -
+    anthemic]"); a bracket line that is no tag (prose, a stage direction) is DROPPED — the singer would sing it.
+    Returns (lyrics, fixes: [what changed])."""
+    out, fixes = [], []
+    for line in str(lyrics or "").splitlines():
+        m = _LYRIC_TAG_LINE.match(line)
+        if not m:
+            out.append(line)
+            continue
+        inner = re.sub(r"\s+", " ", m.group(1).strip())
+        head, sep, desc = inner.partition(" - ")
+        if not sep:
+            head, sep, desc = inner.partition(": ")
+        head_l = head.strip().lower().replace("–", "-")
+        num = re.fullmatch(r"(.*?)\s*(\d{1,2})", head_l)
+        base, n = (num.group(1).strip(), num.group(2)) if num else (head_l, "")
+        base = LYRICS_TAG_ALIASES.get(base, base)
+        if base not in LYRICS_TAG_CANON:
+            fixes.append(f"dropped {line.strip()!r} (not a tag — it would be sung)")
+            continue
+        tag = LYRICS_TAG_CANON[base] + (f" {int(n)}" if n and base in ("verse", "chorus", "pre-chorus", "bridge") else "")
+        desc = desc.split(",")[0].strip(" .;:-")
+        if desc and (len(desc) > 24 or len(desc.split()) > 3):
+            fixes.append(f"cut the descriptor of {line.strip()!r}")
+            desc = ""
+        fixed = f"[{tag}{' - ' + desc if desc else ''}]"
+        if fixed != line.strip():
+            fixes.append(f"{line.strip()!r} -> {fixed!r}")
+        out.append(fixed)
+    return "\n".join(out).strip("\n"), fixes
+
+
+def lyrics_check(song, pin: dict) -> dict:
+    """The songwriter's JSON -> the normalised song, or ValueError (the route asks again): title; caption with BPM /
+    key / time signature lifted out of it (music_caption_check); lyrics with the repeat markers gone and the tags
+    repaired, at least four sung lines; language (a code the music model knows, else "en"); duration 20..512 s; bpm,
+    keyscale, timesignature through music_meta. `pin` = the caller's own values (language, duration, bpm, keyscale,
+    timesignature): they win over the model's plan."""
+    if not isinstance(song, dict):
+        raise ValueError("the answer is not a JSON object")
+    title = re.sub(r"\s+", " ", str(song.get("title") or "")).strip()[:120] or "Untitled"
+    caption, found = music_caption_check(str(song.get("caption") or "").strip())
+    if len(caption) < 8:
+        raise ValueError("no caption")
+    lyrics, fixes = lyrics_tag_fix(music_lyrics_check(str(song.get("lyrics") or "")))
+    sung = [l for l in lyrics.splitlines() if l.strip() and not _LYRIC_TAG_LINE.match(l)]
+    if len(sung) < 4:
+        raise ValueError("fewer than four lines of lyrics")
+    out = {"title": title, "caption": caption, "lyrics": lyrics, "fixes": fixes}
+    lang = pin.get("language") or song.get("language")
+    try:
+        out["language"] = music_language(lang) or MUSIC_LANGUAGE_DEFAULT      # "auto" -> the default, never a guess
+    except ValueError:
+        fixes.append(f"language {lang!r} unknown to the music model -> en")
+        out["language"] = MUSIC_LANGUAGE_DEFAULT
+    try:
+        dur = int(pin.get("duration") or song.get("duration"))
+    except (TypeError, ValueError):
+        fixes.append(f"duration {song.get('duration')!r} unusable -> 150 s")
+        dur = 150
+    out["duration"] = max(LYRICS_DURATION_MIN, min(dur, MUSIC_DURATION_MAX))
+    for key in ("bpm", "keyscale", "timesignature"):      # the caller's pin, then the plan, then what the caption carried
+        for value in (pin.get(key), song.get(key), found.get(key)):
+            if value in (None, ""):
+                continue
+            try:
+                out.update(music_meta(**{key: value}))
+                break
+            except ValueError:
+                fixes.append(f"{key} {value!r} unusable")
+    return out
+
+
+def parse_json_object(text: str) -> dict:
+    """the first {...} object in a model answer (fences and chatter around it ignored), or ValueError"""
+    raw = str(text or "")
+    start, end = raw.find("{"), raw.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("no JSON object in the answer")
+    try:
+        obj = json.loads(raw[start:end + 1])
+    except ValueError as e:
+        raise ValueError(f"broken JSON: {str(e)[:80]}") from None
+    if not isinstance(obj, dict):
+        raise ValueError("the answer is not a JSON object")
+    return obj
 
 
 def sd_backend_args(args: list) -> list:
@@ -3044,7 +3350,8 @@ class ModelManager:
         except OSError:
             return ""
 
-    async def music_job(self, prompt, out_path: Path, lyrics="", duration=60, language=None) -> Path:
+    async def music_job(self, prompt, out_path: Path, lyrics="", duration=60, language=None,
+                        seed=None, bpm=None, keyscale=None, timesignature=None, info=None) -> Path:
         """Generate music with acestep.cpp [R31]. Its CLI is request-JSON driven, not
         flag driven, and runs in two stages (acestep.cpp docs/ARCHITECTURE.md):
             request.json  --ace-lm-->    request0.json   (metadata + lyrics + audio codes)
@@ -3054,7 +3361,13 @@ class ModelManager:
         ("music.request": lm_model / synth_model / output_format ...), so engine drift
         stays a manifest edit. `language` is the sung language (music_language() [R69]:
         None -> "en", a code, or "auto"; ValueError on garbage). Returns the produced
-        audio file (moved to out_path's name, with the engine's own extension)."""
+        audio file (moved to out_path's name, with the engine's own extension).
+        [2026-10-23, docs/MUSIC-FIXES-2026-10-23.md] the request is what the music session proved on the
+        4070: `seed` drives the DiT AND the planner (`lm_seed` = the same number; music_seed() draws one when
+        the caller gives none), `use_cot_caption: false` keeps the caller's caption out of the LM's rewrite
+        (it turned an "anime girl" request into male vocals in Indonesian), and bpm / keyscale / timesignature
+        are sent only when the caller pins them or the caption carried them (music_caption_check lifts them
+        out) — what is absent the LM still plans. `info` (a dict) receives the seed and the request written."""
         spec = self.manifest.get("music")
         if not spec:
             raise RuntimeError("this tier has no music model")
@@ -3075,20 +3388,30 @@ class ModelManager:
         job_dir.mkdir(parents=True, exist_ok=True)
         req_path = job_dir / "request.json"
         lm_out = job_dir / "request0.json"            # ace-lm writes <base>0<ext>
-        instrumental = not (lyrics or "").strip()
+        caption, found = music_caption_check(prompt)      # ACE-Step's caption rules, deterministic
+        lyrics = music_lyrics_check(lyrics)                # no "x2" / "(repeat)" markers reach the singer
+        instrumental = not lyrics.strip()
+        seed = music_seed(seed)                            # the caller's, or a fresh one — reported below
         req = {**spec.get("request", {}),
-               "caption": prompt,
+               "caption": caption,
                # "[Instrumental]" (exact spelling) is the engine's no-vocals signal, and the
                # DiT was trained with it alongside vocal_language "unknown"
                "lyrics": "[Instrumental]" if instrumental else lyrics,
-               "duration": int(duration),
-               "seed": random.randint(1, 2**31 - 1),
+               "duration": max(1, min(int(duration), MUSIC_DURATION_MAX)),
+               "seed": seed,
+               "lm_seed": seed,                 # the planner's seed: -1 (its default) = random per run
+               "use_cot_caption": False,        # the caption stays the caller's (pipeline-lm.cpp:785)
                # [R69] sung language: "en" unless the caller said otherwise, "" = LM guesses.
                # Instrumentals stay "unknown": acestep's request parser forces that for
                # "[Instrumental]" lyrics whatever is sent (src/request.cpp:221-224 — the
                # DiT's training pairing), so any other value would only be overwritten.
                "vocal_language": "unknown" if instrumental else vocal_language}
+        # the caller's bpm / keyscale / timesignature win over what the caption carried; nothing else is
+        # sent, so the LM plans the rest (all three + duration given = no CoT at all, fast and deterministic)
+        req.update({**found, **music_meta(bpm, keyscale, timesignature)})
         req_path.write_text(json.dumps(req, indent=1))
+        if isinstance(info, dict):
+            info.update(seed=seed, request=dict(req))
         subst = {"bin": str(engine_path("ace-lm").parent), "models": str(MODELS_DIR),
                  "request": str(req_path), "request_lm": str(lm_out)}
         stages = []
@@ -3102,7 +3425,7 @@ class ModelManager:
                 self.state = "music"
                 if self.manifest.get("strategy", "swap") == "swap":
                     await self.stop_llama()
-                print(f"[kernel] music ({engine_backend()}): {prompt[:80]}", flush=True)
+                print(f"[kernel] music ({engine_backend()}): {caption[:80]} (seed {seed}, {req['duration']} s)", flush=True)
                 self._gpu_set("music", "music", spec.get("name") or "music")      # [R80]
                 for argv in stages:
                     proc = await asyncio.create_subprocess_exec(
@@ -3668,6 +3991,9 @@ async def _app_generate(request, task):
     evolve = bool(body.get("evolve"))
     instruction = (body.get("instruction") or "").strip()
     app_id = body.get("app_id") or slugify(prompt)       # [R86] the session log is written after the guard below
+    if dock_prompt(app_id, prompt) != prompt:              # [R92] the owner's edited forge request of a dock app
+        prompt = dock_prompt(app_id, prompt)
+        print(f"[kernel] app {app_id}: the forge request is the {DOCK_PROMPTS[app_id]} override", flush=True)
     app_dir = APPS_DIR / app_id
     html_path = app_dir / "app.html"
     meta_path = app_dir / "meta.json"
@@ -6698,8 +7024,7 @@ TRANSLATE_CACHE_MAX = 5000        # entries per language cache file — bounded 
 TRANSLATE_CACHE_DIR = CACHE_DIR / "translate"
 # The MT prompt — the ONE place it lives (Index-Translate model card: a single user message, no
 # system message, temperature 0, thinking off). A Hy-MT2 swap changes this line and the manifest.
-TRANSLATE_PROMPT = ("Translate the following text into {language}. Only output the translation, "
-                    "without any additional explanation:\n\n{text}")
+TRANSLATE_PROMPT = prompts.TRANSLATE_PROMPT   # [R92] in the registry (kernel/prompts.py); prompts_apply refreshes this alias
 TRANSLATE_STATS = {"calls": 0, "cache_hits": 0}          # since boot: model calls / cache hits
 _LETTER_RE = re.compile(r"[^\W\d_]")
 _TARGET_SCRIPT_RE = {"ja": re.compile(r"[぀-ヿ一-鿿]"),   # kana / kanji
@@ -7109,7 +7434,7 @@ async def translate_texts(texts: list, to: str, frm=None, settings=None, prefer=
                 block_check_primary("translate", text, "llm", label=f"translate: {text[:40]}")
 
         async def one(text):
-            user = TRANSLATE_PROMPT.format(language=language, text=text)
+            user = prompts.TRANSLATE_PROMPT.format(language=language, text=text)
             messages = [{"role": "user", "content": user}]
             max_tokens = min(2048, 64 + 3 * len(text))
             if mode == "fast":
@@ -7385,9 +7710,12 @@ async def h_video(request):
 
 
 async def h_music(request):
-    """Local music generation (ACE-Step): {"prompt", "lyrics"?, "duration"?, "language"?}
-    -> job. `language` = ISO 639-1 code of the sung lyrics, default "en", "auto" to let
-    the model guess; an unknown code is a 400 naming the accepted ones, no job [R69]."""
+    """Local music generation (ACE-Step): {"prompt", "lyrics"?, "duration"?, "language"?, "seed"?, "bpm"?,
+    "keyscale"?, "timesignature"?} -> {"job", "seed"}. `language` = ISO 639-1 code of the sung lyrics, default
+    "en", "auto" to let the model guess; an unknown code is a 400 naming the accepted ones, no job [R69].
+    `duration` is capped at MUSIC_DURATION_MAX (512 s). `seed` reproduces a song (DiT + planner); absent, the
+    kernel draws one and reports it here and in the job record. bpm / keyscale / timesignature pin the plan;
+    absent, the LM plans them (docs/MUSIC-FIXES-2026-10-23.md)."""
     body = await request.json()
     prompt = body["prompt"]
     try:   # [R86 round 4, check point 1] the caption and the lyrics at the entry, before the session log
@@ -7400,6 +7728,11 @@ async def h_music(request):
     except ValueError as e:
         return web.json_response({"error": str(e), "accepted": sorted(MUSIC_LANGUAGES) + ["auto"]},
                                  status=400)
+    try:                                           # the seed and the pinned plan fields: a 400 before any job
+        seed = music_seed(body.get("seed"))
+        meta = music_meta(body.get("bpm"), body.get("keyscale"), body.get("timesignature"))
+    except ValueError as e:
+        return web.json_response({"error": str(e)}, status=400)
     why = music_unavailable_reason()
     if why:
         missing = music_engine_missing()         # [2026-10-14] a missing engine binary is a 503 like on every route
@@ -7407,22 +7740,93 @@ async def h_music(request):
             return engine_missing_response(missing[0], why)
         return web.json_response({"error": why}, status=400)
     jid = new_job("music")
+    JOBS[jid]["seed"] = seed                       # known before the engine runs: the same request + seed reproduces it
 
     async def run():
         try:
             out = FILES_DIR / "music" / f"{jid}.wav"
             out.parent.mkdir(parents=True, exist_ok=True)
             caption = await english_text(prompt)                  # [R71, P2] the caption only — lyrics stay (R69)
+            info = {}
             produced = await MM.music_job(caption + prompts.MUSIC_PROMPT_HINT, out,
                                           lyrics=body.get("lyrics", ""),
-                                          duration=min(int(body.get("duration", 60)), 240),
-                                          language=body.get("language"))
-            JOBS[jid].update(status="done", result=f"/files/music/{produced.name}")
+                                          duration=min(int(body.get("duration", 60)), MUSIC_DURATION_MAX),
+                                          language=body.get("language"), seed=seed, info=info, **meta)
+            sent = {k: v for k, v in info.get("request", {}).items()
+                    if k in ("duration", "bpm", "keyscale", "timesignature", "vocal_language")}
+            JOBS[jid].update(status="done", result=f"/files/music/{produced.name}", seed=info.get("seed", seed),
+                             request=sent)
         except Exception as e:
             JOBS[jid].update(status="error", error=str(e))
 
     asyncio.create_task(run())
-    return web.json_response({"job": jid})
+    return web.json_response({"job": jid, "seed": seed})
+
+
+async def h_lyrics(request):
+    """POST /api/lyrics [R93] — the songwriter: {"prompt": the song in a few words, "style"?: the music description,
+    "language"?, "duration"?, "bpm"?, "keyscale"?, "timesignature"?} -> {title, caption, lyrics, language, duration, bpm,
+    keyscale, timesignature, fixes, attempts, sampling} directly (like /api/ask: no job). The loaded LLM writes the lyrics
+    AND plans the render (prompts.LYRICS_SYSTEM; temperature 1.2 / top_k 80 = LYRICS_SAMPLING; a json_schema grammar);
+    the caller's fields win over its plan; lyrics_check normalises and asks again on a broken song (LYRICS_ATTEMPTS). The
+    Melody studio sends what the user typed into its lyrics box and composes the answer with vibe.music. The minors
+    block runs at the entry and on the written lyrics; a refusal answers DECLINED_STATUS."""
+    body = await request.json()
+    brief = str(body.get("prompt") or "").strip()
+    style = str(body.get("style") or "").strip()
+    if not brief and not style:
+        return web.json_response({"error": "describe the song: a theme, a story, a mood — or at least a music style"}, status=400)
+    pin = {k: body.get(k) for k in ("language", "duration", "bpm", "keyscale", "timesignature") if body.get(k) not in (None, "")}
+    try:   # [R86 round 4, check point 4] an uncensored primary: the brief at the entry, before the session log
+        block_check_primary("text", f"{brief}\n{style}", label=f"lyrics: {(brief or style)[:40]}")
+        music_meta(pin.get("bpm"), pin.get("keyscale"), pin.get("timesignature"))      # the pins: a 400 before any model call
+        if "language" in pin:
+            music_language(pin["language"])
+        if "duration" in pin and not LYRICS_DURATION_MIN <= int(pin["duration"]) <= MUSIC_DURATION_MAX:
+            raise ValueError(f"duration must be {LYRICS_DURATION_MIN}..{MUSIC_DURATION_MAX} seconds")
+    except MinorBlockError as e:
+        return web.json_response({"error": str(e)}, status=400)
+    except (TypeError, ValueError) as e:
+        return web.json_response({"error": str(e)}, status=400)
+    sessionlog.note_event("lyrics", brief or style)
+    user = "SONG: " + (brief or "a song in the music style below")
+    if style:
+        user += f"\nMUSIC STYLE: {style}"
+    if pin.get("duration"):
+        user += f"\nLENGTH: {int(pin['duration'])} seconds — set duration to exactly this"
+    if pin.get("language"):
+        code = str(pin["language"]).lower()
+        user += f"\nLANGUAGE: write the lyrics in {LANGUAGES.get(code, code)} (code {code})"
+    for key, label in (("bpm", "BPM"), ("keyscale", "KEY"), ("timesignature", "TIME SIGNATURE")):
+        if pin.get(key):
+            user += f"\n{label}: {pin[key]} — use it"
+    sampling = {**LYRICS_SAMPLING, "response_format": {"type": "json_schema", "json_schema": {"name": "song", "schema": LYRICS_SCHEMA}}}
+    why = ""
+    for attempt in range(1, LYRICS_ATTEMPTS + 1):
+        try:   # [R86] the refusal ladder
+            text = await llm_generate(prompts.LYRICS_SYSTEM, [{"role": "user", "content": user}], kind="text",
+                                      label=f"lyrics: {(brief or style)[:40]}", request=f"{brief}\n{style}",
+                                      max_tokens=LYRICS_MAX_TOKENS, temperature=LYRICS_SAMPLING["temperature"],
+                                      sampling=sampling)
+        except MinorBlockError as e:
+            return web.json_response({"error": str(e)}, status=400)
+        except RefusalError as e:
+            return web.json_response({"error": str(e)}, status=DECLINED_STATUS)
+        try:
+            song = lyrics_check(parse_json_object(text), pin)
+        except ValueError as e:
+            why = str(e)
+            print(f"[kernel] lyrics attempt {attempt}/{LYRICS_ATTEMPTS} unusable: {why}", flush=True)
+            continue
+        hit, reason = refusal.minor_block(f"{song['title']}\n{song['lyrics']}")   # the written words, before they are sung
+        if hit:
+            REFUSALS["blocked"] += 1
+            print(f"[kernel] blocked (minors: {reason}) on the written lyrics '{song['title'][:40]}'", flush=True)
+            return web.json_response({"error": refusal.BLOCK_MESSAGE}, status=400)
+        print(f"[kernel] lyrics: '{song['title'][:50]}' {song['duration']} s, {song.get('bpm')} bpm, {song.get('keyscale')}, "
+              f"{song['language']} ({len(song['lyrics'])} chars, attempt {attempt}" + (f", fixes: {len(song['fixes'])}" if song["fixes"] else "") + ")", flush=True)
+        return web.json_response({**song, "attempts": attempt, "sampling": dict(LYRICS_SAMPLING)})
+    return web.json_response({"error": f"the songwriter wrote no usable song in {LYRICS_ATTEMPTS} attempts ({why})"}, status=502)
 
 
 async def h_job(request):
@@ -8575,6 +8979,82 @@ async def error_log_middleware(request, handler):
     return resp
 
 
+# ---- /api/prompts [R92]: the registry over HTTP — the ✎ Prompts panel (shell/prompts.js), scripts/prompt-sync.py ------
+def prompt_system_files() -> dict:
+    """/system/prompts/<NAME>.txt for every registered prompt (its live value) + the two legacy names apps may read"""
+    files = {f"prompts/{n}.txt": t for n, t in prompts.effective().items()}
+    files["prompts/app_system.txt"] = prompts.APP_SYSTEM
+    files["prompts/game_system.txt"] = prompts.GAME_SYSTEM
+    return files
+
+
+def prompts_apply(name=None):
+    """after a live prompt change: refresh what the kernel copied at import and the /system partition's copies"""
+    global LANGUAGE_PROMPTS, TRANSLATE_PROMPT
+    EXPANDERS.update({"krea": prompts.KREA_EXPAND_SYSTEM, "krea-neutral": prompts.KREA_EXPAND_SYSTEM_NEUTRAL,
+                      "krea-18plus": prompts.KREA_EXPAND_SYSTEM_ADULT})
+    LANGUAGE_PROMPTS = (prompts.APP_SYSTEM, prompts.GAME_SYSTEM, prompts.ASK_SYSTEM, prompts.BROWSER_SYSTEM)
+    TRANSLATE_PROMPT = prompts.TRANSLATE_PROMPT
+    try:
+        FS.populate_system(prompt_system_files())
+    except Exception as e:
+        print(f"[kernel] WARN /system/prompts not refreshed: {e}", flush=True)
+
+
+prompts.on_change(prompts_apply)
+
+
+def _prompt_record(name: str) -> dict:
+    it = prompts.info(name)
+    it["text"], it["default"] = prompts.get(name), prompts.DEFAULTS[name]
+    return it
+
+
+async def h_prompts(request):
+    """GET /api/prompts — every prompt the models are told: name, kind, where it lives (file:line), a note on who sends
+    it, editable, overridden, chars (+ `?full=1`: the live text and the shipped default of each). Open like /api/docs:
+    the prompts are public in the repository. `sampling` = the sampler fields that go with them."""
+    full = request.query.get("full") in ("1", "true", "yes")
+    items = [_prompt_record(n) if full else prompts.info(n) for n in prompts.names()]
+    return web.json_response({"dir": prompts.OVERRIDES_DIR, "count": len(items), "overridden": sorted(prompts.OVERRIDES),
+                              "loaded": PROMPTS_LOADED, "dock": DOCK_PROMPTS,
+                              "sampling": {"lyrics": LYRICS_SAMPLING, "expander": EXPAND_SAMPLING,
+                                           "llm": (MANIFEST.get("llm") or {}).get("sampling")},
+                              "prompts": items})
+
+
+async def h_prompt(request):
+    """GET /api/prompts/<name> — one prompt with its live text and its shipped default"""
+    name = request.match_info["name"]
+    if name not in prompts.DEFAULTS:
+        return web.json_response({"error": f"unknown prompt {name!r}"}, status=404)
+    return web.json_response(_prompt_record(name))
+
+
+async def h_prompt_set(request):
+    """POST /api/prompts/<name> (guarded) — {"text": "…"} makes it the live prompt and writes <dir>/<name>.txt; a text
+    equal to the default, or {"reset": true}, removes the override. Parts and the legacy script are refused (400)."""
+    name = request.match_info["name"]
+    body = await request.json()
+    try:
+        it = prompts.clear_override(name) if body.get("reset") else prompts.set_override(name, body.get("text"))
+    except KeyError as e:
+        return web.json_response({"error": str(e).strip("'")}, status=404)
+    except (TypeError, ValueError) as e:
+        return web.json_response({"error": str(e)}, status=400)
+    what = "back to the default" if not it["overridden"] else f"override, {it['chars']} chars"
+    print(f"[kernel] prompt {name}: {what} (from {request.remote})", flush=True)
+    return web.json_response(_prompt_record(name))
+
+
+async def h_prompts_reload(request):
+    """POST /api/prompts (guarded) — {"reload": true}: re-read the override directory (files edited or synced in while
+    the kernel runs); the report names what was loaded, what equals the default and what is unknown"""
+    global PROMPTS_LOADED
+    PROMPTS_LOADED = prompts.load_overrides(PROMPTS_DIR)
+    return web.json_response(PROMPTS_LOADED)
+
+
 def add_routes(app):
     """every route of the kernel (main() below; tests/test_dock_browser.py mounts the same set in-process).
     [R66] classification: GET routes + generation POSTs are open to any peer that can
@@ -8615,6 +9095,11 @@ def add_routes(app):
     app.router.add_post("/api/wallpaper", guarded(h_wallpaper))     # rewrites settings
     app.router.add_post("/api/video", h_video)
     app.router.add_post("/api/music", h_music)
+    app.router.add_post("/api/lyrics", h_lyrics)                    # [R93] the songwriter: open like /api/ask (generation)
+    app.router.add_get("/api/prompts", h_prompts)                   # [R92] the system prompts (read, like /api/docs)
+    app.router.add_post("/api/prompts", guarded(h_prompts_reload))  # re-reads the override directory
+    app.router.add_get("/api/prompts/{name}", h_prompt)
+    app.router.add_post("/api/prompts/{name}", guarded(h_prompt_set))   # changes what every later generation is told
     app.router.add_post("/api/vision", h_vision)                    # open; "screen" gated inside [R66/R70]
     app.router.add_post("/api/translate", h_translate)              # the translation layer [R71], open like /api/ask
     app.router.add_get("/api/translate/status", h_translate_status)
@@ -8684,8 +9169,7 @@ def main():
         "os-release": (f'NAME="kAIrOS"\nTIER="{MANIFEST.get("tier")}"\n'
                        f'PRETTY_NAME="kAIrOS by mAIer ({MANIFEST.get("tier")})"\n'
                        'HOME_NOTE="kairos: the opportune moment. AI: artificial intelligence."\n'),
-        "prompts/app_system.txt": prompts.APP_SYSTEM,
-        "prompts/game_system.txt": prompts.GAME_SYSTEM,
+        **prompt_system_files(),                 # [R92] every prompt's live value, prompts/<NAME>.txt
     })
 
     async def startup(app):

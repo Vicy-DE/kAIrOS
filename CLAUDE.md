@@ -16,11 +16,11 @@ vanilla HTML/JS shell (`shell/`) + model manifests (`manifests/tier-*.json`) + a
 | path | what |
 |---|---|
 | `kernel/server.py` | the kernel: model manager (VRAM swap, GPU scheduler), app generation pipeline, the virtual web, media jobs, installer, settings, the API |
-| `kernel/hw.py`, `vfs.py`, `knowledge.py`, `wm.py`, `jscheck.py`, `refusal.py`, `prompts.py` | hardware API, Android-style VFS, search/kiwix, X window layer, JS syntax gate, refusal fallback, the system prompts |
-| `shell/` | desktop shell; `shell.js` holds `BRIDGE_SRC`, the `vibe.*` bridge injected into every app |
+| `kernel/hw.py`, `vfs.py`, `knowledge.py`, `wm.py`, `jscheck.py`, `refusal.py`, `prompts.py` | hardware API, Android-style VFS, search/kiwix, X window layer, JS syntax gate, refusal fallback, the system prompts + their registry (every prompt needs a `NOTES` line; overrides from `KAIROS_PROMPTS_DIR`, live via `/api/prompts`) |
+| `shell/` | desktop shell; `shell.js` holds `BRIDGE_SRC`, the `vibe.*` bridge injected into every app; the OS's own panels `models.js` (Models & licences), `prompts.js` (✎ Prompts) |
 | `manifests/` | model picks per VRAM tier; `test/` variants for benchmarks |
 | `tests/` | mock engines (`mock-*`), `run-tests.sh`, nine `test_*.py` files, `bridge-test.js` |
-| `scripts/` | engine builds, downloads, `engine-stamp.py`, `update-progress.py`, the boot screen (`splash/`) |
+| `scripts/` | engine builds, downloads, `engine-stamp.py`, `update-progress.py`, `prompt-sync.py` (the prompts as text files: export / push / pull / bake / the architecture+prompts page), the boot screen (`splash/`) |
 | `iso/` | live-build config, `build-iso.sh` + `build-img.sh`, the overlay (`config/includes.chroot`), flashing |
 | `docs/` | `REQUIREMENTS.md` (R-numbered owner requests + status notes), `PROGRESS.md` (generated), `DESIGN.md`, `API.md` + `api/` + `wiki/` (read by the coder LLM), ~40 dated reports — index in `docs/README.md` |
 | `dev/` | in-repo recipes: `docker/` (test container, `run-suite.sh`), `rig/` (VM test rig), `issues/` (seed issues) |

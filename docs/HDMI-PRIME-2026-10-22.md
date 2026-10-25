@@ -52,8 +52,9 @@ boot ──► kairos-gpu-setup (unchanged): nvidia + nvidia_uvm, in the backgro
      ──► getty@tty1 ──► X on the AMD exactly as before: no nvidia_drm, AutoAddGPU off (10-kairos-single-gpu.conf)
      ──► kairos-hdmi-prime.service (Type=simple, Before=getty@tty1 only for its ExecStartPre):
            prestart: rm 15-kairos-hdmi-prime.conf, state reset          ← every boot starts X the old way
-           boot:     wait ≤120 s for the nvidia module (the background load)
-                     eligible? (switch on, an NVIDIA that is NOT the boot GPU, nvidia_drv.so + the OutputClass present)
+           boot:     eligible? (switch on, an NVIDIA that is NOT the boot GPU, nvidia_drv.so + the OutputClass present)
+                     wait ≤180 s until X is REALLY up: the :0 socket + this attempt's `xinitrc: started` (x_up; fix 2026-10-24, §10)
+                     wait ≤120 s for the nvidia module (the background load)
                      modprobe nvidia_modeset; modprobe nvidia_drm modeset=1 fbdev=0   ← AFTER X is up: X ignores it
                      read /sys/class/drm/<nvidia card>-*/status                        ← the detection, no X, no nvidia-smi
                      a monitor connected ──► attach:
@@ -273,3 +274,43 @@ the first cycle found to pass through `getty@tty1`: with the unit ordered `After
 graph had a second cycle through it and the detector's pick depends on iteration order (the real graph never had a
 cycle: that assertion passed in every run). The unit is no longer ordered after `nvidia-load` (it waits for the
 driver binding itself); run 4 is the run after that change.
+
+## 10. The first card run (v7.5-4, 2026-10-24) — the modules came before X; the X-wait fix
+
+**What the card did** (`KAIROS-LOGS`, the journal, `hdmi-prime.log`, `x.log`): verdict PASS, no HDMI monitor plugged.
+
+| time (local) | event |
+|---|---|
+| 06:02:52 | `kairos-hdmi-prime.service` started (`prestart` + `boot`, after `basic.target`, before `getty@tty1`) |
+| 06:02:53 | nvidia module bound — the helper logged `waited 1s for the nvidia module` |
+| **06:02:56** | `nvidia_modeset + nvidia_drm (modeset=1 fbdev=0) loaded: card1 for 0000:01:00.0`; state `absent` (`HDMI-A-1=disconnected`); the DRM change event ran `react` once more → `absent` |
+| 06:02:57 | `getty@tty1` started |
+| **06:03:06** | `===== X attempt 1 … uptime 24.94s` — X applied `OutputClass "nvidia"` to `/dev/dri/card1`, loaded and unloaded `nvidia_drv.so` (`(**) Option "AutoAddGPU" "off"`: no G0 screen) |
+| 06:03:30 (uptime 48.4 s) | `xinitrc: started`; providers: the AMD alone; both AMD monitors laid out |
+
+So §2's "AFTER X is up" was not what happened: the unit is `Type=simple` and its `boot` path only waited for the nvidia
+module, which on NVMe is bound long before X. With `AutoAddGPU off` the running (or starting) X ignores the new DRM
+device, so nothing broke and the X start time (24.9 s on this card) did not change — but X *did* see the device at its
+probe, which is exactly the situation §1 wanted to avoid.
+
+**The fix** (`kairos-hdmi-prime`, `boot` path): before the module wait, the helper waits until X is *really* up —
+`x_up` = an X attempt of this boot exists (`/run/kairos/x-attempts` ≥ 1), the `:0` socket exists, **and** this boot's
+`x.log` has the `xinitrc: started` breadcrumb of the running attempt (an attempt's header precedes its session, its
+`exited` line ends it; `.bash_profile` rotates `x.log` at attempt 1, so a previous boot's breadcrumb cannot count). The
+socket alone is not enough: the server creates it before it probes the GPUs (dix: `CreateWellKnownSockets` precedes
+`InitOutput`); the breadcrumb is printed by the client that xinit starts only once the server signalled it is ready
+(GPU probe and screen init done). Bounded by `KAIROS_HDMI_XUP` (180 s; the card's X session started at uptime 48 s, the
+2026-10-06 stick's X took 92 s) and logged either way: `X up after Ns (socket + 'xinitrc: started' of X attempt N): the
+display modules may load now`, or `X not up after Ns (socket: …, X attempts: …) — probing anyway (AutoAddGPU off: a
+starting X ignores the new DRM device)` — after the bound the probe goes ahead (the card run's status quo), so hot-plug
+detection and the attach still work on a boot whose X is very late. The module wait, the probe and the attach follow
+unchanged; `react` / `attach-now` / `later` / `on` are untouched (they run with the desktop up).
+
+**Tests**: `hp_boot_loads_modules_after_x` — a mocked timeline (the attempt + its socket at 0.3 s, the breadcrumb at
+1.6 s): the fake modprobe's write is stamped after the breadcrumb, `X up after 2s` logged before the load; the previous
+boot's `x.log` (a breadcrumb, no attempt, no socket) and an exited session do not count; after the bound the probe goes
+ahead; `react` never waits. The contracts test pins the order X wait → module wait → probe, `x_up`'s three conditions
+and the override. **VM and suite**: `docs/FIXES-2026-10-24.md` §4 (no NVIDIA in the VM: the real helper says
+`unsupported` at once; a second, mocked instance with a fake NVIDIA GPU ran the same `boot` path against the VM's real
+X and logged the wait + the load after `xinitrc: started`). **The card run** must show `X up after Ns` before the
+`loaded:` line in `hdmi-prime.log`, and no `Applying OutputClass "nvidia"` at the first X start.

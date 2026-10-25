@@ -370,6 +370,21 @@ naming the superseding ID. `update-progress.py` copies these notes into PROGRESS
     (`music_engine_env()` adds nothing there, as designed). Build defect fixed on the way: acestep's patched ggml
     fork was built shared with llama.cpp's sonames and would have clobbered it in `/opt/vibeos/lib` — the stage is
     static on every backend now (`unit_cuda_engine_build`). Still not audited by ear.
+  - **Status note (2026-10-24): the music session's findings fixed** (`docs/MUSIC-FIXES-2026-10-23.md`; measured by that
+    session on the 4070 with the shipped daf7644 on 2026-10-22, no GPU run in this round). (1) ace-synth's default
+    `--vae-chunk 1024` OOMs in the VAE decode on 8 GB at 40 s and from 120 s up (one tile's graph ≈ 7 MiB per latent frame,
+    6720 MiB for a 960-frame tile); every tier's `music.cmd[1]` now carries `--vae-chunk 512 --vae-overlap 64`, which rendered
+    30–512 s at a flat 4.3 GB (+15 % VAE time at 60 s). (2) ace-lm's CoT rewrote the caption (an "anime girl" request became
+    male vocals in Indonesian); the request carries `use_cot_caption: false`, and the LM still plans bpm / keyscale /
+    timesignature unless the caller pins them (`/api/music` fields, `vibe.music(…, opts)`). (3) `seed` drove only the DiT while
+    the planner drew `lm_seed` at random per run; the kernel sends the same number as both, draws one when the caller gives
+    none and reports it (`{"job", "seed"}` and the job record). (4) the `/api/music` cap is 512 s (was 240 s, unreachable at
+    the old tile size); LLM-written captions/lyrics get the ACE-Step rules in `APP_ASSETS_INSTRUCTION` and a deterministic
+    post-check (`music_caption_check`: ≤ 512 chars, BPM / key / time signature lifted into the fields; `music_lyrics_check`:
+    "x2"/"(repeat)" markers dropped, ≤ 4096 chars). The minors floor at music's entry is unchanged. Tests:
+    `unit_music_manifest_vae_tiles`, `unit_music_caption_lyrics_check`, `http_music_request_matches_proven_render` (the
+    kernel's request against the session's rendered request JSONs, field by field), `http_music_seed_reproducible`,
+    `http_music_lengths_vae_argv` (40 / 120 / 512 / 600→512 s through the mock engines). Still not audited by ear here.
 - **R32 — bigger knowledge base**: upgrade the offline encyclopedia from Simple
   English (~0.25 GB, 250k articles) to full English Wikipedia intros
   (`wikipedia_en_all_mini`, ~12 GB, ~6.9M articles); full-text `_nopic` (~49 GB)
@@ -912,6 +927,9 @@ naming the superseding ID. `update-progress.py` copies these notes into PROGRESS
     metadata shows `"en"` for English lyrics with no `language`, `"de"` for German lyrics
     with `language: "de"`, and the LM's own guess for `language: "auto"`; an invalid code is
     a 400 with no job.
+  - **Status note (2026-10-24):** unchanged by the music fixes — `vocal_language` is sent as before, now next to
+    `use_cot_caption: false` and `lm_seed` (`docs/MUSIC-FIXES-2026-10-23.md`); the field-by-field comparison with the
+    music session's rendered requests (`http_music_request_matches_proven_render`) covers it (`"en"` for English lyrics).
 
 ## Vision (request 26, 2026-09-14)
 - **R70 — vision: the OS and its apps can see images and the screen**: `docs/MODEL-REFRESH-2026-09.md`
@@ -1401,6 +1419,19 @@ numbers are listed by title only — each gets its real entry when it is built (
   `docs/DOCK-BROWSER-2026-10-15.md`.
   - **Status note (2026-10-15): implemented, proven in a headless Chromium on the real shell + kernel routes (mock
     LLM, no GPU)** at 1920×1080, 1024×768 and a second screen; the stick run is the proof on the target.
+  - **Status note (2026-10-25): the owner's correction of 2026-10-24 built.** From the v7.5-4 card run: *"closed apps
+    correct -> minimized apps correct -> maximized apps wrong (they should be big like the minimized and glowing;
+    right now they are small glowing)"*. Now every running icon is 1.33: shown (a window on screen, maximized or not)
+    = 1.33 AND the glow, the focused one = 1.33 and the brighter glow; minimized = 1.33 with a light background and no
+    glow; closed = 1x. Shown icons hover like minimized ones (`translateY(-6px) scale(1.42)`) and use the same label
+    offset; apps, built-ins, the browser and games alike (one CSS rule in `shell/shell.css`). `dockRoom()` /
+    `dockRoomOn()` already reserve the 1.33 overhang above a maximized window (`DOCK_GROW`, the icon grows by a
+    transform, the dock's box stays); `dockItems()` now counts the 2 × 9 px margin of EVERY running icon (the pinned
+    built-ins and Settings were missing), so the "+N" overflow keeps the dock on the primary monitor. Proven in the
+    e2e Chromium (`dock_e2e_records_states`): each state's computed transform, box width and glow (closed 1x / none,
+    minimized 1.33 / none, shown 1.33 / glow, active 1.33 / bright glow), the hover, a maximized window's top at the
+    menu bar and its bottom above every grown icon (hovered too), and 1024 px with 8 running icons: the dock and every
+    grown icon on the screen, none overlapping; offline suite green. The stick run is the proof on the target.
 - **R82 — games in windows, with ✨ improve**: owner (2026-10-08): *"make games in windows too (with improve button)."*
   Built on the web shell (D0's verdict, its REPORT §7). **Launch = run**: `POST /api/game {slug|prompt, frame}` plays
   the CURRENT version of an existing game (no LLM; already running = that instance; `restart` ends it first); only a
@@ -1880,6 +1911,23 @@ numbers are listed by title only — each gets its real entry when it is built (
     relaunches (before: 2 of 6), the pre-paint frames are the boot screen's colour; `prefers-color-scheme` stays dark.
     Left: one pure-white ~33 ms frame at the boot page → shell navigation in 1 of 80 (source not found; none in 37
     incognito captures). `docs/FIXES-2026-10-22.md` §2.
+  - **Status note (2026-10-24): the first card run with the one desktop (v7.5-4), and TearFree.** Verdict PASS, both
+    monitors as one 4480×1440 window (`kairos-desktop: desktop window … -> 4480x1440+0+0`), 28 min. Found in its
+    `Xorg.0.log`: **77 × `(WW) AMDGPU(0): flip queue failed: Invalid argument`** (+ `Page flip failed`, `(EE) present
+    flip failed`) — Present flips of the screen-sized window onto two CRTCs refused by the kernel, each such frame a
+    torn, unsynchronised copy (v7.5-2's per-screen kiosks: 0 in 13 h); the kernel's `Viewport size failed validation`
+    warnings are not new (39 → 48). **Fix candidate shipped:** `22-kairos-tearfree-amdgpu.conf` — the amdgpu DDX's
+    `Option "TearFree" "on"` (xserver-xorg-video-amdgpu 23.0.0 on the image; its default `auto` is off for plain
+    outputs, the card's log says `TearFree property default: auto`) through an OutputClass that matches the amdgpu
+    kernel driver only: per-CRTC scanout buffers, a copy + a flip per CRTC, no shared buffer flipped onto two scanouts.
+    Cost: one blit per frame and CRTC, ~44 MiB of extra scanout buffers, up to one frame of latency. The boot log's new
+    `pageflip` check records the TearFree state X applied and the count of refused flips in the session's Xorg log
+    (always PASS: the before → after record for the owner). A VM boots virtio, not amdgpu, so the suite + VM prove only
+    that nothing else changes — **the proof is the next card run** (`docs/FIXES-2026-10-24.md` §3, §5). Runs
+    (2026-10-24): the suite 401 / 0 / 7 (`results-one-desktop.json` 12 / 0 / 0 with the new TearFree test); VM, no GPU:
+    the conf present, the modesetting X on virtio ignores it (0 TearFree lines in the Xorg log), `pageflip` PASS n/a,
+    verdict PASS, X attempt 5.8–6.0 s. Also fixed: the flaky `dock_e2e_records_states` (the icon's `naturalWidth` read
+    before its image had loaded) now waits for the load, bounded; 10/10 in a row.
 
 ## HDMI monitor on the NVIDIA port (owner, 2026-10-21)
 - **R91 — a monitor on the HDMI port joins the one desktop (reverse PRIME)**: owner (2026-10-21, "HDMI monitor" ticked
@@ -1921,3 +1969,56 @@ numbers are listed by title only — each gets its real entry when it is built (
   stick run** (the suite proves the logic on a fake sysfs + mock xrandr, the VM proves a boot without an NVIDIA GPU is
   unchanged; only the owner's stick can prove the NVIDIA GPU screen, the binding and the costs — the step-by-step plan
   is in the report).
+  - **Status note (2026-10-24): the first card run (v7.5-4) and the X-wait fix.** On the card the helper did everything
+    as designed but one thing: `Type=simple` next to `getty@tty1`, it waited for the nvidia module only and loaded
+    `nvidia_modeset` + `nvidia_drm` at 06:02:56 — ten seconds BEFORE the X start (06:03:06, uptime 24.9 s; `xinitrc:
+    started` at 48.4 s). X applied Debian's `nvidia` OutputClass to `/dev/dri/card1`; with `AutoAddGPU off` no G0 screen
+    was made, the X start time was unchanged, no stall; state `absent` (no HDMI monitor plugged). **Fixed:** the `boot`
+    path waits until X is REALLY up — `x_up`: an X attempt of this boot, the `:0` socket AND the running attempt's
+    `xinitrc: started` breadcrumb (the socket alone exists before the server probes the GPUs) — bounded 180 s
+    (`KAIROS_HDMI_XUP`) and logged (`X up after Ns (socket + 'xinitrc: started' of X attempt N)`, or `X not up after Ns …
+    — probing anyway`); the module wait, the probe and the attach follow; the consent paths are untouched. Pinned by
+    `hp_boot_loads_modules_after_x` (a mocked timeline: the socket at 0.3 s, the breadcrumb at 1.6 s, the modules after
+    the breadcrumb) and the contracts test. **Runs (2026-10-24):** the suite 401 / 0 / 7 (`results-hdmi-prime.json`
+    17 / 0 / 0); VM, no GPU (a fresh overlay of the v7.5-4 media image + the synced tree): the real helper says
+    `unsupported: no NVIDIA GPU` at 4.9 s as before, and a mocked instance with a fake NVIDIA GPU ran the same `boot` path
+    against the VM's real X — `X up after 2s (socket + 'xinitrc: started' of X attempt 1)`, its fake modprobe stamped at
+    uptime 6.90 s, after `xinitrc: started` at 6.69 s; verdict PASS, X attempt 5.8–6.0 s (unchanged)
+    (`docs/FIXES-2026-10-24.md` §1, §4). The HDMI monitor itself is still unproven (the stick plan stands).
+
+## Editable system prompts and the songwriter (owner, 2026-10-24)
+- **R92 — every system prompt listed, located and editable**: owner (2026-10-24): *"give me a html document where you
+  describe the whole architecture of kairos and list ALL system prompts and where they stay, make a script and a tool to
+  sync the prompt. the user wants to improve them manually"*. Built: the **registry** at the end of `kernel/prompts.py`
+  (every prompt by name with its shipped default, its line, a one-line note on who sends it and its kind; the compositions
+  `APP_REGEN_SYSTEM` / `APP_EVOLVE_SYSTEM` / `WEB_EVOLVE_SYSTEM` are `base + _TAIL` parts now and are rebuilt when their
+  base changes — every shipped value byte-identical; `TRANSLATE_PROMPT` moved in from server.py unchanged; the new
+  `LYRICS_SYSTEM`); **overrides** as `<NAME>.txt` files in `KAIROS_PROMPTS_DIR` (default `$VIBEOS_DIR/prompts`), read before
+  anything copies a prompt and changed live through `GET/POST /api/prompts[/<name>]` (`prompts_apply` refreshes `EXPANDERS`,
+  `LANGUAGE_PROMPTS`, `TRANSLATE_PROMPT` and the `/system/prompts/<NAME>.txt` copies — every prompt is there now, not two);
+  the dock apps' forge requests as `DOCK_<APP>` (read from `shell/index.html`, an override substituted in `/api/app` when the
+  app is generated anew); the **✎ Prompts panel** (`shell/prompts.js`: ⊞ Apps → Prompts, About kAIrOS → Prompts,
+  `openStudio("prompts")`; list by kind, the live text and the shipped default, Save = live + file, Reset, read-only parts);
+  **`scripts/prompt-sync.py`** (`list | export | diff | push | pull | reset | bake | html`: a folder of text files ↔ a
+  running kernel ↔ an override directory ↔ the repository; `bake` rewrites the constants in `kernel/prompts.py` — f-strings
+  keep their `{STYLE}` / rule interpolations — and the `data-prompt` attributes, with a backup outside the repo and a
+  re-import check); and the generated **architecture + prompts document** (`prompt-sync.py html`: the stack, the kernel's
+  organs, where each prompt enters, the sampling finding, every prompt in full, the other prompt material, where they stay
+  and how to edit them). Finding recorded there: the manifests' `llm.sampling.temperature 1.0` overrides every route's
+  temperature for Gemma. **Status: built; proof in `docs/PROMPTS-2026-10-24.md`** (`tests/test_prompts.py`, the suite,
+  the JS checks).
+- **R93 — the songwriter: Melody's lyrics box is a prompt box**: owner (2026-10-24): *"make the music write lyrics (the
+  window for the lyrics is a prompt box) and the gemma finds out the parameters for the generation like lenght. also use
+  temprature 1.2 and top k 80 for the lyrics generation"*. Built: `POST /api/lyrics` / `vibe.lyrics(brief, opts)` — the
+  loaded LLM (`prompts.LYRICS_SYSTEM`; `LYRICS_SAMPLING` = temperature 1.2, top_k 80 as a per-call override on top of the
+  vendor sampling; llama-server's json_schema grammar) writes title, caption, lyrics, language, duration, bpm, keyscale and
+  timesignature in ONE answer (the rules of docs/MUSIC-FIXES-2026-10-23.md §4, the 150-song batch's proven recipe);
+  `lyrics_check` lifts BPM / key out of the caption, repairs tags (aliases, one short descriptor, prose bracket lines
+  dropped), drops repeat markers, clamps the ranges and retries a broken song (3 attempts); the caller's fields win over
+  the plan; the minors block runs on the brief and on the written lyrics; a refusal answers 422. Melody: describe the song
+  in the box → ✍ Write lyrics (the plan fields length / bpm / key / time and the title fill in, editable; an empty style
+  box takes the caption) → Compose (`vibe.music` with the plan); a pasted tagged text is sung as written; an empty box is an
+  instrumental. **Status: built and proven** — the mock suite (the sampler fields and the grammar on the wire, the plan
+  reaching the music engine) and the real model through the real kernel on the 4070 (2026-10-24: Gemma wrote an English
+  synthwave song — 120 s, 115 bpm, A major — in 37 s incl. its load and a German Schlager at 90 s in 10 s, both on the first
+  attempt without repairs; ACE-Step rendered the first from the plan in 22 s; `docs/PROMPTS-2026-10-24.md` §7).

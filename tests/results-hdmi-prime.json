@@ -1,5 +1,5 @@
 {
- "at": "2026-10-23 14:00:52",
+ "at": "2026-10-25 18:05:08",
  "tests": {
   "hp_helper_and_units_contracts": {
    "reqs": [
@@ -41,6 +41,15 @@
    ],
    "status": "pass",
    "detail": "unbound: waited 2.0 s, absent + reason, no modprobe; bound later + react -> consent -> attach-now -> active"
+  },
+  "hp_boot_loads_modules_after_x": {
+   "reqs": [
+    "R91",
+    "R41",
+    "R50"
+   ],
+   "status": "pass",
+   "detail": "modules after the session breadcrumb (socket alone waited; X up after 2s logged); stale x.log / exited session -> bound, then probing anyway; react never waits"
   },
   "hp_attach_one_planned_restart": {
    "reqs": [

@@ -1,5 +1,5 @@
 {
- "at": "2026-10-23 13:56:59",
+ "at": "2026-10-25 18:01:02",
  "tests": {
   "imaging_cursor_hw_on_amdgpu_conf": {
    "reqs": [
@@ -7,7 +7,7 @@
     "R28"
    ],
    "status": "pass",
-   "detail": "active confs ['10-kairos-single-gpu.conf', '20-kairos-swcursor.conf']: no amdgpu SWcursor; fallback 21-kairos-swcursor-amdgpu.conf.disabled + one-line mv; modesetting kept; diag kept"
+   "detail": "active confs ['10-kairos-single-gpu.conf', '20-kairos-swcursor.conf', '22-kairos-tearfree-amdgpu.conf']: no amdgpu SWcursor; fallback 21-kairos-swcursor-amdgpu.conf.disabled + one-line mv; modesetting kept; diag kept"
   },
   "imaging_prewarm_llm_first_best_effort_flags": {
    "reqs": [
@@ -130,7 +130,7 @@
     "R42"
    ],
    "status": "pass",
-   "detail": "batch 1 0.72 s, batch 2 joined (1 launch); ask closed the window (waiter), picture behind it after the answer (new session); safe = own session; LLM started only by the ask"
+   "detail": "batch 1 0.71 s, batch 2 joined (1 launch); ask closed the window (waiter), picture behind it after the answer (new session); safe = own session; LLM started only by the ask"
   },
   "imaging_e2e_menubar_gpu_model": {
    "reqs": [

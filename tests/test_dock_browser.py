@@ -530,7 +530,10 @@ def t_static(ctx):
                    "if (!win || win.br || win.isPage) return;", "function openSysApp(id)", "DOCK_GROW"):
         assert needle in js, needle
     css = (REPO / "shell" / "shell.css").read_text()
-    assert re.search(r"\.dock-app\.minimized \{[^}]*scale\(1\.33\)", css) and ".dock-app.shown {" in css
+    # [R81, owner 2026-10-24] running = 1.33 whether minimized or shown (maximized or not); shown keeps its glow
+    assert re.search(r"\.dock-app\.minimized, \.dock-app\.shown \{[^}]*scale\(1\.33\)", css) and ".dock-app.shown {" in css
+    assert re.search(r"\.dock-app\.minimized:hover, \.dock-app\.shown:hover \{[^}]*translateY\(-6px\) scale\(1\.42\)", css)
+    assert re.search(r"\.dock-app\.shown \{[^}]*box-shadow", css) and re.search(r"\.dock-app\.shown\.active \{[^}]*box-shadow", css)
     bjs = (REPO / "shell" / "browser.js").read_text()
     for needle in ('f.sandbox = "allow-scripts allow-forms"', "kairosPage", "/api/web/improve", "/api/web/version",
                    "function webAddress(text)"):
@@ -727,11 +730,14 @@ class CDP:
         await self.send("Input.dispatchKeyEvent", down)
         await self.send("Input.dispatchKeyEvent", {"type": "keyUp", "key": k, "code": k, "windowsVirtualKeyCode": vk})
 
-    async def shot(self, name):
+    async def shot(self, name, clip=None):
         if not SHOTS:
             return None
         await asyncio.sleep(0.35)
-        r = await self.send("Page.captureScreenshot", {"format": "png"})
+        params = {"format": "png"}
+        if clip:                              # [x, y, w, h] in page px: a close-up (the dock's icons)
+            params["clip"] = {"x": clip[0], "y": clip[1], "width": clip[2], "height": clip[3], "scale": 1}
+        r = await self.send("Page.captureScreenshot", params)
         Path(SHOTS).mkdir(parents=True, exist_ok=True)
         p = Path(SHOTS) / name
         p.write_bytes(base64.b64decode(r["data"]))
@@ -809,21 +815,56 @@ class Desk:
 
 DOCK_STATE = """JSON.stringify([...document.querySelectorAll('#dock .dock-app')].map((b) => ({
   key: b.dataset.key, cls: [...b.classList].filter((c) => c !== 'dock-app'), win: +b.dataset.windows || 0,
-  t: getComputedStyle(b).transform, glow: getComputedStyle(b).boxShadow !== 'none', more: b.dataset.more || null })))"""
+  t: getComputedStyle(b).transform, glow: getComputedStyle(b).boxShadow !== 'none', more: b.dataset.more || null,
+  shadow: getComputedStyle(b).boxShadow, top: b.getBoundingClientRect().top, w: b.getBoundingClientRect().width,
+  label: b.querySelector('span') ? getComputedStyle(b.querySelector('span')).top : null })))"""
+# the dock's CSS transitions (.15 s) finished: a computed transform / box is final only then
+DOCK_SETTLED = ("document.getAnimations().filter((a) => a.effect && a.effect.target && a.effect.target.closest && "
+                "a.effect.target.closest('#dock')).length === 0")
+BRIGHT = "rgba(65, 226, 255, 0.95)"     # the focused icon's glow ring (.shown.active); the plain glow has none
 
 
 async def dock(page):
+    await page.wait(DOCK_SETTLED, 3, "the dock's transitions finished")
     return {d["key"]: d for d in json.loads(await page.ev(DOCK_STATE))}
+
+
+def dock_state_is(d, key, state):
+    """[R81, owner's correction 2026-10-24] closed 1x / no glow; minimized 1.33 / no glow; shown (a window on screen,
+    maximized or not) 1.33 + glow; active (the focused one) 1.33 + the brighter glow. Size checked twice: the computed
+    transform and the icon's box (52 px x 1.33 = 69.2)"""
+    i = d[key]
+    cls, t, big = set(i["cls"]), i["t"], abs(i["w"] - 52 * 1.33) <= 0.6
+    if state == "closed":
+        ok = not cls & {"running", "minimized", "shown", "active"} and t in ("none", "matrix(1, 0, 0, 1, 0, 0)") \
+            and abs(i["w"] - 52) <= 0.6 and not i["glow"]
+    elif state == "minimized":
+        ok = {"running", "minimized"} <= cls and not cls & {"shown", "active"} and t.startswith("matrix(1.33, 0, 0, 1.33") \
+            and big and not i["glow"] and i["label"] == "-30px"
+    elif state == "shown":
+        ok = {"running", "shown"} <= cls and not cls & {"minimized", "active"} and t.startswith("matrix(1.33, 0, 0, 1.33") \
+            and big and i["glow"] and BRIGHT not in i["shadow"] and i["label"] == "-30px"
+    elif state == "active":
+        ok = {"running", "shown", "active"} <= cls and "minimized" not in cls and t.startswith("matrix(1.33, 0, 0, 1.33") \
+            and big and i["glow"] and BRIGHT in i["shadow"] and i["label"] == "-30px"
+    else:
+        raise ValueError(state)
+    assert ok, (key, state, i)
+    return i
 
 
 @test("dock_e2e_records_states", ["R81", "R61", "R68", "R52"])
 async def t_dock_e2e(ctx):
     """the real shell at 1920×1080: the dock has no Files/Notes/News and the built-in 🌐; the user's apps follow (their
-    icons); a click opens an app (glow, active), a click on the active one minimizes it (1.33, no chip), a click
-    restores it; built-ins the same, right-click → New window / Close; a game from the X feed gets an icon (minimized =
-    1.33, click → POST raise, no chip) while an X window that is no game keeps its chip; a quick viewer keeps its chip;
-    a maximized window ends above an enlarged icon; ⊞ lists Notes/News/Files; 1024 px: the apps overflow into ⊞ (+N);
-    "Remove from dock" persists; [R90] one page over two monitors (?mon=): ONE dock, on the primary, the X chips on it"""
+    icons); a click opens an app (1.33 + the bright glow, active), a click on the active one minimizes it (1.33, no glow,
+    no chip), a click restores it; built-ins the same, right-click → New window / Close; a game from the X feed gets an
+    icon (minimized = 1.33, click → POST raise, no chip) while an X window that is no game keeps its chip; [owner's
+    correction 2026-10-24] the four states' computed transform + glow side by side (closed 1x / none, minimized 1.33 /
+    none, shown 1.33 / glow, active 1.33 / bright glow) and their hover (running 1.42 - 6 px, closed 1.12 - 8 px); a quick
+    viewer keeps its chip; a maximized window: top at the menu bar, bottom above every grown icon (hovered too);
+    ⊞ lists Notes/News/Files; 1024 px with 7 running icons: the apps overflow into ⊞ (+N), the dock and every grown icon
+    on the screen, none overlapping; "Remove from dock" persists; [R90] one page over two monitors (?mon=): ONE dock,
+    on the primary, the X chips on it"""
     s = kernel()
     for d in list(s.APPS_DIR.glob("*")):
         shutil.rmtree(d, ignore_errors=True)
@@ -841,20 +882,21 @@ async def t_dock_e2e(ctx):
                 assert k in d, (k, list(d))
             keys = list(d)
             assert keys.index("app:settings") < keys.index("app:pomodoro-timer"), keys
-            assert await page.ev('document.querySelector(\'#dock [data-app="pomodoro-timer"] img\').naturalWidth') == 48
-            # an app: open (glow, active) → minimize (1.33, no chip) → restore
+            # [fix 2026-10-24] the icon's <img> may still be loading at this instant (R91 suite run 2 read naturalWidth 0
+            # once): wait for the load, bounded, then judge the decoded size
+            icon = 'document.querySelector(\'#dock [data-app="pomodoro-timer"] img\')'
+            await page.wait(f"{icon} && {icon}.complete && {icon}.naturalWidth === 48", 3, "the app's dock icon loaded (48 px)")
+            # an app: open (1.33 + the bright glow, active) → minimize (1.33, no glow, no chip) → restore
+            dock_state_is(await dock(page), "app:pomodoro-timer", "closed")
             await page.click_sel('#dock [data-app="pomodoro-timer"]')
             await page.wait('windowRecords().some((r) => r.key === "app:pomodoro-timer")', 10, "the app window")
             await page.wait('document.querySelector(\'#dock [data-app="pomodoro-timer"]\').classList.contains("active")', 5)
-            d = await dock(page)
-            assert {"running", "shown", "active"} <= set(d["app:pomodoro-timer"]["cls"]) and d["app:pomodoro-timer"]["glow"], d["app:pomodoro-timer"]
+            await page.away()
+            dock_state_is(await dock(page), "app:pomodoro-timer", "active")
             await page.click_sel('#dock [data-app="pomodoro-timer"]')
             await page.wait('document.querySelector(\'#dock [data-app="pomodoro-timer"]\').classList.contains("minimized")', 5)
             await page.away()
-            await asyncio.sleep(0.3)
-            d = await dock(page)
-            p = d["app:pomodoro-timer"]
-            assert "shown" not in p["cls"] and p["t"].startswith("matrix(1.33, 0, 0, 1.33"), p
+            dock_state_is(await dock(page), "app:pomodoro-timer", "minimized")
             assert await page.ev("document.querySelectorAll('#taskbar .task-chip').length") == 0, "no chip for a window with an icon"
             await page.click_sel('#dock [data-app="pomodoro-timer"]')
             await page.wait('!document.querySelector(\'#dock [data-app="pomodoro-timer"]\').classList.contains("minimized")', 5)
@@ -893,13 +935,57 @@ async def t_dock_e2e(ctx):
             assert desk.ops == ["/api/windows/77/raise"], f"a click on the game's icon raises it through the kernel: {desk.ops}"
             await page.away()
             shot1 = await page.shot("dock-states-1920.png")
+            # [R81, owner's correction 2026-10-24] the four states side by side, each one's computed size and glow:
+            # Weather Orb closed, Pixel Paint minimized, Imagine shown (a window on screen, not focused), Pomodoro active
+            await page.ev('(() => { restoreWin([...windows.values()].find((w) => w.appId === "pomodoro-timer")); return 1; })()')
+            await page.wait('document.querySelector(\'#dock [data-app="pomodoro-timer"]\').classList.contains("active")', 5)
+            await page.away()
+            d = await dock(page)
+            four = {"app:weather-orb": "closed", "app:pixel-paint": "minimized", "builtin:imagine": "shown",
+                    "app:pomodoro-timer": "active"}
+            for k, st in four.items():
+                dock_state_is(d, k, st)
+            dock_state_is(d, "game:pizza-asteroids", "minimized")                  # a game's icon alike
+            # hover: a shown or active icon lifts like a minimized one (translateY(-6px) scale(1.42)); a closed one as before
+            for k, want in (("builtin:imagine", "matrix(1.42, 0, 0, 1.42, 0, -6)"), ("app:pomodoro-timer", "matrix(1.42, 0, 0, 1.42, 0, -6)"),
+                            ("app:pixel-paint", "matrix(1.42, 0, 0, 1.42, 0, -6)"), ("app:weather-orb", "matrix(1.12, 0, 0, 1.12, 0, -8)")):
+                c = await page.center(f'#dock [data-key="{k}"]')
+                await page.send("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": c[0], "y": c[1]})
+                await page.wait(f"getComputedStyle(document.querySelector('#dock [data-key=\"{k}\"]')).transform === {json.dumps(want)}",
+                                3, f"{k} hovered: {want}")
+            await page.away()
+            d = await dock(page)
+            for k, st in four.items():
+                dock_state_is(d, k, st)
+            shot_four = await page.shot("dock-four-states-1920.png")
+            dk = await page.ev("(() => { const r = document.querySelector('#dock').getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; })()")
+            shot_four_dock = await page.shot("dock-four-states-1920-closeup.png",
+                                             [max(0, dk[0] - 30), dk[1] - 70, dk[2] + 60, min(1080 - (dk[1] - 70), dk[3] + 90)])
             # a quick viewer keeps its chip when minimized
             await page.ev('fileQuick("/data/readme.txt"), 1')
             await page.wait('[...windows.values()].some((w) => w.viewer)', 5)
             await page.ev('minimizeWin([...windows.values()].find((w) => w.viewer)), 1')
             await page.wait('[...document.querySelectorAll("#taskbar .task-chip")].some((c) => c.dataset.win)', 5, "the viewer's chip")
-            # a maximized window leaves the room of an enlarged icon free
+            # a maximized window: its top under the menu bar, its bottom above every grown icon (its own active one, the
+            # shown Imagine, the minimized ones) — also above a hovered one (1.42, -6 px); dockRoom() reserves the overhang
             await page.ev('(() => { const w = [...windows.values()].find((w) => w.appId === "pomodoro-timer"); restoreWin(w); w.el.querySelector(".win-max").click(); return 1; })()')
+            await page.away()
+            dock_state_is(await dock(page), "app:pomodoro-timer", "active")
+            box_js = ('(() => { const w = [...windows.values()].find((w) => w.appId === "pomodoro-timer").el.getBoundingClientRect();'
+                      ' const tops = [...document.querySelectorAll("#dock .dock-app.running")].map((b) => b.getBoundingClientRect().top);'
+                      ' return {top: w.top, bottom: w.bottom, menu: document.querySelector("#menubar").getBoundingClientRect().bottom,'
+                      ' room: dockRoom(), dock: document.querySelector("#dock").getBoundingClientRect().top, grown: Math.min(...tops),'
+                      ' n: tops.length, own: document.querySelector(\'#dock [data-app="pomodoro-timer"]\').getBoundingClientRect().top}; })()')
+            box = await page.ev(box_js)
+            assert box["n"] >= 4 and abs(box["top"] - box["menu"]) <= 1 and abs(box["bottom"] - (1080 - box["room"])) <= 1, box
+            assert box["grown"] < box["dock"] - 4 and box["grown"] - box["bottom"] >= 0 and box["own"] - box["bottom"] >= 0, \
+                f"a grown icon overlaps the maximized window: {box}"
+            c = await page.center('#dock [data-app="pomodoro-timer"]')
+            await page.send("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": c[0], "y": c[1]})
+            await page.wait(DOCK_SETTLED, 3)
+            hov = await page.ev(box_js)
+            assert hov["own"] < box["own"] and hov["own"] - hov["bottom"] >= 0, f"the hovered icon overlaps the maximized window: {hov}"
+            await page.away()
             gap = await page.ev('(() => { const w = [...windows.values()].find((w) => w.appId === "pomodoro-timer").el.getBoundingClientRect();'
                                 ' const g = document.querySelector(\'#dock [data-game="pizza-asteroids"]\').getBoundingClientRect(); return g.top - w.bottom; })()')
             assert gap >= 0, f"the enlarged icon overlaps the maximized window by {-gap} px"
@@ -921,16 +1007,32 @@ async def t_dock_e2e(ctx):
             await asyncio.sleep(0.3)
             stored = s._load_store().get("shell::dock.hidden")
             assert stored == ["star-map"], stored
-            # 1024 px: fewer apps fit, the rest are counted on ⊞
+            # 1024 px: fewer apps fit, the rest are counted on ⊞. [R81, 2026-10-24] with many open apps — every running
+            # icon is 1.33 now, the pinned built-ins too: open Motion, Arcade, Melody and Synth Pad as well (7 running
+            # icons + the minimized game) — the dock and every grown icon stay on the screen, no two icons overlap
+            for sel in ('[data-builtin="motion"]', '[data-builtin="arcade"]', '[data-builtin="melody"]', '[data-app="synth-pad"]'):
+                await page.click_sel(f"#dock {sel}")
+                await page.wait(f"document.querySelector('#dock {sel}').classList.contains('running')", 10, f"{sel} running")
             for i in range(14):
                 seed_apps(s, [f"extra-app-{i:02d}"])
             await page.ev("dockLoadApps(), 1")
             await page.size(1024, 768)
             await asyncio.sleep(0.6)
+            await page.away()
             wd = await page.ev("(() => { const r = document.querySelector('#dock').getBoundingClientRect(); return [r.left, r.right, innerWidth]; })()")
             assert wd[0] >= 0 and wd[1] <= wd[2], f"the dock does not fit 1024 px: {wd}"
-            more = (await dock(page))["menu"]["more"]
+            d = await dock(page)
+            more = d["menu"]["more"]
             assert more and int(more[1:]) >= 10, more
+            grown = [k for k, i in d.items() if "running" in i["cls"]]
+            assert len(grown) >= 7, grown
+            for k in grown:
+                dock_state_is(d, k, "minimized" if "minimized" in d[k]["cls"] else "active" if "active" in d[k]["cls"] else "shown")
+            boxes = sorted(await page.ev("[...document.querySelectorAll('#dock .dock-app')].map((b) => { const r = b.getBoundingClientRect();"
+                                         " return [r.left, r.right, b.dataset.key]; })"))
+            assert boxes[0][0] >= 0 and boxes[-1][1] <= wd[2], f"a grown icon sticks out of the 1024 px screen: {boxes[0]} {boxes[-1]}"
+            touch = [(a[2], b[2]) for a, b in zip(boxes, boxes[1:]) if a[1] > b[0] + 0.5]
+            assert not touch, f"grown icons overlap: {touch}"
             shot2 = await page.shot("dock-1024-overflow.png")
             await page.size(1920, 1080)
     # [R90] one desktop page over two monitors (the kiosk's ?mon= hint; this kernel has no X, so the hint stands): ONE
@@ -945,9 +1047,11 @@ async def t_dock_e2e(ctx):
                                "p.w, p.primary]; })()")
             # positions relative to the primary as the page sees it (the hint is in root px; a headless window may sit off 0,0)
             assert wd[0] >= 0 and wd[1] <= 1280 and abs((wd[0] + wd[1]) / 2 - 640) <= 1 and wd[2:] == [2, 1, 1, 1280, True], wd
-    return (f"1920: pinned + {len(users)} user apps, no Files/Notes/News/generated browser; app glow→1.33 (no chip)→restore; "
-            f"builtin New window/Close; game icon 1.33, X non-game chip only; viewer chip; maximized above the grown icon; "
-            f"⊞ system apps; remove from dock persisted; 1024: fits, ⊞ {more}; 2 monitors: one dock on the primary + the X chip" + (f"; shots {shot1}" if SHOTS else ""))
+    return (f"1920: pinned + {len(users)} user apps, no Files/Notes/News/generated browser; states closed 1x/min 1.33/shown "
+            f"1.33+glow/active 1.33+bright, hover 1.42; app active→min (no chip)→restore; builtin New window/Close; game icon "
+            f"1.33, X non-game chip only; viewer chip; maximized below the menu bar, above every grown icon (hovered too); "
+            f"⊞ system apps; remove from dock persisted; 1024 + {len(grown)} running: fits, ⊞ {more}, no overlap; 2 monitors: "
+            f"one dock on the primary + the X chip" + (f"; shots {shot1} {shot_four} {shot_four_dock}" if SHOTS else ""))
 
 
 @test("browser_e2e_search_opens_addresses", ["R83", "R23"])

@@ -1,5 +1,5 @@
 {
- "at": "2026-10-23 14:00:39",
+ "at": "2026-10-25 18:04:46",
  "tests": {
   "od_monitor_math_py_js": {
    "reqs": [
@@ -57,6 +57,15 @@
    "status": "pass",
    "detail": "pointer monitor for every window, kiosk rule last (no decor, normal layer, no fullscreen/max, 0,0), FullscreenAllowed=false, no R52 code"
   },
+  "od_tearfree_amdgpu_conf_and_bootlog": {
+   "reqs": [
+    "R90",
+    "R51",
+    "R79"
+   ],
+   "status": "pass",
+   "detail": "22-kairos-tearfree-amdgpu.conf: one OutputClass, amdgpu only, TearFree on; build + sync lists; bootlog pageflip: card log auto/77 (+ first/last line), on/0, VM n/a — always PASS"
+  },
   "od_wm_monitor_list": {
    "reqs": [
     "R90",
@@ -73,14 +82,14 @@
     "R73"
    ],
    "status": "pass",
-   "detail": "one window 4480x1440+0+0 class kairos-desktop; menu bar [0, 0, 1920, 30], dock centred on the primary; wallpaper tiles [[0, 0, 1920, 1080], [1920, 0, 2560, 1440]]; F11 undone in 0.30 s"
+   "detail": "one window 4480x1440+0+0 class kairos-desktop; menu bar [0, 0, 1920, 30], dock centred on the primary; wallpaper tiles [[0, 0, 1920, 1080], [1920, 0, 2560, 1440]]; F11 undone in 0.31 s"
   },
   "od_e2e_windows_across_monitors": {
    "reqs": [
     "R90"
    ],
    "status": "pass",
-   "detail": "opened on the pointer's monitor; dragged primary -> monitor 2 [2362, 434, 760, 560]; maximised [1920, 0, 2560, 1440]; dead-area drop -> [300, 938, 760, 560]; snap right half [3200, 0, 1280, 1440]; primary maximise [0, 30, 1920, 942] (dock room 108)"
+   "detail": "opened on the pointer's monitor; dragged primary -> monitor 2 [2362, 434, 820, 600]; maximised [1920, 0, 2560, 1440]; dead-area drop -> [300, 938, 820, 600]; snap right half [3200, 0, 1280, 1440]; primary maximise [0, 30, 1920, 942] (dock room 108)"
   },
   "od_e2e_hotplug_no_reload": {
    "reqs": [

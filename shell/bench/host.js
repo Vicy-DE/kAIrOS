@@ -251,6 +251,16 @@ async function handleBridge(d) {
     if (r.error) throw new Error(r.error);
     return await pollJob(r.job);
   }
+  if (method === "lyrics") {
+    // [R93] the songwriter: the loaded LLM writes the lyrics and plans the render (POST /api/lyrics, no job)
+    const o = (args[1] && typeof args[1] === "object") ? args[1] : {};
+    toast("✍ writing lyrics: " + String(args[0] || o.style || "").slice(0, 50) + "…");
+    const r = await fetch("/api/lyrics", { method: "POST", headers: apiHeaders(),
+      body: JSON.stringify({ prompt: args[0], style: o.style, language: o.language, duration: o.duration,
+                             bpm: o.bpm, keyscale: o.keyscale, timesignature: o.timesignature }) }).then((r) => r.json());
+    if (r.error) throw new Error(r.error);
+    return r;
+  }
   if (method === "game") {
     toast("🕹️ forging game — a window will open on your desktop…");
     const r = await fetch("/api/game", { method: "POST", headers: apiHeaders(),

@@ -16,13 +16,27 @@ const png = await vibe.image("prompt");             // URL — seconds to minute
 const set = await vibe.images(["p1", "p2", "p3"]);  // [URL, URL, URL] — ONE model load for the list (null = failed)
 const var4 = await vibe.images("prompt", 4);        // 4 variations, fresh seeds; opts: {count,width,height,model,adult,expand}
 const mp4 = await vibe.video("prompt");             // URL — MINUTES; explicit user click only
-const wav = await vibe.music("prompt", lyrics, 60); // URL — ~20 s per 15 s of audio; empty lyrics = instrumental
+const wav = await vibe.music("prompt", lyrics, 60); // URL — up to 512 s; empty lyrics = instrumental
 const de  = await vibe.music("Schlager, Akkordeon", "[Verse]\nIch tanze durch die Nacht", 30, "de"); // sung language
+const same = await vibe.music("synthwave, warm bass", lyrics, 90, "en", { seed: 4242, bpm: 110 }); // opts: reproducible + pinned tempo
+const song = await vibe.lyrics("a 3-minute ballad about the rain", { style: "piano ballad, female vocal" }); // the songwriter: lyrics + the plan
+const sung = await vibe.music(song.caption, song.lyrics, song.duration, song.language, { bpm: song.bpm, keyscale: song.keyscale, timesignature: song.timesignature });
 ```
 
-- `vibe.music(prompt, lyrics, seconds, language)`: `language` = ISO 639-1 code of the
+- `vibe.music(prompt, lyrics, seconds, language, opts)`: `language` = ISO 639-1 code of the
   lyrics (`"de"`, `"ja"`, …). **Default `"en"`** — set it whenever the lyrics are not
   English; `"auto"` lets the model guess; anything else rejects. Music is an add-on: try/catch.
+  The prompt is a tag list — genre, mood, instruments, vocal character — with **no BPM, key or
+  time signature in it**: those are `opts` `{bpm, keyscale: "D minor", timesignature: "4"}`
+  (unset = the model plans them); `opts.seed` (an integer) reproduces a track. Lyrics: standard
+  section tags (`[Verse 1]` `[Chorus]` `[Bridge]` `[Outro]`; prose inside brackets gets sung),
+  6–10 syllables per line, `(parentheses)` = backing vocals, UPPERCASE = shouting, no "x2" markers.
+- `vibe.lyrics(brief, opts)` → `{title, caption, lyrics, language, duration, bpm, keyscale, timesignature, fixes}`:
+  the OS language model writes the whole song from a few words and plans the render (length in
+  seconds, tempo, key, time signature, an English caption, the lyrics' language). `opts`
+  `{style, language, duration, bpm, keyscale, timesignature}` pin what it would choose; `style` =
+  the music description. Seconds, no job; a blocked brief or a refusal rejects with the reason.
+  Hand everything to `vibe.music` as above — the lyrics come back in ACE-Step's form already.
 
 **Improving a picture — `vibe.image.improve(picture, instruction)`** (✨, the OS picture editor):
 

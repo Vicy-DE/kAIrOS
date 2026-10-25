@@ -369,7 +369,7 @@
   "name": "ACE-Step 1.5 turbo (Q8, acestep.cpp)",
   "engine": "acestep.cpp",
   "addon": true,
-  "comment": "downloadable add-on [R47]; needs the acestep.cpp engine (scripts/install-engines.sh builds ace-lm/ace-synth). Two-stage pipeline, request-JSON driven (acestep.cpp docs/ARCHITECTURE.md): cmd[0] ace-lm turns request.json into request0.json (metadata + lyrics + audio codes), cmd[1] ace-synth renders request0.json to request00.wav next to it. The kernel writes 'request' + caption/lyrics/duration/seed as the JSON; model names are exact GGUF filenames in {models}/music. turbo DiT = 8 steps (base/sft = 50).",
+  "comment": "downloadable add-on [R47]; needs the acestep.cpp engine (scripts/install-engines.sh builds ace-lm/ace-synth). Two-stage pipeline, request-JSON driven (acestep.cpp docs/ARCHITECTURE.md): cmd[0] ace-lm turns request.json into request0.json (metadata + lyrics + audio codes), cmd[1] ace-synth renders request0.json to request00.wav next to it. The kernel writes 'request' + caption/lyrics/duration/seed as the JSON; model names are exact GGUF filenames in {models}/music. turbo DiT = 8 steps (base/sft = 50). cmd[1] decodes the VAE in 512-frame tiles (--vae-chunk 512 --vae-overlap 64, docs/MUSIC-FIXES-2026-10-23.md): the engine default 1024 OOMs on 8 GB at 40 s and from 120 s up, 512/64 holds a flat 4.3 GB up to 512 s.",
   "cmd": [
    [
     "{bin}/ace-lm",
@@ -383,7 +383,11 @@
     "--models",
     "{models}/music",
     "--request",
-    "{request_lm}"
+    "{request_lm}",
+    "--vae-chunk",
+    "512",
+    "--vae-overlap",
+    "64"
    ]
   ],
   "request": {

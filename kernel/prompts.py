@@ -127,12 +127,14 @@ Use vibe.search for facts, vibe.ask for imagination. Compute everything else loc
 
 Respond with the HTML document only."""
 
-APP_REGEN_SYSTEM = APP_SYSTEM + """
+# the compositions below are rebuilt by the registry when their base prompt is overridden (_DERIVED at the end)
+_APP_REGEN_TAIL = """
 
 The user is iterating on an existing app. You will receive the current HTML and an \
 instruction. Apply the instruction and output the FULL updated HTML document, nothing else."""
+APP_REGEN_SYSTEM = APP_SYSTEM + _APP_REGEN_TAIL
 
-APP_EVOLVE_SYSTEM = APP_SYSTEM + """
+_APP_EVOLVE_TAIL = """
 
 EVOLUTION MODE — kAIrOS apps are living software: the user pressed "AI improve", so this \
 launch builds the next version. You will receive the app's purpose and the previous \
@@ -144,6 +146,7 @@ what the user asked for.
 - Additionally implement at least one meaningful improvement: a new feature, smarter \
 behavior, or a more polished, modern and futuristic design.
 - Stay true to the app's purpose. Output the FULL HTML document, nothing else."""
+APP_EVOLVE_SYSTEM = APP_SYSTEM + _APP_EVOLVE_TAIL
 
 APP_ASSETS_INSTRUCTION = """
 
@@ -152,10 +155,13 @@ replace the following placeholders with locally generated resources after you fi
 them wherever the app needs pictures, music or video instead of drawing placeholders:
 - <img data-gen="vivid description of the wanted picture" alt="…">   (up to 3 per app; \
 size it with CSS; never invent base64 bytes or external URLs)
-- <audio data-gen-music="genre/mood description of the wanted track" controls loop>   \
+- <audio data-gen-music="genre, mood, instruments, vocal character of the wanted track" controls loop>   \
 (at most 1; the OS composes a real ~60s track and fills in src; optional \
 data-gen-lyrics="…" for a sung track, with data-gen-language="de" (ISO 639-1) when the \
-lyrics are not English — sung language defaults to English)
+lyrics are not English — sung language defaults to English). Music rules: the description \
+is a short tag list, no BPM, key or time signature in it; lyrics use standard section tags only \
+([Verse 1] [Pre-Chorus] [Chorus] [Bridge] [Outro] — prose inside brackets gets sung), 6-10 syllables \
+per line, (parentheses) = backing vocals, UPPERCASE = shouting, no "x2"/repeat markers, names spelled plainly
 - <video data-gen-video="description of the wanted short clip" controls loop muted>   \
 (at most 1, only if the app truly needs motion; video generation takes minutes)
 Only request media that serves the app's purpose. The placeholders must be plain tags — \
@@ -260,7 +266,7 @@ Respond with the HTML document only."""
 
 # [R84] ✨ improve a website: the page writer (BROWSER_SYSTEM, its 18+ page rule included) building the NEXT VERSION
 # of one page from its previous HTML, the site's profile and the user's optional instruction (server._web_improve)
-WEB_EVOLVE_SYSTEM = BROWSER_SYSTEM + f"""
+_WEB_EVOLVE_TAIL = f"""
 
 WEBSITE EVOLUTION — the user pressed ✨ improve on the page the browser shows: you write that page's NEXT VERSION. \
 You receive its address, possibly a USER IMPROVEMENT REQUEST, the site's identity (SITE CONTEXT) and the previous \
@@ -274,6 +280,7 @@ asks to change them. The site's other pages link here and must still fit.
 - Keep what works: the /web/ links and forms; keep or improve the /genimg/ pictures (a changed picture gets a new \
 description in its URL).
 - Output the FULL HTML document, nothing else."""
+WEB_EVOLVE_SYSTEM = BROWSER_SYSTEM + _WEB_EVOLVE_TAIL
 WEB_EVOLVE_SITE_INTRO = ("SITE CONTEXT — this page belongs to the existing website {site}; its next version stays "
                          "unmistakably the SAME site: the same name, premise, tone, header and navigation, palette and "
                          "fonts (unless the user's request asks to change them).")
@@ -382,7 +389,50 @@ KREA_EXPAND_SYSTEM_NEUTRAL = _KREA_EXPAND_HEAD + _KREA_EXPAND_RULE_8_NEUTRAL + _
 
 VIDEO_PROMPT_HINT = ", cinematic, high quality"
 
+# appended to every music caption; the caption then goes verbatim to ACE-Step's text encoder (use_cot_caption
+# off, docs/MUSIC-FIXES-2026-10-23.md) and server.music_caption_check keeps it when trimming to 512 chars
 MUSIC_PROMPT_HINT = ", clean mix, high quality"
+
+# ---- the songwriter [R93] (docs/PROMPTS-2026-10-24.md): the loaded LLM writes a song's lyrics AND plans the render -----
+# The Melody studio's lyrics box is a prompt box: the user describes the song, server.h_lyrics asks the LLM for the
+# lyrics plus the fields ACE-Step takes as request fields (duration, bpm, keyscale, timesignature, the sung language) and
+# a caption, as ONE JSON object (llama-server's json_schema grammar pins the shape; server.LYRICS_SCHEMA). Sampling is the
+# owner's (2026-10-24): temperature 1.2, top_k 80 (server.LYRICS_SAMPLING) — hotter than the vendor's 1.0 / 64. The rules
+# are ACE-Step 1.5's (upstream docs/en/Tutorial.md; the 2026-10-22/23 takes): tags only, no BPM/key in the caption,
+# 6-10 syllables, (backing vocals), UPPERCASE = shouting, no repeat markers; server.lyrics_check normalises what the
+# model gets wrong (tag aliases, descriptors, markers, ranges) and retries on a broken song. Proven recipe: the 150-song
+# batch of 2026-10-23 (Gemma, json_schema, the same rules; 28 of 178 attempts failed the tag check at temperature 1.0).
+# No style mandate: what the user asks the music model to sing is the user's. The caption is English (the music model's
+# text encoder); the lyrics follow the user's language unless the brief names another.
+LYRICS_SYSTEM = f"""You are the songwriter of kAIrOS, an operating system that composes real music with the ACE-Step 1.5 \
+music model. The user describes a song in a few words — a theme, a story, a mood, a genre, maybe a length or a language \
+— and you write the complete song and plan how the music model renders it. Answer with ONE JSON object and nothing \
+else, with exactly these keys:
+- "title": a short, memorable title.
+- "caption": the music model's style caption, max 420 characters, in English: comma-separated tags or one sentence \
+covering genre, mood, instruments, timbre, era and production, vocal character (male / female / duet, the voice's \
+colour), speed words (slow, driving, frantic) and structure hints. If the user names a MUSIC STYLE, the caption \
+follows it. NEVER a BPM number, tempo value, key or time signature in the caption — those have their own fields.
+- "lyrics": the complete lyrics as one string with newline characters. Section tags stand alone on their own line and \
+are ONLY these: [Intro] [Verse 1] [Verse 2] [Verse 3] [Pre-Chorus] [Chorus] [Post-Chorus] [Bridge] [Build] [Drop] \
+[Breakdown] [Guitar Solo] [Piano Interlude] [Instrumental] [Final Chorus] [Outro] [Fade Out] — optionally ONE short \
+descriptor after a dash ("[Chorus - anthemic]", "[Intro - spoken word]"). Never instructions, prose or stage \
+directions in brackets: the singer sings every bracket that is not a known tag. Lines of 6 to 10 syllables, similar \
+length line to line; a memorable chorus hook that comes back. UPPERCASE a few lines to make them shouted (not \
+everything); put backing vocals in (parentheses). No "x2", no "repeat", no "(twice)" — write a line out each time it \
+is sung. Spell names plainly. Max 3500 characters.
+- "language": the ISO 639-1 code of the lyrics' language. Write in the language the user writes in or asks for (an \
+English brief gives English lyrics, a German one German) unless the brief names another language.
+- "duration": the song's length in seconds, 20 to 512. Use the length the user asked for ("5 minutes" = 300); \
+otherwise choose it from the form: a jingle 20-40, a short song 60-120, a song 150-240, a long or epic song 300-420. \
+About 45 words of lyrics per minute of song (a 3-minute song has ~130 words, a 7-minute one ~310), with \
+[Instrumental] or solo sections carrying the rest of a long song.
+- "bpm": an integer 60-200 that fits the genre and mood (ballad 60-80, hip hop 85-100, pop 100-128, house and techno \
+120-135, drum and bass 170-175, punk 160-200).
+- "keyscale": the key as "<note> major" or "<note> minor", e.g. "D minor", "F# major".
+- "timesignature": "4" (the default), "3" for a waltz or 3/4 feel, "6" for a 6/8 feel.
+Be creative and concrete: real images, a point of view, a twist, lines that scan when sung. Genre words the user gave \
+rule the caption; what the user did not specify, you decide. {ADULT_RULE_TEXT}"""
 
 # ---- translation layer [R71] (docs/TRANSLATION-LAYER-2026-10-06.md) --------------------------
 # Appended by server.language_instruction() to the user-facing generation prompts (APP_*,
@@ -398,6 +448,13 @@ vibe.* calls stay exactly as they are."""
 # The Krea expander (an English-only image model behind it) is told to answer in English when
 # the layer is on — the expander is a multilingual model already loaded, so this costs nothing;
 # image sections without an expander get their prompt through the MT model (server.render_images).
+# [R71 / R89] the translation hop's ONE user message (no system message): the Index-Translate model card's prompt,
+# and the exact body the R89 benchmark measured the loaded LLM with (docs/FAST-MODELS-2026-10-17.md §2) — server.py
+# formats it with the target language's English name and the text. Moved here from server.py on 2026-10-24 so it is in
+# the registry below; the value is unchanged.
+TRANSLATE_PROMPT = ("Translate the following text into {language}. Only output the translation, "
+                    "without any additional explanation:\n\n{text}")
+
 KREA_EXPAND_ENGLISH = ("11. **Output Language:** The user may write in any language; the expanded "
                        "prompt MUST be written in English (translate the names of things faithfully).\n")
 
@@ -444,3 +501,311 @@ WALLPAPER_SYSTEM = ("You paint the desktop wallpaper of kAIrOS. "
                     "cinematic, ultra wide; no text, no letters, no logos, no UI elements, "
                     "no people's private details. Answer with the scene description only.")
 
+
+# ================================================================================================================
+# The prompt registry [R92] (docs/PROMPTS-2026-10-24.md): every prompt above by name, its shipped default, the line
+# it lives on, one note on who sends it, and OVERRIDES — plain text files <NAME>.txt in one directory (the kernel's
+# KAIROS_PROMPTS_DIR, default $VIBEOS_DIR/prompts), read at startup and changed live through /api/prompts (the
+# ✎ Prompts panel of the desktop, scripts/prompt-sync.py from a terminal). The module's attributes ARE the live
+# values: server.py reads `prompts.APP_SYSTEM` at call time, so an override takes effect with the next request; the
+# few values the kernel copies at import (EXPANDERS, LANGUAGE_PROMPTS, TRANSLATE_PROMPT, /system/prompts) are
+# refreshed by the on_change hook server.prompts_apply registers. Compositions (_DERIVED) are rebuilt from their
+# parts when a part changes, unless the composition itself is overridden. Building blocks (kind "part": STYLE, the
+# ADULT_* rules, the _KREA_* rules, the _*_TAIL texts) are listed for reading; they are baked into the prompts built
+# from them, so they are not overridable — edit the finished prompt instead.
+# ================================================================================================================
+import ast as _ast
+import os as _os
+from pathlib import Path as _Path
+
+_DERIVED = {                       # composition: (base, part) — rebuilt when the base (or the part) is overridden
+    "APP_REGEN_SYSTEM": ("APP_SYSTEM", "_APP_REGEN_TAIL"),
+    "APP_EVOLVE_SYSTEM": ("APP_SYSTEM", "_APP_EVOLVE_TAIL"),
+    "WEB_EVOLVE_SYSTEM": ("BROWSER_SYSTEM", "_WEB_EVOLVE_TAIL"),
+}
+_PARTS = {"STYLE", "ADULT_LIMITS", "ADULT_RULE_WEB", "ADULT_RULE_APP", "ADULT_RULE_APP_SHORT", "ADULT_RULE_GAME",
+          "ADULT_RULE_TEXT"}     # + every private _NAME string (the Krea rule set, the evolve tails)
+_READONLY = {"BROWSER_NAV_SCRIPT"}   # legacy JS the kernel strips from old cached pages — not a prompt anyone sends
+# what each prompt is for and who sends it (server.py), one line each — the ✎ Prompts panel and the sync tool show it
+NOTES = {
+    "STYLE": "the OS style mandate, interpolated into every UI prompt (apps, games, pages, ask); media prompts carry none",
+    "ADULT_LIMITS": "the 18+ limits sentence shared by the ADULT_RULE_* rules: fictional adults 25+, never minors, never real people",
+    "ADULT_RULE_WEB": "the imaginary web's adult rule — inside BROWSER_SYSTEM",
+    "ADULT_RULE_APP": "the app designer's adult rule — inside SPEC_SYSTEM",
+    "ADULT_RULE_APP_SHORT": "the coder's short adult rule — inside APP_SYSTEM (the tightest prompt budget)",
+    "ADULT_RULE_GAME": "the game forge's adult rule — inside GAME_SYSTEM",
+    "ADULT_RULE_TEXT": "the text answerer's adult rule — inside ASK_SYSTEM and LYRICS_SYSTEM",
+    "APP_SYSTEM": "system prompt of the coder LLM for a NEW app (POST /api/app; + API sheets, wiki recipes, facts, the spec)",
+    "APP_REGEN_SYSTEM": "APP_SYSTEM + the modify tail: an app rewritten from an instruction (POST /api/app/<id>/modify)",
+    "APP_EVOLVE_SYSTEM": "APP_SYSTEM + the evolution tail: ✨ improve on an app's window (POST /api/app with evolve)",
+    "APP_ASSETS_INSTRUCTION": "appended to the coder's prompt when the App Launcher forges with media (data-gen placeholders, music rules)",
+    "GAME_EVOLVE_INSTRUCTION": "user-message tail of ✨ improve on a game (POST /api/game evolve)",
+    "GAME_EVOLVE_REQUEST": "user-message text when the game's ✨ improve carries a request",
+    "GAME_EVOLVE_NO_REQUEST": "user-message text when the game's ✨ improve carries no request",
+    "HTML_FIX_SYSTEM": "system prompt of the self-repair daemon: structural defects and runtime bug reports of apps and pages",
+    "GAME_SYSTEM": "system prompt of the game forge (pygame, POST /api/game) — the python_llm on 24/32 GB, the coder LLM below",
+    "GAME_FIX_SYSTEM": "system prompt of the game forge debugger (a traceback or syntax error fed back)",
+    "ASK_SYSTEM": "system prompt of vibe.ask (POST /api/ask) — the imagination engine apps talk to",
+    "VISION_SYSTEM": "system prompt of vibe.vision (POST /api/vision) — the Qwen3-VL add-on looks at a picture",
+    "BROWSER_SYSTEM": "system prompt of the imaginary web: every /web/<address> page on its first visit (POST /api/browse)",
+    "WEB_EVOLVE_SYSTEM": "BROWSER_SYSTEM + the website evolution tail: ✨ improve on a page (POST /api/web/improve)",
+    "WEB_EVOLVE_SITE_INTRO": "SITE CONTEXT line of a page's next version (formatted with the site)",
+    "BROWSER_NAV_SCRIPT": "legacy script old cached pages still carry; the kernel strips it (not sent to any model)",
+    "CONTEXT_HEADER": "header of the FACTS block (search / Wikipedia) prepended to app generation, pages and vibe.ask",
+    "WIKI_HEADER": "header of the OS PROGRAMMING WIKI block (docs/wiki/*.md recipes) appended to the coder's prompt",
+    "API_HEADER": "header of the API REFERENCE block (docs/api/*.md sheets) appended to the coder's prompt",
+    "SPEC_SYSTEM": "system prompt of the app designer: the researched specification a new app is built from",
+    "IMAGE_PROMPT_HINT": "suffix on every picture prompt sent to the image model (vibe.image, /genimg/, forge pictures)",
+    "KREA_EXPAND_SYSTEM": "the Krea prompt expander (SFW rule 8) — image sections with expander krea",
+    "KREA_EXPAND_SYSTEM_ADULT": "the Krea prompt expander, 18+ rule 8 — adult picture requests (expander krea-18plus)",
+    "KREA_EXPAND_SYSTEM_NEUTRAL": "the Krea prompt expander, neutral rule 8 — the uncensored default image model (Muse)",
+    "VIDEO_PROMPT_HINT": "suffix on every video prompt (vibe.video, data-gen-video)",
+    "MUSIC_PROMPT_HINT": "suffix on every music caption (vibe.music, data-gen-music) — kept when the caption is trimmed",
+    "LYRICS_SYSTEM": "system prompt of the songwriter (POST /api/lyrics, the Melody studio): lyrics + the render plan as JSON",
+    "LANGUAGE_INSTRUCTION": "the one line appended to APP_*/GAME/ASK/BROWSER prompts while translation is on (OS language ≠ English)",
+    "TRANSLATE_PROMPT": "the translation hop's single user message (fast MT model or the loaded LLM), formatted with language + text",
+    "KREA_EXPAND_ENGLISH": "rule 11 appended to the Krea expander while translation is on: answer in English",
+    "ADULT_PREAMBLE": "the refusal ladder's first rung: prepended to the system prompt after a refusal; always on the llm_uncensored rung",
+    "UNCENSORED_LIMITS": "the one limits line appended to every system prompt an uncensored primary model serves",
+    "WALLPAPER_PROMPT": "the fixed wallpaper picture prompt (no session fragments)",
+    "WALLPAPER_SYSTEM": "system prompt that turns the session's fragments into a wallpaper scene (POST /api/wallpaper)",
+    "_KREA_EXPAND_HEAD": "Krea's official expander rules 1-7 (part of the three KREA_EXPAND_SYSTEM* prompts)",
+    "_KREA_EXPAND_RULE_8_SFW": "rule 8, SFW (part of KREA_EXPAND_SYSTEM)",
+    "_KREA_EXPAND_RULE_8_ADULT": "rule 8, 18+ (part of KREA_EXPAND_SYSTEM_ADULT)",
+    "_KREA_EXPAND_RULE_8_NEUTRAL": "rule 8, neutral (part of KREA_EXPAND_SYSTEM_NEUTRAL)",
+    "_KREA_EXPAND_RULE_9": "rule 9, preserve the user's medium (part of all three)",
+    "_KREA_EXPAND_RULE_10_KAIROS": "rule 10, kAIrOS's default medium (part of the SFW and neutral expanders)",
+    "_APP_REGEN_TAIL": "the modify tail (part of APP_REGEN_SYSTEM)",
+    "_APP_EVOLVE_TAIL": "the evolution tail (part of APP_EVOLVE_SYSTEM)",
+    "_WEB_EVOLVE_TAIL": "the website evolution tail (part of WEB_EVOLVE_SYSTEM)",
+}
+_HINTS = {"IMAGE_PROMPT_HINT", "VIDEO_PROMPT_HINT", "MUSIC_PROMPT_HINT", "WALLPAPER_PROMPT"}
+_TEMPLATES = {"CONTEXT_HEADER", "WEB_EVOLVE_SITE_INTRO", "LANGUAGE_INSTRUCTION", "TRANSLATE_PROMPT"}
+_INSTRUCTIONS = {"APP_ASSETS_INSTRUCTION", "GAME_EVOLVE_INSTRUCTION", "GAME_EVOLVE_REQUEST", "GAME_EVOLVE_NO_REQUEST",
+                 "WIKI_HEADER", "API_HEADER", "KREA_EXPAND_ENGLISH", "ADULT_PREAMBLE", "UNCENSORED_LIMITS"}
+
+DEFAULTS = {}        # name -> the value this file ships
+WHERE = {}           # name -> "kernel/prompts.py:<line>" (or where the kernel registered an external one)
+EXTERNAL = {}        # name -> {"kind", "note"} for prompts registered by the kernel (the dock apps' forge requests)
+OVERRIDES = {}       # name -> the active override text
+OVERRIDES_DIR = None
+_ON_CHANGE = []
+
+
+def _scan_lines():
+    """the assignment line of every module-level NAME = … in this file (its own source, parsed once)"""
+    out = {}
+    try:
+        tree = _ast.parse(_Path(__file__).read_text(encoding="utf-8"))
+    except Exception:
+        return out
+    for node in tree.body:
+        if isinstance(node, _ast.Assign):
+            for t in node.targets:
+                if isinstance(t, _ast.Name) and t.id not in out:
+                    out[t.id] = node.lineno
+    return out
+
+
+def _collect():
+    lines = _scan_lines()
+    for name, value in list(globals().items()):
+        if not isinstance(value, str) or name in ("__doc__", "__file__", "__name__", "__package__", "__cached__"):
+            continue
+        if not name.lstrip("_").isupper() or name in ("DEFAULTS", "NOTES", "WHERE"):
+            continue
+        DEFAULTS[name] = value
+        WHERE[name] = f"kernel/prompts.py:{lines.get(name, 0)}"
+
+
+_collect()
+
+
+def kind_of(name: str) -> str:
+    """system | instruction | hint | template | part | legacy | dock — how the text is used"""
+    if name in EXTERNAL:
+        return EXTERNAL[name]["kind"]
+    if name in _READONLY:
+        return "legacy"
+    if name.startswith("_") or name in _PARTS:
+        return "part"
+    if name in _HINTS:
+        return "hint"
+    if name in _TEMPLATES:
+        return "template"
+    if name in _INSTRUCTIONS:
+        return "instruction"
+    return "system"
+
+
+def editable(name: str) -> bool:
+    return name in DEFAULTS and kind_of(name) not in ("part", "legacy")
+
+
+def names() -> list:
+    """every registered prompt, in the order of this file (then the external ones), parts included"""
+    return list(DEFAULTS)
+
+
+def get(name: str) -> str:
+    """the LIVE value (an override, a rebuilt composition, or the default)"""
+    if name in EXTERNAL:
+        return OVERRIDES.get(name, DEFAULTS[name])
+    return globals()[name]
+
+
+def effective() -> dict:
+    return {n: get(n) for n in DEFAULTS}
+
+
+def info(name: str) -> dict:
+    if name not in DEFAULTS:
+        raise KeyError(name)
+    text = get(name)
+    base = _DERIVED.get(name)
+    return {"name": name, "kind": kind_of(name), "where": WHERE[name], "note": NOTES.get(name) or EXTERNAL.get(name, {}).get("note", ""),
+            "editable": editable(name), "overridden": name in OVERRIDES, "chars": len(text),
+            "derived_from": list(base) if base else [],
+            "default_chars": len(DEFAULTS[name]),
+            "rebuilt": bool(base) and name not in OVERRIDES and text != DEFAULTS[name]}
+
+
+def all_info() -> list:
+    return [info(n) for n in DEFAULTS]
+
+
+def register(name: str, default: str, where: str, note: str = "", kind: str = "dock"):
+    """a prompt that lives outside this file (the dock apps' forge requests in shell/index.html): registered by the
+    kernel at startup, overridable like the others — the kernel substitutes the override where the shell's text arrives"""
+    if not isinstance(default, str):
+        raise TypeError(name)
+    DEFAULTS[name] = default
+    WHERE[name] = where
+    EXTERNAL[name] = {"kind": kind, "note": note}
+    if name in _pending_overrides:
+        OVERRIDES[name] = _pending_overrides.pop(name)
+
+
+_pending_overrides = {}     # override files for names registered later (the dock prompts, after the shell is read)
+
+
+def _rebuild(changed: str):
+    """recompute every composition whose base or part is `changed` and is not itself overridden"""
+    for name, (base, part) in _DERIVED.items():
+        if changed in (base, part) and name not in OVERRIDES:
+            globals()[name] = get(base) + get(part)
+
+
+def _put(name: str, text):
+    """set the live value (None = back to the default), rebuild compositions"""
+    if name in EXTERNAL:
+        return
+    globals()[name] = DEFAULTS[name] if text is None else text
+    if text is None and name in _DERIVED:
+        base, part = _DERIVED[name]
+        globals()[name] = get(base) + get(part)
+    _rebuild(name)
+
+
+def _file(name: str) -> _Path:
+    return _Path(OVERRIDES_DIR) / f"{name}.txt"
+
+
+def _normalise(name: str, text: str) -> str:
+    """an editor's trailing newline is not part of the prompt when the default has none"""
+    if text.endswith("\n") and not DEFAULTS.get(name, "").endswith("\n"):
+        text = text[:-1]
+    return text
+
+
+def set_override(name: str, text: str, persist: bool = True) -> dict:
+    """make `text` the live value of `name` (written to <dir>/<name>.txt when persist); text == the default clears it"""
+    if name not in DEFAULTS:
+        raise KeyError(f"unknown prompt {name!r}")
+    if not editable(name):
+        raise ValueError(f"{name} is a {kind_of(name)} — edit the prompt built from it instead")
+    if not isinstance(text, str):
+        raise TypeError("the prompt must be a string")
+    text = _normalise(name, text)
+    if text == DEFAULTS[name]:
+        return clear_override(name, persist)
+    OVERRIDES[name] = text
+    _put(name, text)
+    if persist and OVERRIDES_DIR:
+        _file(name).parent.mkdir(parents=True, exist_ok=True)
+        _file(name).write_text(text, encoding="utf-8")
+    _changed(name)
+    return info(name)
+
+
+def clear_override(name: str, persist: bool = True) -> dict:
+    """back to the shipped default (the file is removed when persist)"""
+    if name not in DEFAULTS:
+        raise KeyError(f"unknown prompt {name!r}")
+    OVERRIDES.pop(name, None)
+    _put(name, None)
+    if persist and OVERRIDES_DIR:
+        try:
+            _file(name).unlink()
+        except FileNotFoundError:
+            pass
+    _changed(name)
+    return info(name)
+
+
+def load_overrides(directory) -> dict:
+    """read every <NAME>.txt in `directory` (created when missing) and make them the live values; returns
+    {"dir", "loaded": [names], "unknown": [files], "same": [names equal to the default], "skipped": [non-editable]}"""
+    global OVERRIDES_DIR
+    OVERRIDES_DIR = str(directory)
+    d = _Path(directory)
+    report = {"dir": OVERRIDES_DIR, "loaded": [], "unknown": [], "same": [], "skipped": []}
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return report
+    # start from the defaults: a file removed since the last load is gone
+    for name in list(OVERRIDES):
+        OVERRIDES.pop(name, None)
+        _put(name, None)
+    _pending_overrides.clear()
+    for f in sorted(d.glob("*.txt")):
+        name = f.stem
+        try:
+            text = f.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if name not in DEFAULTS:
+            if name.lstrip("_").isupper():          # a prompt the kernel registers later (DOCK_*) or a typo
+                _pending_overrides[name] = text
+            report["unknown"].append(f.name)
+            continue
+        if not editable(name):
+            report["skipped"].append(name)
+            continue
+        text = _normalise(name, text)
+        if text == DEFAULTS[name]:
+            report["same"].append(name)
+            continue
+        OVERRIDES[name] = text
+        _put(name, text)
+        report["loaded"].append(name)
+    for name in list(_pending_overrides):          # external names registered before this load
+        if name in EXTERNAL:
+            OVERRIDES[name] = _pending_overrides.pop(name)
+            report["loaded"].append(name)
+    _changed(None)
+    return report
+
+
+def on_change(callback):
+    """callback(name or None) after any live change — the kernel refreshes what it copied at import"""
+    _ON_CHANGE.append(callback)
+
+
+def _changed(name):
+    for cb in list(_ON_CHANGE):
+        try:
+            cb(name)
+        except Exception as e:                    # a hook must never break the edit
+            print(f"[prompts] WARN on_change hook failed: {e}", flush=True)

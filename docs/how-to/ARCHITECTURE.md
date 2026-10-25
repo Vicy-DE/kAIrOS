@@ -23,7 +23,7 @@ research notes), [API.md](../API.md) (the app-facing API) and [REQUIREMENTS.md](
      ├─ hardware API (kernel/hw.py): WiFi, Bluetooth, battery, brightness, displays, power [R38, R78]
      ├─ VFS (kernel/vfs.py): read-only /system, formattable /data; settings live in /data
      ├─ knowledge (kernel/knowledge.py): DuckDuckGo online, kiwix Wikipedia offline, one interface
-     ├─ translation (R71), dictionaries, refusal fallback ladder (R86), the installer (R48)
+     ├─ translation (R71), dictionaries, refusal fallback ladder (R86), the prompt registry (R92), the installer (R48)
      └─ engines it drives:  llama-server (llama.cpp)  ·  sd-cli / sd-server (stable-diffusion.cpp)
                             ace-lm / ace-synth (acestep.cpp)  ·  kiwix-serve
    ─────────────────────────────────────────────────────────────────────────────────────
@@ -94,7 +94,10 @@ into `docs/PROGRESS.md`. [TESTING.md](TESTING.md) has the commands.
 1. [../../README.md](../../README.md) — the pitch, the stack table, the tiers.
 2. This page, then [DESIGN.md](../DESIGN.md) sections "Architecture", "Filesystem", "Living
    software", "Self-healing loops".
-3. [API.md](../API.md) — what an app can do; skim `kernel/prompts.py` to see what the model is told.
+3. [API.md](../API.md) — what an app can do; skim `kernel/prompts.py` to see what the model is told — or open
+   the desktop's ✎ Prompts panel (⊞ Apps → Prompts), which shows every prompt live and lets you edit it, and
+   `scripts/prompt-sync.py html`, which writes the whole catalogue with this architecture as one page (R92,
+   `docs/PROMPTS-2026-10-24.md`).
 4. `kernel/server.py` top to bottom with `docs/REQUIREMENTS.md` open — every `[Rnn]` in the code
    has a paragraph there.
 5. One VM test report (`docs/VM-TEST-2026-09-29.md`) to see what a verified change looks like.

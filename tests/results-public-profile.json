@@ -1,5 +1,5 @@
 {
- "at": "2026-10-23 14:00:31",
+ "at": "2026-10-25 18:04:36",
  "tests": {
   "pp_static_overlay_and_wiring": {
    "reqs": [
@@ -115,7 +115,7 @@
     "R47"
    ],
    "status": "pass",
-   "detail": "build-iso / sync-guest / prep: the same 5 dirs, the rest removed, no *.bak* / __pycache__; kernel + shell (31 files) read nothing under tests/"
+   "detail": "build-iso / sync-guest / prep: the same 5 dirs, the rest removed, no *.bak* / __pycache__; kernel + shell (32 files) read nothing under tests/"
   },
   "pp_r88_raw_scrub_planted_image": {
    "reqs": [

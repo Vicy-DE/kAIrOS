@@ -366,18 +366,23 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
 
 
 /* ---------- the dock's states [R81] ----------
-   running + every window minimized -> the icon 1.33 bigger (grows up out of the dock: shell.js
-   dockRoom() keeps that room free above a maximized window); running + shown -> a glow; the
-   focused one -> a brighter glow. Same for apps, built-ins, the browser and games. */
+   closed -> a normal icon. Running -> the icon 1.33 bigger, whether its windows are minimized or on
+   screen (grows up out of the dock: shell.js dockRoom() keeps that room free above a maximized window,
+   and dockItems() counts the 2 x 9 px margin of every running icon): every window minimized -> a light
+   background, no glow; shown (a window on screen, maximized or not) -> 1.33 AND a glow; the focused
+   one -> 1.33 and a brighter glow (owner's correction 2026-10-24: shown icons were small). Same hover
+   and label offset for every running icon. Same for apps, built-ins, the browser and games. */
 .dock-app { transform-origin: 50% 100%; }
 .dock-img { width: 34px; height: 34px; border-radius: 10px; object-fit: cover; pointer-events: none; }
+.dock-app.minimized, .dock-app.shown { transform: scale(1.33); margin: 0 9px; }
+.dock-app.minimized:hover, .dock-app.shown:hover { transform: translateY(-6px) scale(1.42); }
+.dock-app.minimized span, .dock-app.minimized:hover span,
+.dock-app.shown span, .dock-app.shown:hover span { top: -30px; }
+.dock-app.minimized { background: rgba(255, 255, 255, .1); }
 .dock-app.shown { background: rgba(124, 92, 255, .24);
   box-shadow: 0 0 0 1.5px rgba(124, 92, 255, .8), 0 0 18px 5px rgba(124, 92, 255, .62), 0 0 34px 9px rgba(65, 226, 255, .26); }
 .dock-app.shown.active { background: rgba(124, 92, 255, .34);
   box-shadow: 0 0 0 1.5px rgba(65, 226, 255, .95), 0 0 22px 6px rgba(124, 92, 255, .8), 0 0 42px 12px rgba(65, 226, 255, .36); }
-.dock-app.minimized { transform: scale(1.33); margin: 0 9px; background: rgba(255, 255, 255, .1); }
-.dock-app.minimized:hover { transform: translateY(-6px) scale(1.42); }
-.dock-app.minimized span, .dock-app.minimized:hover span { top: -30px; }
 .dock-app[data-more]::after { content: attr(data-more); position: absolute; right: -4px; top: -4px; min-width: 18px;
   height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff; font: 700 10px/18px system-ui;
   text-align: center; box-shadow: 0 2px 6px rgba(0, 0, 0, .4); }
@@ -518,3 +523,32 @@ html, body { height: 100%; overflow: hidden; background: #07070d; color: var(--t
 .km-text { white-space: pre-wrap; font-size: 11px; line-height: 1.4; background: rgba(0, 0, 0, .35); border-radius: 10px; padding: 10px; max-height: 360px; overflow: auto; }
 .km-first { margin-top: 14px; text-align: left; }
 .km-first .km-key { width: 100%; box-sizing: border-box; margin: 6px 0; }
+
+/* ---------- [R92] ✎ Prompts — the system prompts panel (shell/prompts.js) ---------- */
+.kp { position: absolute; inset: 0; display: grid; grid-template-columns: 290px 1fr; color: var(--text); font-size: 13px; user-select: text; }
+.kp-side { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--glass-border); }
+.kp-filter { margin: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--glass-border); background: rgba(0, 0, 0, .35); color: var(--text); font: inherit; }
+.kp-list { flex: 1; overflow: auto; padding: 0 6px 10px; }
+.kp-group { margin: 10px 6px 4px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+.kp-item { display: flex; gap: 8px; align-items: center; width: 100%; text-align: left; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; color: var(--text); cursor: pointer; font: inherit; }
+.kp-item:hover { background: var(--glass); }
+.kp-item.sel { background: rgba(124, 92, 255, .22); }
+.kp-item.ro { opacity: .6; }
+.kp-item .kp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; font-size: 12px; }
+.kp-badge { font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--accent2); color: #002; font-weight: 700; }
+.kp-chars { font-size: 11px; color: var(--text-dim); }
+.kp-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px 14px; gap: 8px; }
+.kp-h { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.kp-h .kp-title { font-family: ui-monospace, monospace; font-size: 15px; font-weight: 700; color: var(--accent2); }
+.kp-where { font-size: 12px; color: var(--text-dim); font-family: ui-monospace, monospace; }
+.kp-note { font-size: 12px; color: var(--text-dim); line-height: 1.45; }
+.kp-text { flex: 1; min-height: 120px; resize: none; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--glass-border); background: rgba(0, 0, 0, .35); color: var(--text); font: 12px/1.45 ui-monospace, monospace; white-space: pre-wrap; }
+.kp-text[readonly] { opacity: .75; }
+.kp-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.kp-actions button { padding: 7px 14px; border-radius: 10px; border: 0; cursor: pointer; }
+.kp-actions .kp-save { background: var(--accent); color: #fff; font-weight: 700; }
+.kp-actions .kp-alt { background: var(--glass); color: var(--text); border: 1px solid var(--glass-border); }
+.kp-state { margin-left: auto; font-size: 12px; color: var(--text-dim); }
+.kp-foot { font-size: 11px; color: var(--text-dim); line-height: 1.45; border-top: 1px solid var(--glass-border); padding-top: 6px; }
+.kp-empty { color: var(--text-dim); padding: 20px; }
+

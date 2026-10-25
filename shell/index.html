@@ -122,7 +122,7 @@ function kairosTiles(box, mons, cls) {
 
   <!-- [R81] the dock. These buttons are its PINNED part, as data: shell.js dockInit() reads them once and
        renderDock() draws the dock from them + the user's apps (/api/apps) + the window records (DOM windows and
-       the kernel's X windows) — running + minimized = 1.33, running + shown = a glow. Files, Notes and News are
+       the kernel's X windows) — running = 1.33 (minimized: no glow; shown: a glow, brighter when focused). Files, Notes and News are
        not pinned (owner 2026-10-15): they are in the system-apps template below, reachable through ⊞ Apps and
        the search. [R83] The browser is the built-in (shell/browser.js), no longer a generated app. -->
   <div id="dock">
@@ -166,5 +166,6 @@ function kairosTiles(box, mons, cls) {
 <script src="/shell/games.js"></script>     <!-- [R82] games in desktop window frames, with ✨ improve -->
 <script src="/shell/pictures.js"></script>  <!-- [R85] the picture viewer: ✨ improve a picture, its versions -->
 <script src="/shell/models.js"></script>    <!-- [R87] Models, downloads & licences: first-boot downloads, Muse, licences -->
+<script src="/shell/prompts.js"></script>   <!-- [R92] ✎ Prompts: the system prompts, readable and editable in the OS -->
 </body>
 </html>

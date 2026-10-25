@@ -108,7 +108,9 @@ def load_results(path: Path = RESULTS):
     if not path.exists():
         return "never", {}
     data = json.loads(path.read_text())
-    return data.get("at", "?"), data.get("tests", {})
+    # tests/test_prompts.py [R92, R93] writes {"ran_at", "results"}, every other results file {"at", "tests"}:
+    # read both, or its passing tests never reach PROGRESS.md (R92/R93 showed "unclaimed, no test" on 2026-10-25)
+    return data.get("at", data.get("ran_at", "?")), data.get("tests", data.get("results", {}))
 
 
 def render(ids, titles, notes, results, ran_at="?"):
@@ -259,6 +261,8 @@ def main():
     results = {**results, **load_results(RESULTS.with_name("results-dock-browser.json"))[1]}
     # and games in windows [R82] (tests/test_games_windows.py -> results-games-windows.json)
     results = {**results, **load_results(RESULTS.with_name("results-games-windows.json"))[1]}
+    # and the prompt registry + the songwriter [R92, R93] (tests/test_prompts.py -> results-prompts.json)
+    results = {**results, **load_results(RESULTS.with_name("results-prompts.json"))[1]}
     # and ✨ improve a picture [R85] (tests/test_picture_edit.py -> results-picture-edit.json)
     results = {**results, **load_results(RESULTS.with_name("results-picture-edit.json"))[1]}
     # and the public images [R87] (tests/test_public_profile.py -> results-public-profile.json)

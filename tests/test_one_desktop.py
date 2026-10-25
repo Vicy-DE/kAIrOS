@@ -444,6 +444,71 @@ def t_rc(ctx):
     return "pointer monitor for every window, kiosk rule last (no decor, normal layer, no fullscreen/max, 0,0), FullscreenAllowed=false, no R52 code"
 
 
+@test("od_tearfree_amdgpu_conf_and_bootlog", ["R90", "R51", "R79"])
+def t_tearfree(ctx):
+    """[fix 2026-10-24] the v7.5-4 card run's Xorg log: 77x "flip queue failed: Invalid argument" in 28 min with the one
+    4480-px window over two CRTCs (0 in 13 h with the per-screen kiosks) — a refused Present flip falls back to a torn
+    copy. 22-kairos-tearfree-amdgpu.conf turns the amdgpu DDX's TearFree on (a copy + a flip per CRTC of its own
+    buffers) through an OutputClass that matches the amdgpu KERNEL driver only: one section, the Driver line kept, no
+    other option, nothing for modesetting / NVIDIA, the other X files unchanged; build-img.sh installs it and the rig
+    sync ships the whole etc overlay. The boot log's `pageflip` check RECORDS the TearFree state X applied and the
+    refused flips of this session (the real kairos-bootlog on a fake ESP: the card run's lines -> auto / 77, a
+    TearFree-on log -> on / 0, no amdgpu screen -> n/a; always PASS: a before -> after record, never a verdict change)"""
+    xdir = INC / "etc" / "X11" / "xorg.conf.d"
+    tf = xdir / "22-kairos-tearfree-amdgpu.conf"
+    code = "\n".join(l for l in tf.read_text().splitlines() if not l.lstrip().startswith("#"))
+    secs = re.findall(r'Section "(\w+)"(.*?)EndSection', code, re.S)
+    assert len(secs) == 1 and secs[0][0] == "OutputClass", secs
+    body = secs[0][1]
+    assert re.search(r'MatchDriver\s+"amdgpu"', body) and re.search(r'^\s*Driver\s+"amdgpu"', body, re.M), body
+    opts = re.findall(r'Option\s+"(\w+)"\s+"(\w+)"', body)
+    assert opts == [("TearFree", "on")], opts
+    assert "SWcursor" not in tf.read_text() or "SWcursor" not in body
+    for name, needle in (("10-kairos-single-gpu.conf", r'Option\s+"AutoAddGPU"\s+"off"'), ("20-kairos-swcursor.conf", r'MatchDriver\s+"i915\|xe\|virtio_gpu\|bochs\|bochs-drm"')):
+        assert re.search(needle, (xdir / name).read_text()), name
+    assert "amdgpu" not in re.search(r'MatchDriver\s+"([^"]+)"', (xdir / "20-kairos-swcursor.conf").read_text()).group(1)
+    assert 'install -D -m 644 "$INC/etc/X11/xorg.conf.d/22-kairos-tearfree-amdgpu.conf"' in (REPO / "iso" / "build-img.sh").read_text()
+    assert 'tar -C "$REPO/iso/config/includes.chroot" -czf - etc usr home' in (REPO / "dev" / "rig" / "testrig" / "sync-guest.sh").read_text()
+    assert (REPO / "docs" / "FIXES-2026-10-24.md").exists()
+    # the boot log's record (the real script on a fake ESP, reason shutdown = no wait for a kiosk)
+    bootlog = INC / "usr" / "local" / "sbin" / "kairos-bootlog"
+    subprocess.run(["sh", "-n", str(bootlog)], check=True)
+    body = bootlog.read_text()
+    assert "XORGLOG=${KAIROS_BOOTLOG_XORGLOG:-}" in body and "TFCONF=${KAIROS_BOOTLOG_TFCONF:-/etc/X11/xorg.conf.d/22-kairos-tearfree-amdgpu.conf}" in body
+    assert body.count("check pageflip PASS") == 2 and "check pageflip WARN" not in body and "check pageflip FAIL" not in body, "a record, never a verdict change"
+    card = ("[    41.122] (==) AMDGPU(0): TearFree property default: auto\n[    41.122] (II) AMDGPU(0): KMS Pageflipping: enabled\n"
+            + "".join(f"[   {66 + i}.301] (WW) AMDGPU(0): flip queue failed: Invalid argument\n[   {66 + i}.301] (WW) AMDGPU(0): Page flip failed: Invalid argument\n"
+                      f"[   {66 + i}.301] (EE) AMDGPU(0): present flip failed\n" for i in range(77))
+            + "[ 1680.100] (II) AMDGPU(0): EDID vendor \"CMN\", prod id 5678\n")
+    on = ('[    28.962] (II) Applying OutputClass "kAIrOS TearFree (amdgpu)" options to /dev/dri/card0\n'
+          '[    28.962] (**) AMDGPU(0): Option "TearFree" "on"\n[    41.122] (**) AMDGPU(0): TearFree property default: on\n'
+          "[    41.122] (II) AMDGPU(0): KMS Pageflipping: enabled\n[  900.000] (II) AMDGPU(0): EDID vendor \"CMN\", prod id 5678\n")
+    vm = "[     7.100] (II) modeset(0): glamor X acceleration enabled on llvmpipe\n[     7.200] (II) modeset(0): Output Virtual-1 connected\n"
+    got = {}
+    for tag, xorg, conf in (("card", card, tf), ("on", on, tf), ("vm", vm, Path("/nonexistent/22.conf"))):
+        with tempfile.TemporaryDirectory() as td:
+            t = Path(td); esp = t / "esp"; (t / "x.log").write_text("===== X attempt 1  now  uptime 7s =====\nxinitrc: started (pid 9, uptime 7s)\n"
+                                                                    "xinitrc: displays: eDP connected primary 1920x1080+0+0;\n")
+            (t / "x-attempts").write_text("1\n"); (t / "Xorg.0.log").write_text(xorg)
+            env = dict(os.environ, KAIROS_BOOTLOG_ESP=str(esp), KAIROS_BOOTLOG_RUN=str(t / "run-attempt"), KAIROS_BOOTLOG_XLOG=str(t / "x.log"),
+                       KAIROS_BOOTLOG_XCNT=str(t / "x-attempts"), KAIROS_BOOTLOG_PLANNED=str(t / "planned"), KAIROS_BOOTLOG_HDMI=str(t / "none.json"),
+                       KAIROS_BOOTLOG_XORGLOG=str(t / "Xorg.0.log"), KAIROS_BOOTLOG_TFCONF=str(conf))
+            subprocess.run([str(bootlog), "shutdown"], env=env, check=True, timeout=170, capture_output=True)
+            j = json.loads((esp / "KAIROS-LOGS" / "latest.json").read_text())
+            txt = (esp / "KAIROS-LOGS" / "latest.txt").read_text(errors="replace")
+            got[tag] = (j["checks"]["pageflip"], txt)
+    c, txt = got["card"]
+    assert c["status"] == "PASS" and c["detail"].startswith("amdgpu TearFree auto (config present); refused page flips (flip queue failed) in this X session's log: 77, log up to uptime 1680s"), c
+    assert "refused page flips in" in txt and "77 (flip queue failed), 77 (Page flip failed), 77 (present flip failed)" in txt, txt[-3000:]
+    assert "66.301] (WW) AMDGPU(0): flip queue failed" in txt and "142.301] (WW) AMDGPU(0): flip queue failed" in txt, "first + last refused flip in the evidence"
+    c, txt = got["on"]
+    assert c["status"] == "PASS" and c["detail"].startswith("amdgpu TearFree on (config present); refused page flips (flip queue failed) in this X session's log: 0, log up to uptime 900s"), c
+    assert 'OutputClass "kAIrOS TearFree (amdgpu)" options' in txt and 'Option "TearFree" "on"' in txt
+    c, txt = got["vm"]
+    assert c["status"] == "PASS" and c["detail"].startswith("n/a: no amdgpu X screen in ") and "config absent" in c["detail"], c
+    return "22-kairos-tearfree-amdgpu.conf: one OutputClass, amdgpu only, TearFree on; build + sync lists; bootlog pageflip: card log auto/77 (+ first/last line), on/0, VM n/a — always PASS"
+
+
 @test("od_wm_monitor_list", ["R90", "R68", "R70"])
 def t_wm(ctx):
     """kernel/wm.py: the window layer's monitor list (the shell's live feed) — RandR monitors with their output names,

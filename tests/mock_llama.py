@@ -263,6 +263,46 @@ def evolve_page_reply(user):
         "<h1>Mock Imaginary Site</h1>", f"<h1>Mock Imaginary Site</h1><h2 class='improved'>improved {tag}: {what}</h2>", 1)
 
 
+SONG_SEEN = set()      # [R93] briefs that already got their one garbage answer ("[lyrics-garbage]" = the retry path)
+
+
+def song_reply(system, user, payload):
+    """[R93] the songwriter (prompts.LYRICS_SYSTEM, a json_schema request): a valid song JSON that echoes the brief —
+    the title names it, a LENGTH / LANGUAGE line in the user text is honoured. Markers in the brief: "[lyrics-badtags]"
+    writes a prose bracket line, a "[Hook]" alias, "[Chorus x2]" and a long descriptor (lyrics_check repairs them);
+    "[lyrics-garbage]" answers no JSON the FIRST time per brief (the kernel's retry), "[lyrics-garbage-always]" every
+    time (the kernel gives up); "[lyrics-long]" plans 900 s (the cap); "[lyrics-bpm-in-caption]" puts 128 BPM and
+    D minor into the caption (lifted out); "[lyrics-minors]" writes lyrics the minors block must stop."""
+    u = user if isinstance(user, str) else json.dumps(user, ensure_ascii=False)
+    brief = re.search(r"SONG: ([^\n]*)", u)
+    brief = (brief.group(1) if brief else u).strip()
+    if "[lyrics-garbage-always]" in u or ("[lyrics-garbage]" in u and brief not in SONG_SEEN):
+        SONG_SEEN.add(brief)
+        return "Sure! Here is a song about it: la la la (no JSON today)"
+    m = re.search(r"LENGTH: (\d+) seconds", u)
+    duration = int(m.group(1)) if m else (900 if "[lyrics-long]" in u else 180)
+    m = re.search(r"LANGUAGE: .*\(code ([a-z]{2})\)", u)
+    language = m.group(1) if m else "en"
+    title = re.sub(r"\[[^\]]*\]", "", brief).strip()[:40] or "Mock Song"
+    tags = ("[Intro - spoken word]", "[Verse 1]", "[Hook]", "[Chorus x2]", "[the band gets louder and the lights go down]",
+            "[Bridge - soft, with piano and rain sounds]", "[Outro]") if "[lyrics-badtags]" in u else \
+           ("[Intro]", "[Verse 1]", "[Pre-Chorus]", "[Chorus]", "[Verse 2]", "[Bridge]", "[Outro]")
+    body = ["the mock machine is singing tonight", "neon rain on a silent street", "(ooh) the kernel hums along",
+            "WE ARE THE SONG THAT WROTE ITSELF", "a seed of forty-two, no more", "the wallpaper remembers all"]
+    if "[lyrics-minors]" in u:
+        body[1] = "a 12 year old girl, nude, in the rain"
+    lines = []
+    for i, tag in enumerate(tags):
+        lines.append(tag)
+        lines.extend(body[(i + j) % len(body)] for j in range(3))
+    caption = "mock synthwave, warm bassline, female vocal, dreamy" + (", 128 BPM, in D minor" if "[lyrics-bpm-in-caption]" in u else "")
+    sampling = {k: payload.get(k) for k in ("temperature", "top_k", "top_p")}
+    song = {"title": f"{title} (t={sampling['temperature']} k={sampling['top_k']})", "caption": caption,
+            "lyrics": "\n".join(lines), "language": language, "duration": duration, "bpm": 118,
+            "keyscale": "A minor", "timesignature": "4"}
+    return json.dumps(song, ensure_ascii=False)
+
+
 def pick_reply(payload):
     first = payload["messages"][0]
     if first.get("role") != "system":               # [R71] the MT prompt carries no system message
@@ -282,6 +322,8 @@ def pick_reply(payload):
         return vision_reply(last)
     if system.startswith("You are an expert prompt engineer for text-to-image models"):
         return expand_reply(system, last, payload)
+    if system.startswith("You are the songwriter of kAIrOS"):            # [R93] prompts.LYRICS_SYSTEM
+        return song_reply(system, last, payload)
     # order matters: APP_SYSTEM *mentions* the imaginary web in its API notes,
     # so match the browser persona by its opening phrase, not the bare words
     if system.startswith("You are the imaginary web") and "WEBSITE EVOLUTION" in system:
@@ -340,6 +382,9 @@ async def chat(request):
                                 "chat_template_kwargs": payload.get("chat_template_kwargs"),
                                 # [R89] the whole request shape: the quality-via-LLM body must equal the benchmark's
                                 "max_tokens": payload.get("max_tokens"), "keys": sorted(payload),
+                                # [R93] the songwriter's sampler fields + the grammar request
+                                "top_k": payload.get("top_k"),
+                                "response_format": (payload.get("response_format") or {}).get("type"),
                                 "messages": len(msgs)}, ensure_ascii=False) + "\n")
     text = pick_reply(payload)
     finish, tokens = "stop", None

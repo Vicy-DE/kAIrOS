@@ -125,6 +125,21 @@ The shell debounces 140 ms per letter, Enter runs the top hit.
 deliberately carry **no** style mandate — what the user asks the image model to paint is
 not style-hijacked (`unit_prompts_style_mandate` asserts both halves).
 
+### The prompts (R92, docs/PROMPTS-2026-10-24.md)
+
+Every text a model is told has one name in the registry at the end of `kernel/prompts.py`: its shipped
+default, its line, a note on who sends it, its kind (system / instruction / template / hint / dock / part /
+legacy). The kernel reads overrides — `<NAME>.txt` in `KAIROS_PROMPTS_DIR` (default `$VIBEOS_DIR/prompts`) —
+before anything copies a prompt value, serves the registry at `/api/prompts` (set / reset / reload, guarded),
+refreshes the few copies it keeps (`EXPANDERS`, `LANGUAGE_PROMPTS`, `TRANSLATE_PROMPT`, `/system/prompts/*.txt`)
+on every change, and rebuilds the compositions (`APP_REGEN_SYSTEM` = `APP_SYSTEM` + a tail) when their base
+changes. The desktop's ✎ Prompts panel (`shell/prompts.js`) and `scripts/prompt-sync.py` (export / diff / push /
+pull / bake / html) edit the same thing; the dock apps' forge requests are registered as `DOCK_<APP>`. Parts
+(`STYLE`, the `ADULT_*` rules, the `_KREA_*` rules) are baked into the prompts built from them and stay
+read-only. The songwriter (R93, `LYRICS_SYSTEM`, `POST /api/lyrics`) is the one prompt with its own sampler
+fields: temperature 1.2 / top_k 80, passed as the per-call override that wins over the manifest's vendor
+sampling.
+
 ### VRAM management ("swap" strategy)
 
 One `asyncio.Lock` owns the GPU. The LLM (llama-server child process) is the default

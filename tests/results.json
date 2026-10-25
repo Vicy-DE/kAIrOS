@@ -1,5 +1,5 @@
 {
- "at": "2026-10-23 13:51:52",
+ "at": "2026-10-25 17:55:46",
  "base": "http://127.0.0.1:1338",
  "tests": {
   "unit_prompts_style_mandate": {
@@ -124,7 +124,7 @@
     "R5"
    ],
    "status": "pass",
-   "detail": "host page 38546 bytes, sandbox intact, bridge identical (99 call sites), 404 for unknown"
+   "detail": "host page 39117 bytes, sandbox intact, bridge identical (100 call sites), 404 for unknown"
   },
   "http_app_evolves_on_improve_only": {
    "reqs": [
@@ -163,14 +163,14 @@
     "R22"
    ],
    "status": "pass",
-   "detail": "2 Krea-2 images generated, seeds differ (1071468244 vs 1372070327); engine crash -> error + idle"
+   "detail": "2 Krea-2 images generated, seeds differ (1848967174 vs 706232317); engine crash -> error + idle"
   },
   "http_video": {
    "reqs": [
     "R6"
    ],
    "status": "pass",
-   "detail": "mp4 produced and served: /files/videos/5f333552820e.mp4"
+   "detail": "mp4 produced and served: /files/videos/711f612d496f.mp4"
   },
   "unit_finish_video_drops_intermediate": {
    "reqs": [
@@ -214,7 +214,7 @@
     "R14"
    ],
    "status": "pass",
-   "detail": "22452 bytes of self-documentation served"
+   "detail": "23961 bytes of self-documentation served"
   },
   "http_search_offline_mode": {
    "reqs": [
@@ -222,8 +222,8 @@
     "R10",
     "R20"
    ],
-   "status": "skip",
-   "detail": "offline shape OK but no ZIM linked in test env \u2014 no kb results"
+   "status": "pass",
+   "detail": "offline search returned 4 encyclopedia results"
   },
   "http_browser_imaginary_web": {
    "reqs": [
@@ -262,7 +262,7 @@
     "R23"
    ],
    "status": "pass",
-   "detail": "never empty; create-actions present; 4 distinct sparks in 6 calls"
+   "detail": "never empty; create-actions present; 5 distinct sparks in 6 calls"
   },
   "http_desktop_search_web_address": {
    "reqs": [
@@ -294,7 +294,7 @@
     "R31"
    ],
    "status": "pass",
-   "detail": "ace-lm -> request0.json -> ace-synth (turbo DiT, wav) served: /files/music/81004bc498b0.wav"
+   "detail": "ace-lm -> request0.json -> ace-synth (turbo DiT, wav) served: /files/music/d8a072c20946.wav"
   },
   "unit_music_language_default_en": {
    "reqs": [
@@ -311,6 +311,43 @@
    ],
    "status": "pass",
    "detail": "en by default, de kept, auto -> engine guess, instrumental unknown, garbage 400 + no job"
+  },
+  "unit_music_manifest_vae_tiles": {
+   "reqs": [
+    "R31"
+   ],
+   "status": "pass",
+   "detail": "7 manifests: ace-synth \u2026 --request {request_lm} --vae-chunk 512 --vae-overlap 64; ace-lm bare; test variants = tier-8gb"
+  },
+  "unit_music_caption_lyrics_check": {
+   "reqs": [
+    "R31",
+    "R36"
+   ],
+   "status": "pass",
+   "detail": "caption: BPM/key/time signature lifted, 512 trim keeps the hint, article-A safe; lyrics: x2/repeat gone, tags kept, 4096 at a line; seed/meta validators; the rules in APP_ASSETS_INSTRUCTION"
+  },
+  "http_music_request_matches_proven_render": {
+   "reqs": [
+    "R31",
+    "R69"
+   ],
+   "status": "pass",
+   "detail": "v3: 17 keys, every value equal but caption/lyrics; tr-ab-A: + lm_seed (= seed) and use_cot_caption only; synth argv \u2026 --request request0.json --vae-chunk 512 --vae-overlap 64"
+  },
+  "http_music_seed_reproducible": {
+   "reqs": [
+    "R31"
+   ],
+   "status": "pass",
+   "detail": "same seed -> identical request; drawn seeds answered + in the job, differ; lm_seed == seed; caption fields lifted, explicit bpm wins; 600 -> 512; 6 x 400 without a job"
+  },
+  "http_music_lengths_vae_argv": {
+   "reqs": [
+    "R31"
+   ],
+   "status": "pass",
+   "detail": "ace-synth \u2026 --vae-chunk 512 --vae-overlap 64 for 40->40, 120->120, 512->512, 600->512 s (ace-lm bare; instrumental; seed = lm_seed)"
   },
   "http_music_engine_missing": {
    "reqs": [
@@ -385,7 +422,7 @@
     "R63"
    ],
    "status": "pass",
-   "detail": "14 unit exec paths present+executable; capture units boot-safe; build quotes the chroot heredoc + enables/asserts bootlog; scripts run: verdict=FAIL 16 checks, json+breadcrumb ok"
+   "detail": "14 unit exec paths present+executable; capture units boot-safe; build quotes the chroot heredoc + enables/asserts bootlog; scripts run: verdict=FAIL 17 checks, json+breadcrumb ok"
   },
   "unit_appliance_boot_hardening": {
    "reqs": [
@@ -737,7 +774,7 @@
     "R62"
    ],
    "status": "pass",
-   "detail": "SIGTERM with 2 open SSE streams -> exit 0 in 1.37 s, no traceback, app told, engine gone"
+   "detail": "SIGTERM with 2 open SSE streams -> exit 0 in 1.27 s, no traceback, app told, engine gone"
   },
   "unit_r68_fixes_static": {
    "reqs": [
@@ -761,7 +798,7 @@
     "R26"
    ],
    "status": "pass",
-   "detail": "91 requirements, no holes, all cited ids documented, 20 without a test so far this run"
+   "detail": "93 requirements, no holes, all cited ids documented, 22 without a test so far this run"
   },
   "unit_game_launch_gate_mapped_window": {
    "reqs": [
@@ -1103,7 +1140,7 @@
     "R72"
    ],
    "status": "pass",
-   "detail": "with GPU: quality on the LLM (:8081); device off the bus: fast in 0.52 s; no driver: fast in 0.00 s (:8085, reason 'no GPU', logged); GPU back: the LLM again"
+   "detail": "with GPU: quality on the LLM (:8081); device off the bus: fast in 0.51 s; no driver: fast in 0.00 s (:8085, reason 'no GPU', logged); GPU back: the LLM again"
   },
   "unit_translation_quality_gpu_rules": {
    "reqs": [

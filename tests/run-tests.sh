@@ -220,6 +220,13 @@ python3 "$REPO/tests/test_one_desktop.py" || RC=1
 echo "== running tests/test_hdmi_prime.py =="
 python3 "$REPO/tests/test_hdmi_prime.py" || RC=1
 
+# the prompt registry + the songwriter [R92/R93] (docs/PROMPTS-2026-10-24.md): every prompt registered with its line and note,
+# overrides live through /api/prompts (files, rebuilt compositions, the refreshed copies, the next request's system message),
+# the dock prompts, /api/lyrics (temperature 1.2 / top_k 80 / json_schema on the wire, the tag repairs, the retry, the pins,
+# the minors block, then /api/music with the plan), the shell wiring, scripts/prompt-sync.py (own kernel, mock llama :8171)
+echo "== running tests/test_prompts.py =="
+python3 "$REPO/tests/test_prompts.py" || RC=1
+
 if [ -z "${KAIROS_TEST_ONLY:-}" ]; then          # a subset run (iterating on a fix) never rewrites the progress page
     echo "== regenerating docs/PROGRESS.md =="
     python3 "$REPO/scripts/update-progress.py"

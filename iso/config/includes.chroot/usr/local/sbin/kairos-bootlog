@@ -125,6 +125,13 @@ XATT=$(cat "$XCNT" 2>/dev/null); case "$XATT" in ''|*[!0-9]*) XATT=0 ;; esac
 # the HDMI port, and the revert of a failed attach) are no failures: counted in /run, taken off the X checks
 PLANNED=$(cat "${KAIROS_BOOTLOG_PLANNED:-/run/kairos/x-planned-restarts}" 2>/dev/null); case "$PLANNED" in ''|*[!0-9]*) PLANNED=0 ;; esac
 HDMIST=${KAIROS_BOOTLOG_HDMI:-/run/kairos/hdmi-prime.json}
+# [R90, fix 2026-10-24] THIS X session's own log (rootless X: the kiosk user's home) and the TearFree config for the
+# page-flip record below
+XORGLOG=${KAIROS_BOOTLOG_XORGLOG:-}
+if [ -z "$XORGLOG" ]; then
+  for x in /home/kairos/.local/share/xorg/Xorg.0.log /var/log/Xorg.0.log; do [ -r "$x" ] && { XORGLOG=$x; break; }; done
+fi
+TFCONF=${KAIROS_BOOTLOG_TFCONF:-/etc/X11/xorg.conf.d/22-kairos-tearfree-amdgpu.conf}
 
 # kernel crash records of an earlier boot (EFI pstore -> systemd-pstore): normally
 # kairos-bootlog-early copied them already; this is the fallback when it did not run
@@ -332,6 +339,21 @@ else
   check xorg $st "X never attempted (tty1 autologin -> startx did not run) — check getty@tty1 in the journal"
 fi
 
+# [R90, fix 2026-10-24] page flips of the ONE desktop window on amdgpu: the card run 2026-10-24 logged 77x "flip queue
+# failed: Invalid argument" in 28 min (a Present flip of the 4480-px window onto two CRTCs refused by the kernel -> that
+# frame is a torn copy; the per-screen kiosks of v7.5-2 had 0 in 13 h). 22-kairos-tearfree-amdgpu.conf turns the DDX's
+# TearFree on (a copy + a flip per CRTC). This line is the before -> after RECORD for the owner's card runs, never a
+# verdict change: the TearFree state X applied, the refused flips in THIS session's Xorg log, whether the config is there
+TFSTATE=$(grep -a -o 'TearFree property default: [a-z]*' "$XORGLOG" 2>/dev/null | tail -n 1 | sed 's/.*: //')
+NFLIP=$(grep -a -c 'flip queue failed' "$XORGLOG" 2>/dev/null); case "$NFLIP" in ''|*[!0-9]*) NFLIP=0 ;; esac
+XSPAN=$(tail -n 1 "$XORGLOG" 2>/dev/null | sed -n 's/^\[ *\([0-9]*\)\.[0-9]*\].*/\1/p'); case "$XSPAN" in ''|*[!0-9]*) XSPAN="?" ;; esac
+TFCF=absent; [ -r "$TFCONF" ] && TFCF=present
+if grep -a -q 'AMDGPU(0)' "$XORGLOG" 2>/dev/null; then
+  check pageflip PASS "amdgpu TearFree ${TFSTATE:-?} (config $TFCF); refused page flips (flip queue failed) in this X session's log: $NFLIP, log up to uptime ${XSPAN}s"
+else
+  check pageflip PASS "n/a: no amdgpu X screen in ${XORGLOG:-the Xorg log} (TearFree is an amdgpu option; config $TFCF)"
+fi
+
 KST=$(curl -fsS -m 3 http://127.0.0.1:1337/api/status 2>/dev/null | head -c 200)
 KACT=$(systemctl is-active kairos 2>/dev/null); KACT=${KACT:-unknown}
 KRST=$(systemctl show -p NRestarts --value kairos 2>/dev/null); case "$KRST" in ''|*[!0-9]*) KRST=0 ;; esac
@@ -451,6 +473,15 @@ else VERDICT=PASS; WHY="all checks passed"; fi
   echo "---------- X / kiosk ----------"
   printf 'X attempts this boot: %s   X socket: %s   kiosks: %s\n' "$XATT" "$([ -S /tmp/.X11-unix/X0 ] && echo yes || echo no)" "$NK"
   pgrep -a Xorg 2>/dev/null; pgrep -af "chromium.*--user-data-dir=/tmp/kiosk-" 2>/dev/null | cut -c1-200 | head -n 4
+  # [R90, fix 2026-10-24] the page-flip record behind the pageflip check: the TearFree config, what X applied, the
+  # refused flips of this session (count + first and last line) and the kernel's amdgpu viewport warnings
+  echo "-- page flips / TearFree on amdgpu [R90, fix 2026-10-24] --"
+  printf 'TearFree config %s: %s\n' "$TFCONF" "$TFCF"
+  grep -a -E 'TearFree|OutputClass "kAIrOS|KMS Pageflipping|AsyncFlipSecondaries' "$XORGLOG" 2>/dev/null | sed 's/^\[ *[0-9.]*\] //' | head -n 6
+  printf 'refused page flips in %s: %s (flip queue failed), %s (Page flip failed), %s (present flip failed)\n' "${XORGLOG:-no Xorg log}" \
+    "$NFLIP" "$(grep -a -c 'Page flip failed' "$XORGLOG" 2>/dev/null)" "$(grep -a -c 'present flip failed' "$XORGLOG" 2>/dev/null)"
+  grep -a 'flip queue failed' "$XORGLOG" 2>/dev/null | sed -n '1p;$p'
+  printf 'amdgpu "Viewport size failed validation" in the kernel log this boot: %s\n' "$(journalctl -b 0 -k -q -o cat --no-pager 2>/dev/null | grep -c 'Viewport size failed validation')"
   echo
   echo "---------- network / WiFi ----------"
   ip -brief addr 2>/dev/null
@@ -602,7 +633,7 @@ cat > "$LOGDIR/README.txt" <<'R'
 kAIrOS boot logs — open latest.txt first (newest capture; boot/shutdown/failure/
 emergency/stalled). Its SUMMARY / VERDICT block on top says which check failed first
 (trigger, boot target, failed units, systemd job failures, kernel crash, root grow, GPU
-driver, firmware, modules, X, kernel :1337, kiosk, HDMI/PRIME, network, EFI mount); the evidence
+driver, firmware, modules, X, page flips/TearFree, kernel :1337, kiosk, HDMI/PRIME, network, EFI mount); the evidence
 follows (timing, pending jobs, lspci -nnk drivers, X log, kernel log, LLM engine log,
 dmesg, this + previous boot journal). latest.json = same verdict as JSON.
 boot-*.txt: the last 16 captures (each boot + shutdown + every failure/emergency).

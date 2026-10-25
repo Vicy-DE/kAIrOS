@@ -15,6 +15,7 @@ This document is itself stored on the OS at `/system/docs/API.md` and served at 
 | `vibe.image.improve(picture, instruction)` | the new version: `{url, version, root, from, versions, model, ms}` — reads as its URL (`img.src = v`) | **✨ edit a picture the OS painted** [R88] with the OS picture editor (R85, the `image_edit` add-on): `picture` = a `vibe.image()` / `vibe.images()` URL, a `/genimg/…` URL, an earlier version, or the `<img>` showing one — never a canvas, a `data:` URL or an upload; `instruction` = what to change (`""` = improve the quality, keep the content). ~1 min per edit (the first one loads the editor); a `/genimg/` picture still being painted is waited for. Every version is kept: `vibe.image.versions(picture)` → `{root, current, url, versions: [{v, url, instruction, …}]}` (the chain the desktop viewer shows). `vibe.image.edit` = the same. Rejects with the kernel's sentence: the add-on missing (`vibe.models.download("image_edit")`), the minors block |
 | `vibe.images(prompts)` / `vibe.images(prompt, count)` | array of PNG URLs (in prompt order; `null` = that picture failed) | **several pictures in one run**: the model is loaded once for the whole list (a gallery of 4 ≈ 1 load + 4 renders instead of 4 loads). Options object instead of `count`: `{count, width, height, model, adult, expand}`. ≤ 12 per call; minutes for a long list — show progress |
 | `vibe.video(prompt)` | URL of generated MP4 | minutes — explicit user action only |
+| `vibe.lyrics(brief, opts)` | `{title, caption, lyrics, language, duration, bpm, keyscale, timesignature, fixes}` | **the songwriter** [R93]: the OS language model writes a complete song from a few words — the lyrics in ACE-Step's form (section tags, 6–10 syllables per line) AND the render plan: `duration` in seconds, `bpm`, `keyscale`, `timesignature`, an English style `caption`, the lyrics' `language`. `opts` `{style, language, duration, bpm, keyscale, timesignature}` pin what it would otherwise choose (`style` = the music description). Seconds, one answer, no job. Then compose: `vibe.music(song.caption, song.lyrics, song.duration, song.language, {bpm: song.bpm, keyscale: song.keyscale, timesignature: song.timesignature})`. Music is an add-on — try/catch both |
 | `vibe.vision(image, prompt)` | string | the OS **looks at a picture** [R70]: `image` = a `data:image/…;base64` URL (e.g. `canvas.toDataURL()`), a `/files/…` or `/genimg/…` URL, or `"screen"` / `"screen:N"` (the kiosk display / monitor N); seconds (model swap + one look); an add-on — try/catch |
 | `vibe.game(prompt)` | `{slug, running, attempt, version, gate, window, pid}` | play a pygame game in its own desktop window: an existing game runs its current version at once, a new one is forged first (minutes) — `running:true` = its window opened on the desktop (`gate:"mapped"`); ✨ improve in that window evolves it |
 | `vibe.forge(prompt)` | `true` | start a full **development cycle** in a new window: the OS writes the app AND generates the resources it needs (images, a music track, a video clip) — what the App Launcher uses |
@@ -469,15 +470,57 @@ Image/video generations always use a fresh random seed — results are never rep
 ## Music generation
 
 `POST /api/music` — body `{"prompt": "dreamy synthwave", "lyrics": "optional", "duration": 60,
-"language": "en"}` → `{"job": id}`; poll `/api/job/{id}` → `result` is the audio URL under
-`/files/music/`. `language` = ISO 639-1 code of the sung lyrics; **default `"en"`**, `"auto"`
-lets the model guess, an unknown code is `400 {"error", "accepted": [...]}` with no job.
+"language": "en", "seed": 20261022, "bpm": 120, "keyscale": "D minor", "timesignature": "4"}` →
+`{"job": id, "seed": n}`; poll `/api/job/{id}` → `result` is the audio URL under `/files/music/`,
+`seed` the one used, `request` the plan fields sent. `language` = ISO 639-1 code of the sung
+lyrics; **default `"en"`**, `"auto"` lets the model guess, an unknown code is `400 {"error",
+"accepted": [...]}` with no job. `duration` is capped at **512 s** (the longest song rendered on
+the 8 GB card; `docs/MUSIC-FIXES-2026-10-23.md`). `seed` (0..2³¹−1) reproduces a song: it drives
+the audio noise AND the planner (`lm_seed`), so the same body + seed gives the same plan and the
+same audio; absent, the OS draws one and reports it. `bpm` / `keyscale` / `timesignature` pin the
+plan; absent, the model plans them (a bad value is a 400, no job). The caption is taken as written
+(no model rewrite): tags for genre, mood, instruments, vocal character — **no BPM, key or time
+signature in it** (the OS lifts them into the fields and trims the caption to 512 chars). Lyrics:
+standard section tags (`[Verse 1]` `[Chorus]` `[Bridge]` `[Outro]`; prose inside brackets gets
+sung), 6–10 syllables per line, `(parentheses)` = backing vocals, UPPERCASE = shouting, no
+"x2"/repeat markers (the OS drops them), ≤ 4096 chars.
 Returns `400 {"error"}` (no job) when the acestep.cpp engine is not installed or the
 music add-on is not downloaded (`/api/models` → `extras[music].engine/available`).
-Bridge: `await vibe.music(prompt, lyrics, duration, language)` → audio URL, e.g.
+Bridge: `await vibe.music(prompt, lyrics, duration, language, opts)` → audio URL, `opts` =
+`{seed, bpm, keyscale, timesignature}` (all optional), e.g.
 `vibe.music("Schlager, Akkordeon", "[Verse]\nIch tanze durch die Nacht", 30, "de")`. Local
-ACE-Step model; lyrics empty = instrumental (language ignored). Duration capped at 240 s.
+ACE-Step model; lyrics empty = instrumental (language ignored).
 The music model is a downloadable add-on: `try/catch` it and keep the app usable without it.
+
+## The songwriter [R93]
+
+`POST /api/lyrics` — body `{"prompt": "a 3-minute ballad about the rain", "style": "piano ballad, female vocal",
+"language": "de", "duration": 180, "bpm": 72, "keyscale": "D minor", "timesignature": "4"}` (only `prompt` or
+`style` is required) → `{"title", "caption", "lyrics", "language", "duration", "bpm", "keyscale", "timesignature",
+"fixes", "attempts", "sampling"}` directly (like `/api/ask`: no job). The loaded LLM writes the song with
+`prompts.LYRICS_SYSTEM` at temperature 1.2 / top_k 80 (`LYRICS_SAMPLING`) through a JSON-schema grammar; the fields
+you send win over its plan. `lyrics_check` lifts BPM / key / time signature out of the caption, repairs section tags
+(`[Hook]` → `[Chorus]`, one short descriptor kept, a prose bracket line dropped — the singer would sing it; `fixes`
+lists what changed), drops repeat markers and clamps `duration` to 20..512 s; a broken answer is asked again (3
+attempts, then `502`). The brief and the written lyrics pass the minors block (`400`); a refusal is `422`. Bridge:
+`await vibe.lyrics(brief, opts)`. The Melody studio's lyrics box is this: describe the song, ✍ Write lyrics fills the
+text and the plan (editable), Compose renders it with `vibe.music`; a pasted text with `[Verse]` / `[Chorus]` tags is
+sung as written, an empty box is an instrumental.
+
+## The system prompts [R92] (the shell's panel and operators; apps read `/system/prompts/`)
+
+`GET /api/prompts` → `{"dir", "count", "overridden": [names], "sampling": {lyrics, expander, llm}, "prompts": [{name,
+kind, where, note, editable, overridden, chars, derived_from, rebuilt}]}` (`?full=1` adds each prompt's live `text` and
+shipped `default`); `GET /api/prompts/{name}` → one prompt with `text` and `default`. `POST /api/prompts/{name}`
+(guarded: loopback or the token) with `{"text": "…"}` makes it the live prompt — the next generation uses it — and
+writes `<dir>/<name>.txt` (`KAIROS_PROMPTS_DIR`, default `$VIBEOS_DIR/prompts`); a text equal to the default, or
+`{"reset": true}`, removes the override. Parts (the building blocks: `STYLE`, the `ADULT_*` rules, the `_KREA_*` rules,
+the `_*_TAIL` texts) are read-only (`400`): edit the prompt built from them. `POST /api/prompts` `{"reload": true}`
+re-reads the directory (files synced in by `scripts/prompt-sync.py`). Compositions (`APP_REGEN_SYSTEM` = `APP_SYSTEM` +
+a tail) follow their base unless overridden themselves. The dock apps' forge requests are registered as `DOCK_<APP>`
+(from `shell/index.html`): an override is used when that app is generated anew. Apps read the live texts at
+`/system/prompts/<NAME>.txt` (`vibe.fs.read`). Desktop: ⊞ Apps → Prompts, About kAIrOS → Prompts. Terminal:
+`scripts/prompt-sync.py list | export | diff | push | pull | reset | bake | html` (`docs/PROMPTS-2026-10-24.md`).
 
 ## Vision — the OS looks at pictures [R70]
 

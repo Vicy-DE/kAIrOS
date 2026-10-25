@@ -978,7 +978,9 @@ async def t_music(s):
     sy = next(l for l in reversed(lines) if l.startswith("ace-synth\t"))
     rq = next(l for l in reversed(lines) if l.startswith("ace-lm-request\t"))
     assert "\t--models\t" in lm and lm.endswith("/request.json") and "--prompt" not in lm, lm
-    assert "\t--models\t" in sy and sy.endswith("/request0.json") and "-o" not in sy.split("\t"), sy
+    # [2026-10-23] the synth line no longer ENDS with the request: --vae-chunk 512 --vae-overlap 64 follow it
+    assert "\t--models\t" in sy and sy.split("\t")[sy.split("\t").index("--request") + 1].endswith("/request0.json") \
+        and "-o" not in sy.split("\t"), sy
     assert lm.split("\t")[lm.split("\t").index("--models") + 1].endswith("/music")
     req = json.loads(rq.split("\t", 1)[1])
     assert req["synth_model"] == "acestep-v15-turbo-Q8_0.gguf", req
@@ -1099,6 +1101,208 @@ async def t_music_language_http(s):
         assert len((await r.json())["jobs"]) == jobs_before, "a 400 must not create a job"
     assert arglog.read_text().count("ace-lm\t") == lm_before, "a 400 must not run the engine"
     return "en by default, de kept, auto -> engine guess, instrumental unknown, garbage 400 + no job"
+
+
+# ---- the music fixes of 2026-10-23 (docs/MUSIC-FIXES-2026-10-23.md) --------------------------------------------
+# The request JSONs the music session rendered on the 4070 (2026-10-22, the shipped engines daf7644, ace-synth with
+# --vae-chunk 512 --vae-overlap 64, 4296 MiB peak), caption and lyrics left out: vibeos-cuda-next/results/<folder>/request.json
+PROVEN_MUSIC_REQUESTS = {
+    # take v3, 312 s: the caption locked, the plan pinned (bpm + keyscale + timesignature + duration = no CoT), seed = lm_seed
+    "temperature-rising-anime-v3-2026-10-22": {
+        "lm_model": "acestep-5Hz-lm-1.7B-Q8_0.gguf", "synth_model": "acestep-v15-turbo-Q8_0.gguf", "vae": "vae-BF16.gguf",
+        "output_format": "wav16", "inference_steps": 8, "guidance_scale": 1.0, "shift": 3.0,
+        "duration": 312, "bpm": 165, "seed": 20261022, "vocal_language": "en", "lm_seed": 20261022,
+        "use_cot_caption": False, "keyscale": "A major", "timesignature": "4"},
+    # tr-ab-A ("Temperature Rising", 312 s): the pre-fix shape — bpm only, the LM planned key / time, lm_seed drawn at random
+    "tr-ab-A": {
+        "lm_model": "acestep-5Hz-lm-1.7B-Q8_0.gguf", "synth_model": "acestep-v15-turbo-Q8_0.gguf", "vae": "vae-BF16.gguf",
+        "output_format": "wav16", "inference_steps": 8, "guidance_scale": 1.0, "shift": 3.0,
+        "duration": 312, "bpm": 120, "seed": 908371912, "vocal_language": "en"},
+}
+
+
+async def _music_request(s, body):
+    """POST /api/music, wait for the job; -> (answer, job, the request ace-lm read, ace-lm argv, ace-synth argv)."""
+    arglog = Path(os.environ.get("MOCK_ACE_ARGLOG", VDIR / "ace-args.log"))
+    async with s.post(f"{BASE}/api/music", json=body) as r:
+        assert r.status == 200, await r.text()
+        ans = await r.json()
+    job = await poll_job(s, ans["job"])
+    lines = arglog.read_text().splitlines()
+    rq = json.loads(next(l for l in reversed(lines) if l.startswith("ace-lm-request\t")).split("\t", 1)[1])
+    lm = next(l for l in reversed(lines) if l.startswith("ace-lm\t")).split("\t")[1:]
+    sy = next(l for l in reversed(lines) if l.startswith("ace-synth\t")).split("\t")[1:]
+    return ans, job, rq, lm, sy
+
+
+@run_test("unit_music_manifest_vae_tiles", ["R31"])
+async def t_music_manifest_vae_tiles(_):
+    """[§1] ace-synth's default --vae-chunk 1024 OOMs on the 8 GB card at 40 s and from 120 s up (a 960-frame tile asks
+    for 6720 MiB); 512/64 rendered 30–512 s at a flat 4.3 GB. Every manifest with a music section passes the flags on the
+    synth stage after --request (render.sh's order), none on ace-lm, and the three 8 GB test variants stay identical."""
+    base = None
+    files = sorted((REPO / "manifests").glob("tier-*.json")) + sorted((REPO / "manifests" / "test").glob("tier-8gb-*.json"))
+    for f in files:
+        mu = json.loads(f.read_text())["music"]
+        lm, synth = mu["cmd"]
+        assert lm[0] == "{bin}/ace-lm" and synth[0] == "{bin}/ace-synth", f.name
+        assert synth[synth.index("--vae-chunk") + 1] == "512" and synth[synth.index("--vae-overlap") + 1] == "64", (f.name, synth)
+        assert synth.index("--vae-chunk") > synth.index("--request"), f"{f.name}: the tile flags come after --request"
+        assert "--vae-chunk" not in lm and "--vae-overlap" not in lm, (f.name, lm)
+        assert "vae-chunk 512" in mu["comment"], f"{f.name}: the comment should say why"
+        if f.parent.name == "test":
+            assert mu["cmd"] == base["cmd"] and mu["request"] == base["request"], f"{f.name}: music section drifted from tier-8gb"
+        elif f.name == "tier-8gb.json":
+            base = mu
+    assert len(files) == 7, [f.name for f in files]
+    return "7 manifests: ace-synth … --request {request_lm} --vae-chunk 512 --vae-overlap 64; ace-lm bare; test variants = tier-8gb"
+
+
+@run_test("unit_music_caption_lyrics_check", ["R31", "R36"])
+async def t_music_caption_lyrics_check(_):
+    """[§4] ACE-Step's rules on what the kernel's LLM writes (upstream docs/en/Tutorial.md): BPM / key / time signature
+    leave the caption for the request fields, ≤ 512 chars with the hint suffix kept; lyrics lose "x2"/"(repeat)" markers
+    and keep tags, (backing vocals), UPPERCASE and [Instrumental]. Plus the validators behind /api/music's 400s."""
+    sys.path.insert(0, str(REPO / "kernel"))
+    import server, prompts
+    H = prompts.MUSIC_PROMPT_HINT
+    cc = server.music_caption_check
+    cap, found = cc("anime-style pop, bright synths, female vocals at 128 BPM in D minor, 4/4" + H)
+    assert cap == "anime-style pop, bright synths, female vocals" + H, cap
+    assert found == {"bpm": 128, "keyscale": "D minor", "timesignature": "4"}, found
+    cap, found = cc("K-pop group, trap dubstep hybrid, 125 BPM, 808s, fierce high-pitched lead" + H)   # take v8's caption shape
+    assert cap == "K-pop group, trap dubstep hybrid, 808s, fierce high-pitched lead" + H and found == {"bpm": 125}, (cap, found)
+    cap, found = cc("slow ballad, piano, key of F# major, tempo 72, 3/4 time" + H)
+    assert cap == "slow ballad, piano" + H and found == {"bpm": 72, "keyscale": "F# major", "timesignature": "3"}, (cap, found)
+    assert cc("upbeat synth pop" + H) == ("upbeat synth pop" + H, {}), "nothing to lift = untouched"
+    assert cc("A major-key anthem, big drums" + H)[1] == {} and cc("A minor masterpiece of dub" + H)[1] == {}, "the article is not a key"
+    assert cc("ballad in A minor" + H) == ("ballad" + H, {"keyscale": "A minor"})
+    assert cc("E minor shoegaze" + H) == ("shoegaze" + H, {"keyscale": "E minor"})
+    assert cc("24/7 party anthem, 90s eurodance" + H)[1] == {}, "24/7 is not a time signature"
+    assert cc("bpm 1000 drill" + H)[1] == {}, "an out-of-range BPM stays text"
+    long, _ = cc(("lush orchestral, " * 60) + H)
+    assert len(long) <= server.MUSIC_CAPTION_MAX == 512 and long.endswith("lush orchestral" + H), (len(long), long[-60:])
+    assert cc("x" * 600)[0] == "x" * 512, "no word boundary within 80 chars: a hard cut"
+    lc = server.music_lyrics_check
+    L = ("[Verse 1]\nneon rain on the glass\n[Chorus x2]\nwe rise, we rise (x2)\nhold the line 2x\n(repeat)\n[Repeat Chorus]\n"
+         "Remix 2 is the best\nI called you two times\n[Bridge - soft]\n(oh oh) HOLD ON\nx2\n[Outro]")
+    assert lc(L) == ("[Verse 1]\nneon rain on the glass\n[Chorus]\nwe rise, we rise\nhold the line\nRemix 2 is the best\n"
+                     "I called you two times\n[Bridge - soft]\n(oh oh) HOLD ON\n[Outro]"), lc(L)
+    assert lc("[Instrumental]") == "[Instrumental]" and lc("[Verse]\nneon rain") == "[Verse]\nneon rain", "the forge mock's lyrics pass"
+    assert lc("") == "" and lc(None) == ""
+    out = lc("\n".join(f"[Verse {i}]\nline {i} of the song" for i in range(400)))
+    assert len(out) <= server.MUSIC_LYRICS_MAX == 4096 and out.endswith("of the song") and out.count("\n") > 200, (len(out), out[-30:])
+    assert server.music_seed(20261022) == 20261022 and server.music_seed(0) == 0 and server.music_seed("42") == 42
+    drawn = server.music_seed(None)
+    assert 1 <= drawn <= server.MUSIC_SEED_MAX == 2**31 - 1 and server.music_seed("") != drawn or server.music_seed("") != drawn
+    for bad in (-1, -5, 2**40, "abc", True):
+        try:
+            server.music_seed(bad); raise AssertionError(f"seed {bad!r} accepted")
+        except ValueError:
+            pass
+    mm = server.music_meta
+    assert mm() == {} and mm(None, "", None) == {} and mm(0, None, None) == {}
+    assert mm(120, "d min", "3/4") == {"bpm": 120, "keyscale": "D minor", "timesignature": "3"}
+    assert mm(keyscale="F#") == {"keyscale": "F# major"} and mm(keyscale="Am") == {"keyscale": "A minor"} and mm(timesignature=4) == {"timesignature": "4"}
+    for bad in (("x", None, None), (1000, None, None), (None, "H minor", None), (None, None, "waltz")):
+        try:
+            mm(*bad); raise AssertionError(f"{bad} accepted")
+        except ValueError:
+            pass
+    assert server.MUSIC_DURATION_MAX == 512, "the measured cap (two 512 s renders at 4.3 GB; 600 s unmeasured)"
+    # the rules reach the forge's prompt, briefly (unit_n6 / the R43 arithmetic guard the budget)
+    a = prompts.APP_ASSETS_INSTRUCTION
+    for n in ("no BPM, key or time signature", "[Verse 1]", "backing vocals", "UPPERCASE", '"x2"', "spelled plainly"):
+        assert n in a, n
+    assert len(a) < 1600, len(a)
+    return ("caption: BPM/key/time signature lifted, 512 trim keeps the hint, article-A safe; lyrics: x2/repeat gone, tags kept, "
+            "4096 at a line; seed/meta validators; the rules in APP_ASSETS_INSTRUCTION")
+
+
+@run_test("http_music_request_matches_proven_render", ["R31", "R69"])
+async def t_music_request_proven(s):
+    """[§5] The request the kernel writes, field by field against the request JSONs the music session rendered on the
+    4070 (caption and lyrics are this test's own): take v3 = the same 17 keys and values; tr-ab-A (the pre-fix shape)
+    differs by exactly the two fix keys. The synth argv carries the tiles render.sh used."""
+    v3 = PROVEN_MUSIC_REQUESTS["temperature-rising-anime-v3-2026-10-22"]
+    ans, job, rq, lm, sy = await _music_request(s, {
+        "prompt": "anime-style pop, bright synths, female vocals", "lyrics": "[Verse 1]\nneon rain on the glass\n[Chorus]\nwe rise, we rise",
+        "duration": 312, "language": "en", "seed": 20261022, "bpm": 165, "keyscale": "A major", "timesignature": "4"})
+    assert ans["seed"] == 20261022 and job["seed"] == 20261022, (ans, job)
+    assert set(rq) == set(v3) | {"caption", "lyrics"}, sorted(set(rq) ^ (set(v3) | {"caption", "lyrics"}))
+    diff = {k: (rq[k], v3[k]) for k in v3 if rq[k] != v3[k]}
+    assert not diff, diff
+    assert rq["caption"].startswith("anime-style pop") and rq["lyrics"].startswith("[Verse 1]"), rq
+    assert job["request"] == {"duration": 312, "bpm": 165, "keyscale": "A major", "timesignature": "4", "vocal_language": "en"}, job["request"]
+    # tr-ab-A: the kernel adds exactly lm_seed (= seed) and use_cot_caption (false) to what rendered the song
+    a = PROVEN_MUSIC_REQUESTS["tr-ab-A"]
+    ans, job, rq, lm, sy = await _music_request(s, {
+        "prompt": "energetic nu-disco, funky bass, female vocals", "lyrics": "[Verse 1]\nthe fans spin up again",
+        "duration": 312, "seed": 908371912, "bpm": 120})
+    assert set(rq) - set(a) == {"caption", "lyrics", "lm_seed", "use_cot_caption"}, sorted(set(rq) - set(a))
+    assert not (set(a) - set(rq)) and all(rq[k] == a[k] for k in a), {k: (rq.get(k), a[k]) for k in a if rq.get(k) != a[k]}
+    assert rq["lm_seed"] == 908371912 and rq["use_cot_caption"] is False
+    assert "keyscale" not in rq and "timesignature" not in rq, "the LM still plans what the caller did not pin"
+    # the synth argv = render.sh's: --models <dir> --request <request0.json> --vae-chunk 512 --vae-overlap 64; ace-lm bare
+    assert sy[sy.index("--vae-chunk") + 1] == "512" and sy[sy.index("--vae-overlap") + 1] == "64", sy
+    assert sy.index("--vae-chunk") > sy.index("--request") and sy[sy.index("--request") + 1].endswith("/request0.json"), sy
+    assert "--vae-chunk" not in lm and lm[lm.index("--request") + 1].endswith("/request.json"), lm
+    return ("v3: 17 keys, every value equal but caption/lyrics; tr-ab-A: + lm_seed (= seed) and use_cot_caption only; "
+            "synth argv … --request request0.json --vae-chunk 512 --vae-overlap 64")
+
+
+@run_test("http_music_seed_reproducible", ["R31"])
+async def t_music_seed(s):
+    """[§3] One seed for the DiT and the planner: the same body + seed -> an identical request; no seed -> drawn, answered
+    at once and in the job record, lm_seed == seed; the post-check on the API path; the 512 s cap; garbage -> 400, no job."""
+    body = {"prompt": "dreamy synthwave, warm bassline", "lyrics": "[Verse]\nneon rain", "duration": 20, "seed": 4242}
+    r1, r2 = await _music_request(s, body), await _music_request(s, body)
+    assert r1[2] == r2[2] and r1[2]["seed"] == r1[2]["lm_seed"] == 4242 and r1[2]["use_cot_caption"] is False, (r1[2], r2[2])
+    free = {"prompt": "dreamy synthwave, warm bassline", "duration": 20}
+    (a1, j1, q1, _, _), (a2, j2, q2, _, _) = await _music_request(s, free), await _music_request(s, free)
+    assert a1["seed"] == j1["seed"] == q1["seed"] == q1["lm_seed"] and 1 <= a1["seed"] <= 2**31 - 1, (a1, j1, q1["seed"], q1["lm_seed"])
+    assert a1["seed"] != a2["seed"], "two jobs without a seed must not share one"
+    assert q1["lyrics"] == "[Instrumental]" and q1["vocal_language"] == "unknown" and "bpm" not in q1 and "keyscale" not in q1, q1
+    # the post-check on the API path: the fields leave the caption; an explicit field wins over the caption's
+    _, j, q, _, _ = await _music_request(s, {"prompt": "anthem rock, big drums at 128 BPM in D minor, 4/4",
+                                             "lyrics": "[Chorus]\nWE RISE (we rise) x2", "duration": 20, "seed": 7, "bpm": 100})
+    assert q["caption"] == "anthem rock, big drums, clean mix, high quality", q["caption"]
+    assert (q["bpm"], q["keyscale"], q["timesignature"]) == (100, "D minor", "4"), q
+    assert q["lyrics"] == "[Chorus]\nWE RISE (we rise)", q["lyrics"]
+    assert j["request"]["bpm"] == 100 and j["request"]["keyscale"] == "D minor" and j["seed"] == 7, j
+    _, _, q, _, _ = await _music_request(s, {"prompt": "long ambient drone", "duration": 600, "seed": 1})
+    assert q["duration"] == 512, q["duration"]
+    # garbage -> 400 naming the field, no job, no engine run
+    arglog = Path(os.environ.get("MOCK_ACE_ARGLOG", VDIR / "ace-args.log"))
+    async with s.get(f"{BASE}/api/status") as r:
+        jobs_before = len((await r.json())["jobs"])
+    lm_before = arglog.read_text().count("ace-lm\t")
+    for bad, field in (({"seed": -1}, "seed"), ({"seed": "abc"}, "seed"), ({"seed": 2**40}, "seed"), ({"bpm": 1000}, "bpm"),
+                       ({"keyscale": "H minor"}, "keyscale"), ({"timesignature": "waltz"}, "timesignature")):
+        async with s.post(f"{BASE}/api/music", json={"prompt": "test jingle", **bad}) as r:
+            assert r.status == 400, (bad, r.status, await r.text())
+            j = await r.json()
+        assert "job" not in j and field in j["error"], (bad, j)
+    async with s.get(f"{BASE}/api/status") as r:
+        assert len((await r.json())["jobs"]) == jobs_before, "a 400 must not create a job"
+    assert arglog.read_text().count("ace-lm\t") == lm_before, "a 400 must not run the engine"
+    return ("same seed -> identical request; drawn seeds answered + in the job, differ; lm_seed == seed; caption fields lifted, "
+            "explicit bpm wins; 600 -> 512; 6 x 400 without a job")
+
+
+@run_test("http_music_lengths_vae_argv", ["R31"])
+async def t_music_lengths(s):
+    """[§1, §5] The no-GPU end-to-end check: the lengths that failed on the 8 GB card at the engine default (40 s, 120 s)
+    and the cap (512 s; 600 s -> 512) through the real kernel and the mock engines — the request's duration and the
+    ace-synth argv the engine would get (--vae-chunk 512 --vae-overlap 64 after --request; ace-lm bare)."""
+    seen = []
+    for ask, want in ((40, 40), (120, 120), (512, 512), (600, 512)):
+        _, job, rq, lm, sy = await _music_request(s, {"prompt": "upbeat synth pop", "duration": ask, "seed": 1234})
+        assert rq["duration"] == want and rq["lyrics"] == "[Instrumental]" and rq["seed"] == rq["lm_seed"] == 1234, rq
+        assert sy[-4:] == ["--vae-chunk", "512", "--vae-overlap", "64"] and sy[sy.index("--request") + 1].endswith("/request0.json"), sy
+        assert "--vae-chunk" not in lm and job["request"]["duration"] == want, (lm, job)
+        seen.append(f"{ask}->{want}")
+    return "ace-synth … --vae-chunk 512 --vae-overlap 64 for " + ", ".join(seen) + " s (ace-lm bare; instrumental; seed = lm_seed)"
 
 
 @run_test("http_music_engine_missing", ["R31", "R47"])

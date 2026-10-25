@@ -7,7 +7,7 @@ Media (all local GPU — show loading states, generation is not instant):
 const url = await vibe.image("a chrome koi fish, cinematic");   // PNG URL, ~seconds-minutes
 const urls = await vibe.images(["koi at dawn", "koi at dusk", "koi at night"]); // [URL,URL,URL] — one model load for the whole list
 const mp4 = await vibe.video("neon rain over a glass city");    // MP4 URL, minutes! explicit user action only
-const wav = await vibe.music("dreamy synthwave", "optional lyrics", 60); // audio URL, ~20 s per 15 s; sung in English by default
+const wav = await vibe.music("dreamy synthwave", "optional lyrics", 60); // audio URL, up to 512 s; sung in English by default
 const de  = await vibe.music("Schlager, Akkordeon", "[Verse]\nIch tanze durch die Nacht", 30, "de"); // 4th arg: ISO 639-1 language of the lyrics
 const seen = await vibe.vision(canvas.toDataURL(), "describe this drawing");   // string; also "/files/…" URLs or "screen" (the display) [R70]
 ```
@@ -19,7 +19,9 @@ const seen = await vibe.vision(canvas.toDataURL(), "describe this drawing");   /
 - **Music is a downloadable add-on** (ACE-Step, `extras[music]`): `vibe.music()` rejects
   when it is not installed — try/catch it, show "music unavailable", never block the app
   on it. Lyrics default to English; pass `language` (`"de"`, `"ja"`, …) for other
-  languages, `"auto"` to let the model guess.
+  languages, `"auto"` to let the model guess. Prompt = tags (genre, mood, instruments, vocals),
+  **no BPM/key/time signature in it** — those are the 5th arg `{bpm, keyscale, timesignature, seed}`;
+  lyrics with `[Verse 1]` / `[Chorus]` tags, `(parentheses)` = backing vocals, no "x2".
 - `vibe.image()` works immediately (Krea 2 is baked: `default` = uncensored, `safe` = the stock,
   safety-tuned one); the other image models (`qwen` = Qwen-Image-2.1, `classic` = Z-Image, `chroma`) are downloadable via
   `vibe.models.download(key)`. A gallery or "N variations" = ONE `vibe.images(...)` call,

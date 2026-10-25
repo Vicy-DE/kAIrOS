@@ -1,5 +1,5 @@
 {
- "at": "2026-10-23 13:58:52",
+ "at": "2026-10-25 18:02:57",
  "tests": {
   "db_web_address_table": {
    "reqs": [
@@ -72,7 +72,7 @@
     "R52"
    ],
    "status": "pass",
-   "detail": "1920: pinned + 5 user apps, no Files/Notes/News/generated browser; app glow\u21921.33 (no chip)\u2192restore; builtin New window/Close; game icon 1.33, X non-game chip only; viewer chip; maximized above the grown icon; \u229e system apps; remove from dock persisted; 1024: fits, \u229e +15; 2 monitors: one dock on the p"
+   "detail": "1920: pinned + 5 user apps, no Files/Notes/News/generated browser; states closed 1x/min 1.33/shown 1.33+glow/active 1.33+bright, hover 1.42; app active\u2192min (no chip)\u2192restore; builtin New window/Close; game icon 1.33, X non-game chip only; viewer chip; maximized below the menu bar, above every grown "
   },
   "browser_e2e_search_opens_addresses": {
    "reqs": [

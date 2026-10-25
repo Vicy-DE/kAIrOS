@@ -160,6 +160,9 @@ install -D -m 755 "$INC/usr/local/sbin/kairos-hdmi-prime"          "$MNT/usr/loc
 install -D -m 644 "$INC/etc/systemd/system/kairos-hdmi-prime.service"       "$MNT/etc/systemd/system/kairos-hdmi-prime.service"
 install -D -m 644 "$INC/etc/systemd/system/kairos-hdmi-prime-event.service" "$MNT/etc/systemd/system/kairos-hdmi-prime-event.service"
 install -D -m 644 "$INC/etc/udev/rules.d/80-kairos-hdmi-prime.rules"        "$MNT/etc/udev/rules.d/80-kairos-hdmi-prime.rules"
+#   22-kairos-tearfree-amdgpu.conf          [R90, fix 2026-10-24] TearFree on the amdgpu desktop that spans two
+#                                           CRTCs (the card run's "flip queue failed" lines); amdgpu only
+install -D -m 644 "$INC/etc/X11/xorg.conf.d/22-kairos-tearfree-amdgpu.conf" "$MNT/etc/X11/xorg.conf.d/22-kairos-tearfree-amdgpu.conf"
 install -D -m 644 "$INC/etc/kernel/install.conf"                   "$MNT/etc/kernel/install.conf"
 install -D -m 755 "$INC/etc/kernel/postinst.d/zz-kairos-esp"       "$MNT/etc/kernel/postinst.d/zz-kairos-esp"
 install -D -m 755 "$INC/etc/initramfs/post-update.d/zz-kairos-esp" "$MNT/etc/initramfs/post-update.d/zz-kairos-esp"

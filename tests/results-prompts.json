@@ -1,0 +1,56 @@
+{
+ "ran_at": "2026-10-25 18:05:13",
+ "results": {
+  "pr_registry_complete": {
+   "reqs": [
+    "R92"
+   ],
+   "status": "pass",
+   "detail": "50 names (33 editable), every one with a line + note"
+  },
+  "pr_overrides_live": {
+   "reqs": [
+    "R92"
+   ],
+   "status": "pass",
+   "detail": "set/reset/reload through the API: file + attribute + compositions + EXPANDERS/LANGUAGE_PROMPTS + /system + the next request"
+  },
+  "pr_dock_prompts": {
+   "reqs": [
+    "R92"
+   ],
+   "status": "pass",
+   "detail": "DOCK_SETTINGS at shell/index.html:140; the override reached the model and meta.json (17 events)"
+  },
+  "pr_lyrics_route": {
+   "reqs": [
+    "R93"
+   ],
+   "status": "pass",
+   "detail": "temperature 1.2 / top_k 80 / json_schema on the wire; pins, repairs, retry, cap, minors block, 400s"
+  },
+  "pr_lyrics_then_music": {
+   "reqs": [
+    "R93",
+    "R31"
+   ],
+   "status": "pass",
+   "detail": "the plan reached the music engine: {'duration': 30, 'vocal_language': 'en', 'bpm': 118, 'keyscale': 'A minor', 'timesignature': '4'}"
+  },
+  "pr_shell_wiring": {
+   "reqs": [
+    "R92",
+    "R93"
+   ],
+   "status": "pass",
+   "detail": "bridge + handlers (shell.js, host.js), Melody's prompt box, the panel, the docs (no node: syntax unchecked here)"
+  },
+  "pr_sync_script": {
+   "reqs": [
+    "R92"
+   ],
+   "status": "pass",
+   "detail": "export 54 files, diff, push --dir/--kernel, pull, reset, bake (2 + 1 dock, the composition refused), html"
+  }
+ }
+}

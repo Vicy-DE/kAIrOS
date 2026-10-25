@@ -251,3 +251,16 @@ white handover frame (gtk.css); the game offset after a mirror (placed again whi
   sequences.
 - **Not changed**: a Chromium `Ctrl+N`/`Ctrl+T` window opens a normal browser window (as with `--kiosk` before); the X
   side leaves any second `kairos-desktop` window alone.
+- **[2026-10-24] The first card run with the one desktop (v7.5-4)** — verdict PASS, 28 min, both monitors as one
+  4480×1440 window (`desktop window 0xc00003 2560x1440+1920+0 -> 4480x1440+0+0`: Chromium mapped it clamped to one
+  monitor, the X side spanned it, as designed). Found: **77 × `(WW) AMDGPU(0): flip queue failed: Invalid argument`** in
+  the session's `Xorg.0.log` (+ `Page flip failed`, `(EE) present flip failed`; the first 18 s after `xinitrc: started`,
+  once per second for ~25 s — the clock tick —, then sporadic; v7.5-2's per-screen kiosks: 0 in 13 h). A Present flip of
+  the screen-sized window onto the two CRTCs (eDP at 0,0 and DP at 1920,0) is refused by the kernel, and that frame is
+  copied into the front buffer unsynchronised — tearing / stutter. The kernel's `Viewport size failed validation` lines
+  are not new (39 → 48). **Shipped for the next run:** `22-kairos-tearfree-amdgpu.conf` — `Option "TearFree" "on"` for
+  the amdgpu DDX (23.0.0 on the image; default `auto` = off for plain outputs), an OutputClass matching the amdgpu
+  kernel driver only: per-CRTC scanout buffers, a copy + a flip per CRTC, no shared buffer flipped onto two scanouts.
+  Cost: one blit per frame and CRTC, ~44 MiB of extra scanout buffers, up to one frame of latency. The boot log's
+  `pageflip` check records the TearFree state and the refused-flip count of the session (before: `auto`, 77). The VM
+  boots virtio, not amdgpu: unprovable there — **the next card run is the proof** (`docs/FIXES-2026-10-24.md` §3, §5).

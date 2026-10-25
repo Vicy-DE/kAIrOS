@@ -15,10 +15,13 @@
 # driver for the GPU screen, and only with AutoAddGPU on. So:
 #   * every boot starts X exactly as before: no nvidia_drm, AutoAddGPU off (10-kairos-single-gpu.conf) — the
 #     ExecStartPre of kairos-hdmi-prime.service (Before=getty@tty1) removes the attach session's config file;
-#   * after the nvidia module is up (kairos-gpu-setup loads it in the background on the hybrid laptop) this script
-#     loads nvidia_modeset + nvidia_drm (modeset=1, no fbdev) — with AutoAddGPU off the running X ignores the new
-#     DRM device — and reads the NVIDIA connectors in sysfs: the detection needs no X and no nvidia-smi
-#     (whose display_mode query is deprecated in this driver generation);
+#   * once X is REALLY up (the :0 socket AND the running session's `xinitrc: started` breadcrumb, see x_up — the
+#     socket alone appears before the server probes the GPUs; fix 2026-10-24: the card run of that day loaded the
+#     modules 10 s before the X start and X applied the nvidia OutputClass to the new card) and the nvidia module is
+#     bound (kairos-gpu-setup loads it in the background on the hybrid laptop) this script loads nvidia_modeset +
+#     nvidia_drm (modeset=1, no fbdev) — with AutoAddGPU off the running X ignores the new DRM device — and reads
+#     the NVIDIA connectors in sysfs: the detection needs no X and no nvidia-smi (whose display_mode query is
+#     deprecated in this driver generation);
 #   * a connected monitor -> `attach`: 15-kairos-hdmi-prime.conf (ServerFlags AutoAddGPU on; a later file
 #     overrides the earlier one — measured on xserver 21.1), one planned restart of getty@tty1 (= a new X session,
 #     ~5-10 s), then the new session's `xinitrc: providers:` breadcrumb must name NVIDIA-G0 bound; else everything
@@ -34,7 +37,7 @@
 # API's `hdmi` and the boot log's hdmi_prime check read it) and never fails a unit or X: exit 0 on every path.
 #
 #   kairos-hdmi-prime prestart   ExecStartPre: a clean X start (no attach config, state reset)
-#   kairos-hdmi-prime boot       wait for the nvidia module, probe, attach when a monitor is on the NVIDIA
+#   kairos-hdmi-prime boot       wait for X (socket + session breadcrumb), then the nvidia module; probe; attach when a monitor is on the NVIDIA
 #   kairos-hdmi-prime react      a DRM change event (udev): probe again, ask the user (state consent) when a monitor is there
 #   kairos-hdmi-prime event      the udev RUN hook: starts kairos-hdmi-prime-event.service (react) and returns
 #   kairos-hdmi-prime probe      load the display modules, read the connectors, write the state (no attach)
@@ -60,6 +63,7 @@ OUTPUTCLASS=${KAIROS_HDMI_OUTPUTCLASS:-/usr/share/X11/xorg.conf.d/nvidia-drm-out
 XSOCK=${KAIROS_HDMI_XSOCK:-/tmp/.X11-unix/X0}
 WAIT=${KAIROS_HDMI_WAIT:-120}          # s to wait for the nvidia module (the background load off a USB stick)
 XWAIT=${KAIROS_HDMI_XWAIT:-60}         # s to wait for the new X session's providers breadcrumb
+XUP=${KAIROS_HDMI_XUP:-180}            # s to wait at boot for X to be really up before the display modules load (x_up)
 ATTACH_MAX=${KAIROS_HDMI_ATTACH_MAX:-1}
 GETTY=${KAIROS_HDMI_GETTY:-getty@tty1.service}
 EVENT_UNIT=${KAIROS_HDMI_EVENT_UNIT:-kairos-hdmi-prime-event.service}
@@ -135,6 +139,17 @@ power_note() {   # the cost question: pstate / power / VRAM of the NVIDIA at eac
   log "power ($1): ${p:-nvidia-smi gave nothing}; runtime_status $(cat "$SYS/bus/pci/devices/$GPU/power/runtime_status" 2>/dev/null)"
 }
 x_attempts() { n=$(cat "$XCNT" 2>/dev/null); case "$n" in ''|*[!0-9]*) n=0 ;; esac; echo "$n"; }
+# x_up: X is REALLY up = this boot's X session runs. The :0 socket alone is not enough: the server creates it before it
+# probes the GPUs (dix: CreateWellKnownSockets precedes InitOutput), so a nvidia_drm loaded then is still seen by the
+# OutputClass — the card run 2026-10-24 had the modules at 06:02:56 and the X start at 06:03:06. The `xinitrc: started`
+# breadcrumb of the CURRENT attempt is printed by the client xinit starts only once the server signalled it is ready
+# (GPU probe and screen init done). x.log is this boot's (rotated at attempt 1 by .bash_profile), an attempt's header
+# precedes its session and its exit line ends it; the attempt counter (/run, per boot) says an attempt exists at all.
+x_up() {
+  [ "$(x_attempts)" -ge 1 ] || return 1
+  [ -S "$XSOCK" ] || return 1
+  awk '/^===== X attempt /{s=0} /^xinitrc: started/{s=1} END{exit !s}' "$XLOG" 2>/dev/null
+}
 providers_lines() { n=$(grep -c '^xinitrc: providers:' "$XLOG" 2>/dev/null); case "$n" in ''|*[!0-9]*) n=0 ;; esac; echo "$n"; }
 last_providers() { grep '^xinitrc: providers:' "$XLOG" 2>/dev/null | tail -n 1 | sed 's/^xinitrc: providers: *//'; }
 bump() { n=$(cat "$1" 2>/dev/null); case "$n" in ''|*[!0-9]*) n=0 ;; esac; echo $((n + 1)) > "$1" 2>/dev/null; }
@@ -221,6 +236,13 @@ case "$cmd" in
     log "prestart: clean X start (no attach config)"; rm -f "$STATE" 2>/dev/null ;;
   boot)
     if eligible; then
+      # [fix 2026-10-24] X FIRST: the display modules load only once this boot's X session runs (x_up), bounded; after
+      # the bound the probe goes ahead anyway — with AutoAddGPU off a starting X ignores the new DRM device (the card
+      # run 2026-10-24 showed exactly that: nvidia OutputClass applied, no G0 screen, the X start time unchanged)
+      i=0
+      while [ "$i" -lt "$XUP" ] && ! x_up; do i=$((i + 1)); sleep 1; done
+      if x_up; then log "X up after ${i}s (socket + 'xinitrc: started' of X attempt $(x_attempts)): the display modules may load now"
+      else log "X not up after ${i}s (socket: $([ -S "$XSOCK" ] && echo yes || echo no), X attempts: $(x_attempts)) — probing anyway (AutoAddGPU off: a starting X ignores the new DRM device)"; fi
       i=0
       while [ "$i" -lt "$WAIT" ] && ! nvidia_bound; do i=$((i + 1)); sleep 1; done
       [ "$i" -gt 0 ] && log "waited ${i}s for the nvidia module"

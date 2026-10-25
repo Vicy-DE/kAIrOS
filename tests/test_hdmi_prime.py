@@ -92,7 +92,7 @@ class World:
 
     def __init__(self, td, gpus=((AMD, "1", "0000:05:00.0"), (NV, "0", "0000:01:00.0")), bound=True, connected=True,
                  x_up=True, restart="ok", cmdline="root=x quiet", switch=None, ddx=True, outputclass=True,
-                 provline=PROVLINE_BOUND, wait="2", xwait="3"):
+                 provline=PROVLINE_BOUND, wait="2", xwait="3", xup="2"):
         self.t = Path(td)
         self.sys, self.bin, self.run, self.etc = self.t / "sys", self.t / "bin", self.t / "run", self.t / "etc"
         for d in (self.bin, self.run, self.etc, self.sys / "class" / "drm", self.sys / "bus" / "pci" / "devices"):
@@ -128,7 +128,10 @@ class World:
         for f in self.bin.iterdir():
             f.chmod(0o755)
         (self.run / "x-attempts").write_text("1\n")
-        (self.run / "x.log").write_text("xinitrc: displays: eDP connected\n")
+        # this boot's x.log as .bash_profile + .xinitrc write it: the attempt's header, the session's first breadcrumb
+        # (what the boot path waits for since the fix of 2026-10-24), the display setup
+        (self.run / "x.log").write_text("===== X attempt 1  now  uptime 7s =====\nxinitrc: started (pid 9, uptime 8s)\n"
+                                        "xinitrc: displays: eDP connected\n")
         if x_up:
             socket.socket(socket.AF_UNIX).bind(str(self.run / "X0"))
         (self.t / "cmdline").write_text(cmdline + "\n")
@@ -146,7 +149,8 @@ class World:
                         KAIROS_HDMI_DECLINED=str(self.run / "hdmi-prime-declined"),
                         KAIROS_HDMI_DDX=str(self.t / ("ddx" if ddx else "no-ddx")),
                         KAIROS_HDMI_OUTPUTCLASS=str(self.t / ("outputclass" if outputclass else "no-outputclass")),
-                        KAIROS_HDMI_XSOCK=str(self.run / "X0"), KAIROS_HDMI_WAIT=wait, KAIROS_HDMI_XWAIT=xwait)
+                        KAIROS_HDMI_XSOCK=str(self.run / "X0"), KAIROS_HDMI_WAIT=wait, KAIROS_HDMI_XWAIT=xwait,
+                        KAIROS_HDMI_XUP=xup)
 
     def bind(self):
         (self.sys / "bus" / "pci" / "drivers" / "nvidia" / self.nv).mkdir(parents=True, exist_ok=True)
@@ -199,8 +203,17 @@ def t_contracts():
     for var in ("KAIROS_SYS", "KAIROS_HDMI_STATE", "KAIROS_HDMI_LOG", "KAIROS_HDMI_XCONF", "KAIROS_HDMI_SWITCH",
                 "KAIROS_HDMI_CMDLINE", "KAIROS_HDMI_XLOG", "KAIROS_HDMI_XCNT", "KAIROS_HDMI_PLANNED", "KAIROS_HDMI_DDX",
                 "KAIROS_HDMI_ATTEMPTS", "KAIROS_HDMI_DECLINED",
-                "KAIROS_HDMI_OUTPUTCLASS", "KAIROS_HDMI_XSOCK", "KAIROS_HDMI_WAIT", "KAIROS_HDMI_XWAIT"):
+                "KAIROS_HDMI_OUTPUTCLASS", "KAIROS_HDMI_XSOCK", "KAIROS_HDMI_WAIT", "KAIROS_HDMI_XWAIT", "KAIROS_HDMI_XUP"):
         assert f"${{{var}:-" in src, f"{var} not overridable"
+    # [fix 2026-10-24] the boot path: X really up (socket AND the running attempt's `xinitrc: started`) BEFORE the module
+    # wait and the probe; the bound is 180 s by default and the probe goes ahead after it (logged)
+    boot = src[src.index("  boot)\n"):src.index("  react|attach)")]
+    assert boot.index('! x_up; do') < boot.index('! nvidia_bound; do') < boot.index("if probe; then attach; fi"), boot
+    assert 'log "X up after ${i}s' in boot and 'log "X not up after ${i}s' in boot and "probing anyway" in boot, boot
+    xu = src[src.index("x_up() {"):src.index("}\n", src.index("x_up() {"))]
+    assert '[ "$(x_attempts)" -ge 1 ] || return 1' in xu and '[ -S "$XSOCK" ] || return 1' in xu \
+        and "/^===== X attempt /{s=0} /^xinitrc: started/{s=1}" in xu, xu
+    assert "XUP=${KAIROS_HDMI_XUP:-180}" in src
     assert "modprobe nvidia_modeset 2>/dev/null" in src and "modprobe nvidia_drm modeset=1 fbdev=0 2>/dev/null" in src
     assert "'    Option \"AutoAddGPU\" \"on\"'" in src and "15-kairos-hdmi-prime.conf" in src
     assert src.rstrip().endswith("exit 0"), "exit 0 on every path"
@@ -335,6 +348,60 @@ def t_wait():
         w.run_cmd("attach-now")
         assert w.state()["state"] == "active" and w.restarts() == 1, w.state()
     return f"unbound: waited {took:.1f} s, absent + reason, no modprobe; bound later + react -> consent -> attach-now -> active"
+
+
+@test("hp_boot_loads_modules_after_x", ["R91", "R41", "R50"])
+def t_boot_after_x():
+    """[fix 2026-10-24] the card run loaded nvidia_modeset + nvidia_drm 10 s BEFORE the X start (the unit is Type=simple
+    next to getty@tty1) and X applied the nvidia OutputClass to the new card (no G0 screen: AutoAddGPU off). The boot
+    path now waits until X is REALLY up: the :0 socket alone is not enough (the server listens before it probes the
+    GPUs) — the running attempt's `xinitrc: started` breadcrumb is required too. On a mocked timeline (the attempt +
+    its socket at 0.3 s, the breadcrumb at 1.6 s) the modules load after the breadcrumb and the wait is logged; the
+    previous boot's x.log (a breadcrumb, no attempt, no socket) and a session that exited do not count; after the bound
+    the probe goes ahead anyway (logged: the status quo of the card run); the consent path never waits"""
+    with tempfile.TemporaryDirectory() as td:
+        w = World(td, connected=False, x_up=False, xup="10")
+        (w.run / "x-attempts").write_text("0\n")
+        (w.run / "x.log").write_text("")                     # before the first attempt: .bash_profile rotated it away
+        p = subprocess.Popen(["sh", str(HELPER), "boot"], env=w.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        time.sleep(0.3)
+        (w.run / "x-attempts").write_text("1\n")
+        with open(w.run / "x.log", "a") as f:
+            f.write("===== X attempt 1  now  uptime 7s =====\n")
+        socket.socket(socket.AF_UNIX).bind(str(w.run / "X0"))   # X listens — still probing the GPUs: NOT enough
+        time.sleep(1.3)
+        t_bc = time.time()
+        with open(w.run / "x.log", "a") as f:
+            f.write("xinitrc: started (pid 9, uptime 8s)\n")      # the session runs: X is past its GPU probe
+        out, err = p.communicate(timeout=60)
+        assert p.returncode == 0 and not err, (p.returncode, err)
+        st = w.state()
+        assert st["state"] == "absent" and "HDMI-A-1=disconnected" in st["connectors"], st
+        assert w.calls_of("modprobe") == ["modprobe nvidia_modeset", "modprobe nvidia_drm modeset=1 fbdev=0"], w.calls_of("modprobe")
+        loaded = (w.sys / "class" / "drm" / "card1-HDMI-A-1" / "status").stat().st_mtime      # written by the fake modprobe
+        assert loaded >= t_bc, f"the modules loaded {t_bc - loaded:.2f} s BEFORE the session breadcrumb (the socket alone must not do)"
+        m = re.search(r"X up after (\d+)s \(socket \+ 'xinitrc: started' of X attempt 1\)", w.log())
+        assert m and int(m.group(1)) >= 1, w.log()
+        assert w.log().index("X up after") < w.log().index("nvidia_modeset + nvidia_drm"), w.log()
+        waited = int(m.group(1))
+    with tempfile.TemporaryDirectory() as td:            # the PREVIOUS boot's x.log: a breadcrumb, no attempt, no socket
+        w = World(td, connected=False, x_up=False, xup="2")
+        (w.run / "x-attempts").write_text("0\n")
+        t0 = time.monotonic(); w.run_cmd("boot"); took = time.monotonic() - t0
+        assert took >= 1.8 and "X not up after 2s (socket: no, X attempts: 0)" in w.log() and "probing anyway" in w.log(), (took, w.log())
+        assert w.state()["state"] == "absent" and len(w.calls_of("modprobe")) == 2, "after the bound the probe goes ahead (the card run's status quo)"
+    with tempfile.TemporaryDirectory() as td:            # the session EXITED (its attempt closed), the socket file still there
+        w = World(td, connected=False, xup="2")
+        with open(w.run / "x.log", "a") as f:
+            f.write("===== X attempt 1 exited rc=1  now =====\n")
+        w.run_cmd("boot")
+        assert "X not up after 2s (socket: yes, X attempts: 1)" in w.log(), w.log()
+    with tempfile.TemporaryDirectory() as td:            # the consent path (the desktop is up) never waits for anything
+        w = World(td, connected=False)
+        w.run_cmd("boot"); w.plug("connected")
+        t0 = time.monotonic(); w.run_cmd("react"); took = time.monotonic() - t0
+        assert w.state()["state"] == "consent" and took < 1.5, (w.state(), took)
+    return f"modules after the session breadcrumb (socket alone waited; X up after {waited}s logged); stale x.log / exited session -> bound, then probing anyway; react never waits"
 
 
 @test("hp_attach_one_planned_restart", ["R91", "R90", "R51"])

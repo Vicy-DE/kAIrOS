@@ -243,8 +243,10 @@ function uiConfirm(question, okLabel = "OK") {
 
 /* the room the dock takes at the bottom of the screen (+ a small gap) — what a maximized
    window must leave free [D2]; 0 where there is no dock (the bench host page). [R81] plus the
-   overhang of an icon grown to 1.33 (its app runs minimized): it grows upwards out of the dock,
-   so a maximized window never ends under it and never jumps when an icon grows */
+   overhang of an icon grown to 1.33 (its app runs: minimized, or shown — maximized or not, owner
+   2026-10-24): it grows upwards out of the dock (transform only, the dock's box stays), so it is
+   reserved always: a maximized window never ends under a grown icon (not even a hovered one,
+   1.42 - 6 px) and never jumps when an icon grows */
 const DOCK_GROW = 18;                     // 52 px icon x 0.33, rounded up
 function dockRoom() {
   const dock = $("#dock");
@@ -466,7 +468,12 @@ const BRIDGE_SRC = `
                                        width: dim(o.width), height: dim(o.height) });
     },
     video: (prompt) => call("video", prompt),
-    music: (prompt, lyrics, duration, language) => call("music", prompt, lyrics, duration, language),
+    // opts {seed, bpm, keyscale, timesignature}: seed reproduces a song (the job record reports the one used), the
+    // other three pin the planner; up to 512 s. Caption: tags, no BPM/key/time signature inside (those are the opts)
+    music: (prompt, lyrics, duration, language, opts) => call("music", prompt, lyrics, duration, language, opts),
+    // [R93] the songwriter: a brief -> {title, caption, lyrics, language, duration, bpm, keyscale, timesignature}; opts
+    // {style, language, duration, bpm, keyscale, timesignature} pin what the model would otherwise plan. Compose with vibe.music
+    lyrics: (brief, opts) => call("lyrics", brief, opts),
     vision: (image, prompt) => call("vision", image, prompt),      // [R70] a data URL / a /files URL / "screen"
     translate: (text, to) => call("translate", text, to),          // [R71] a string or an array -> the OS language, or the one named
     dict: (word, from, to) => call("dict", word, from, to),        // [R71 P3] dictionary lookup -> {entries: [{headword, translations, source}]}
@@ -1018,10 +1025,22 @@ async function handleBridge(win, d) {
   }
   if (method === "music") {
     toast("🎵 composing: " + String(args[0]).slice(0, 50) + "…");
+    const o = (args[4] && typeof args[4] === "object") ? args[4] : {};   // {seed, bpm, keyscale, timesignature}
     const r = await fetch("/api/music", { method: "POST", headers: apiHeaders(),
-      body: JSON.stringify({ prompt: args[0], lyrics: args[1], duration: args[2], language: args[3] }) }).then((r) => r.json());
+      body: JSON.stringify({ prompt: args[0], lyrics: args[1], duration: args[2], language: args[3],
+                             seed: o.seed, bpm: o.bpm, keyscale: o.keyscale, timesignature: o.timesignature }) }).then((r) => r.json());
     if (r.error) throw new Error(r.error);
     return await pollJob(r.job);
+  }
+  if (method === "lyrics") {
+    // [R93] the songwriter (POST /api/lyrics): the loaded LLM writes the lyrics and plans the render; the answer directly
+    const o = (args[1] && typeof args[1] === "object") ? args[1] : {};
+    toast("✍ writing lyrics: " + String(args[0] || o.style || "").slice(0, 50) + "…");
+    const r = await fetch("/api/lyrics", { method: "POST", headers: apiHeaders(),
+      body: JSON.stringify({ prompt: args[0], style: o.style, language: o.language, duration: o.duration,
+                             bpm: o.bpm, keyscale: o.keyscale, timesignature: o.timesignature }) }).then((r) => r.json());
+    if (r.error) throw new Error(r.error);
+    return r;
   }
   if (method === "vision") {
     // [R70] the OS looks at a picture: a canvas.toDataURL() from inside the sandbox, a
@@ -1460,7 +1479,7 @@ async function mountApp(win, html) {
    restores + focuses the window. Chips are removed on restore/close. [R81] Only for windows
    WITHOUT a dock icon: a /web/ page window, a quick viewer (picture, video, file), an X window
    that is not a game. Apps, built-ins, the browser and games have their icon on the dock,
-   which shows their state (1.33 = minimized, a glow = shown) and restores them. */
+   which shows their state (1.33 = running: minimized without, shown with a glow) and restores them. */
 function winGlyph(win) {
   if (win.icon) return `<img src="${win.icon}" alt="">`;
   const t = (win.title || "▢").trim();
@@ -1622,7 +1641,8 @@ async function showAppsMenu() {
   dockChanged();
   // [R81] the system apps first — Files, Notes and News are not on the dock (owner 2026-10-15): here and in the search
   const cached = new Map(apps.map((a) => [a.app_id, a]));
-  const system = [{ id: "browser", icon: "🌐", name: "Browser", hint: "the built-in browser — the imaginary web" }]
+  const system = [{ id: "browser", icon: "🌐", name: "Browser", hint: "the built-in browser — the imaginary web" },
+                  { id: "prompts", icon: "✎", name: "Prompts", hint: "the system prompts — what the models are told, editable [R92]" }]
     .concat([...DOCK.sys.values()].map((it) => ({ id: it.app, icon: it.icon, name: it.title, hint: it.prompt,
                                                   img: cached.get(it.app) && cached.get(it.app).icon })));
   apps = apps.filter((a) => !DOCK.sys.has(a.app_id));
@@ -1641,7 +1661,7 @@ async function showAppsMenu() {
       const label = document.createElement("span");
       label.className = "appsmenu-name"; label.textContent = a.name;
       b.appendChild(label);
-      b.title = a.id === "browser" ? a.hint : "system app";
+      b.title = (a.id === "browser" || a.id === "prompts") ? a.hint : "system app";
       b.onclick = () => { hideAppsMenu(); openSysApp(a.id); };
       grid.appendChild(b);
     });
@@ -1865,30 +1885,58 @@ const STUDIO = {
           s.textContent="done in "+((Date.now()-t0)/60000).toFixed(1)+" min";
         }catch(e){ s.textContent="error: "+e.message } go.disabled=false; };
     <\/script></body></html>` },
-  melody: { title: "Melody — music studio", html: `<!DOCTYPE html><html><head><style>
+  // [R93] Melody: the lyrics box is a PROMPT box — the user describes the song, the OS songwriter (POST /api/lyrics, the
+  // loaded LLM at temperature 1.2 / top_k 80) writes the lyrics and plans length, tempo, key and time signature; the plan
+  // fields are shown and editable, then the song is composed (vibe.music with the plan). Finished lyrics (a [Verse] /
+  // [Chorus] tag line) are sung as written; an empty box = an instrumental, as before.
+  melody: { title: "Melody — music studio", w: 820, h: 600, html: `<!DOCTYPE html><html><head><style>
     body{margin:0;background:#0a0a14;color:#e8e8f2;font:14px system-ui;display:flex;flex-direction:column;height:100vh}
-    .bar{display:flex;gap:8px;padding:12px}
-    input,textarea{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#fff;outline:none}
-    input{flex:1} input.lang{flex:0 0 96px} textarea{margin:0 12px;height:74px;resize:none}
+    .bar{display:flex;gap:8px;padding:12px 12px 6px}
+    input,textarea{padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#fff;outline:none;font:inherit}
+    input{flex:1;min-width:0} input.lang{flex:0 0 92px} textarea{margin:6px 12px 0;flex:1;min-height:110px;resize:none;line-height:1.45}
+    .plan{display:flex;gap:10px;padding:8px 12px 4px;align-items:flex-end;flex-wrap:wrap}
+    .plan label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:#9a9ab0}
+    .plan input{flex:0 0 auto;width:70px;padding:6px 8px;font-size:12px} .plan input.title{width:190px}
     button{padding:10px 18px;border-radius:10px;border:0;background:#c77dff;color:#201;cursor:pointer;font-weight:700}
+    button.alt{background:rgba(255,255,255,.1);color:#e8e8f2;font-weight:600;padding:8px 14px}
     button:disabled{opacity:.4}
-    .out{flex:1;display:flex;align-items:center;justify-content:center;padding:12px}
-    audio{width:90%}
-    .status{padding:6px 14px;color:#9a9ab0;font-size:12px}</style></head><body>
-    <div class="bar"><input id="p" placeholder="dreamy synthwave with a warm bassline…">
-    <input id="g" class="lang" placeholder="lang: en" title="sung language (ISO 639-1, e.g. de, ja) — empty = English, auto = let the model guess">
+    .out{display:flex;align-items:center;justify-content:center;padding:4px 12px 12px;min-height:50px}
+    audio{width:100%}
+    .status{padding:4px 14px;color:#9a9ab0;font-size:12px;min-height:16px;line-height:1.4}</style></head><body>
+    <div class="bar"><input id="p" placeholder="music style: dreamy synthwave, warm bassline, female vocal… (empty = the songwriter picks one)">
+    <input id="g" class="lang" placeholder="lang: auto" title="sung language (ISO 639-1, e.g. de, ja) — empty: the songwriter follows your words">
     <button id="go">Compose</button></div>
-    <textarea id="l" placeholder="optional lyrics — leave empty for instrumental"></textarea>
-    <div class="status" id="s">local ACE-Step — a full track in under a minute</div>
+    <textarea id="l" placeholder="the song in your words — a theme, a story, a mood, maybe a length ('a 3-minute ballad about…'). The OS writes the lyrics and picks length, tempo and key. Or paste finished lyrics with [Verse] / [Chorus] tags to sing them as written. Empty = instrumental."></textarea>
+    <div class="plan"><button id="w" class="alt" title="the songwriter writes the lyrics and the plan — nothing is composed yet">✍ Write lyrics</button>
+    <label>length s<input id="d" placeholder="auto"></label><label>bpm<input id="b" placeholder="auto"></label>
+    <label>key<input id="k" placeholder="auto"></label><label>time<input id="t" placeholder="4"></label>
+    <label>title<input id="n" class="title" placeholder="—"></label></div>
+    <div class="status" id="s">local ACE-Step + the OS songwriter (the loaded LLM) — describe the song, or paste lyrics, or leave the box empty for an instrumental</div>
     <div class="out" id="o"></div>
     <script>
-      const go=document.getElementById("go"),p=document.getElementById("p"),l=document.getElementById("l"),g=document.getElementById("g"),s=document.getElementById("s"),o=document.getElementById("o");
-      go.onclick=async()=>{ if(!p.value.trim())return; go.disabled=true;
-        s.textContent="composing…"; const t0=Date.now();
-        try{ const url=await vibe.music(p.value, l.value, 60, g.value.trim()||undefined);
+      const el=(i)=>document.getElementById(i),p=el("p"),g=el("g"),l=el("l"),go=el("go"),w=el("w"),s=el("s"),o=el("o"),d=el("d"),b=el("b"),k=el("k"),t=el("t"),n=el("n");
+      const isLyrics=(x)=>/^\\s*\\[[^\\]\\n]+\\]\\s*$/m.test(x);           // a tag line = finished lyrics, sung as written
+      const num=(x)=>{const v=parseInt(x.value,10);return Number.isFinite(v)&&v>0?v:undefined};
+      const str=(x)=>x.value.trim()||undefined;
+      let busy=false; const lock=(on)=>{busy=on;go.disabled=on;w.disabled=on};
+      async function write(){ const brief=l.value.trim(); if(!brief&&!p.value.trim()){s.textContent="describe the song first — or name a music style"; return null}
+        s.textContent="✍ the songwriter is writing (the lyrics, the length, tempo and key)…"; const t0=Date.now();
+        const song=await vibe.lyrics(brief,{style:str(p),language:str(g),duration:num(d),bpm:num(b),keyscale:str(k),timesignature:str(t)});
+        l.value=song.lyrics; if(!p.value.trim())p.value=song.caption; if(!g.value.trim())g.value=song.language||"";
+        d.value=song.duration; b.value=song.bpm||""; k.value=song.keyscale||""; t.value=song.timesignature||"4"; n.value=song.title||"";
+        s.textContent="lyrics in "+((Date.now()-t0)/1000).toFixed(0)+" s · "+song.duration+" s · "+(song.bpm||"?")+" bpm · "+(song.keyscale||"?")+" · "+(song.language||"en")+(song.fixes&&song.fixes.length?" · "+song.fixes.length+" line(s) repaired":"")+" — edit anything, then Compose";
+        return song; }
+      w.onclick=async()=>{ if(busy)return; lock(true); try{ await write(); }catch(e){ s.textContent="error: "+e.message } lock(false); };
+      go.onclick=async()=>{ if(busy)return; lock(true); const t0=Date.now();
+        try{ let lyrics=l.value.trim();
+          if(lyrics&&!isLyrics(lyrics)){ const song=await write(); if(!song){lock(false);return} lyrics=song.lyrics; }
+          if(!p.value.trim()){ s.textContent="name a music style — or describe the song in the box and the songwriter picks one"; lock(false); return }
+          const dur=num(d)||(lyrics?150:60);
+          s.textContent="🎵 composing "+dur+" s"+(n.value?" · "+n.value:"")+"… (the music model loads, then plans and renders)";
+          const url=await vibe.music(p.value,lyrics,dur,str(g),{bpm:num(b),keyscale:str(k),timesignature:str(t)});
           o.innerHTML='<audio controls autoplay loop src="'+url+'"></audio>';
-          s.textContent="done in "+((Date.now()-t0)/1000).toFixed(0)+" s";
-        }catch(e){ s.textContent="error: "+e.message } go.disabled=false; };
+          s.textContent="done in "+((Date.now()-t0)/1000).toFixed(0)+" s · "+dur+" s"+(n.value?" · "+n.value:"")+(lyrics?"":" · instrumental");
+        }catch(e){ s.textContent="error: "+e.message } lock(false); };
     <\/script></body></html>` },
   arcade: { title: "Arcade — game forge", html: `<!DOCTYPE html><html><head><style>
     body{margin:0;background:#0a0a14;color:#e8e8f2;font:14px system-ui;display:flex;flex-direction:column;height:100vh}
@@ -1919,6 +1967,10 @@ const STUDIO = {
 
 function openStudio(name) {
   if (name === "browser") return openBrowser(null, { newWindow: true });   // [R83] shell/browser.js
+  if (name === "prompts") {                                                 // [R92] shell/prompts.js: the system prompts
+    if (typeof kairosPrompts === "undefined") return toast("the Prompts panel is not loaded", true);
+    return kairosPrompts.open();
+  }
   const st = STUDIO[name];
   if (!st) return toast("no such built-in: " + name, true);
   // studio apps are part of the OS: preinstalled, never modified by the AI
@@ -2106,8 +2158,10 @@ addEventListener("keydown", (e) => {
      DOM windows with the kernel's X windows (/api/windows/stream: wm.py's snapshot already
      says minimized/active), {id, key, kind: app|builtin|page|viewer|game|x, app, minimized,
      active}. Moving to real windows later (candidate 2) only swaps that feed.
-   Per icon: running and every window minimized -> 1.33 (.minimized); running and shown ->
-   a glow (.shown; .active = the focused one). Click: not running -> open; running, active ->
+   Per icon: running and every window minimized -> 1.33 (.minimized); running and shown (a
+   window on screen, maximized or not) -> 1.33 AND a glow (.shown; .active = the focused one, a
+   brighter glow) — the owner's correction of 2026-10-24 ("maximized apps … should be big like the
+   minimized and glowing"); closed -> 1x. Click: not running -> open; running, active ->
    minimize; running -> restore + raise. Right-click: close, new window (built-ins), remove
    from / keep in the dock (user apps; the list is the OS store key shell::dock.hidden).
    Chips stay only for windows without an icon (page windows, quick viewers, X windows that
@@ -2223,9 +2277,11 @@ function dockItems(recs) {
   };
   const extra = running.filter((r) => !userKeys.has(r.key)).map(extraOf);
   // how many user apps fit: the screen minus the pinned icons, the running extras, the separators and the
-  // margin every running icon may need when it grows to 1.33 (2 x 9 px); a running user app always keeps its place
+  // margin every running icon needs when it grows to 1.33 (2 x 9 px); a running user app always keeps its place.
+  // [R81, 2026-10-24] every running icon grows now (shown ones too), the pinned built-ins and Settings included
   const nFixed = items.filter((i) => !i.sep).length + extra.length, nSep = items.filter((i) => i.sep).length + 2;
-  const room = primaryMon().w - 32 - 26 - running.length * 18;          // [R90] the dock is on the primary
+  const nGrown = new Set(recs.filter((r) => r.key).map((r) => r.key)).size;   // a key = an icon on the dock
+  const room = primaryMon().w - 32 - 26 - nGrown * 18;                  // [R90] the dock is on the primary
   const fit = Math.max(0, Math.min(DOCK_APPS_MAX, Math.floor((room - nFixed * DOCK_SLOT - nSep * DOCK_SEP) / DOCK_SLOT)));
   const runKeys = new Set(running.map((r) => r.key));
   let left = fit - user.filter((a) => runKeys.has("app:" + a.app_id)).length;
@@ -2299,7 +2355,7 @@ function renderDock() {
     const min = mine.length > 0 && mine.every((r) => r.minimized);
     b.classList.toggle("running", mine.length > 0);
     b.classList.toggle("minimized", min);                       // 1.33: running, every window minimized
-    b.classList.toggle("shown", mine.length > 0 && !min);       // the glow: running and on screen
+    b.classList.toggle("shown", mine.length > 0 && !min);       // 1.33 + the glow: running and on screen
     b.classList.toggle("active", mine.some((r) => r.active));
     b.dataset.windows = String(mine.length);
     if (it.kind === "menu") {
@@ -2378,6 +2434,7 @@ addEventListener("keydown", (e) => { if (e.key === "Escape") hideDockMenu(); });
    the others are generated apps with the prompt from shell/index.html */
 function openSysApp(id) {
   if (id === "browser") return openBrowser();
+  if (id === "prompts") return openStudio("prompts");       // [R92] the system prompts panel
   const it = DOCK.sys.get(id);
   if (!it) return toast("no such system app: " + id, true);
   return openApp(it.prompt, it.app);
@@ -2786,7 +2843,7 @@ async function showAbout() {
       <div class="sm-about-logo">❖ kAIrOS</div>
       <div class="sm-about-sub">the operating system that dreams its own software — free, local, yours</div>
       <dl class="sm-about-facts"></dl>
-      <div class="ui-prompt-btns"><button class="ui-prompt-cancel sm-about-models" type="button">Models &amp; downloads</button><button class="ui-prompt-cancel sm-about-lic" type="button">Licences</button><button class="ui-prompt-ok">Close</button></div>
+      <div class="ui-prompt-btns"><button class="ui-prompt-cancel sm-about-models" type="button">Models &amp; downloads</button><button class="ui-prompt-cancel sm-about-lic" type="button">Licences</button><button class="ui-prompt-cancel sm-about-prompts" type="button">Prompts</button><button class="ui-prompt-ok">Close</button></div>
     </div>`;
   const dl = ov.querySelector(".sm-about-facts");
   for (const [k, v] of [["model tier", s.tier], ["brain", s.llm], ["pictures", s.image],
@@ -2804,6 +2861,7 @@ async function showAbout() {
   // [R87] About → Licences / Models & downloads: the OS's panel (shell/models.js)
   ov.querySelector(".sm-about-lic").onclick = () => { done(); if (typeof kairosModels !== "undefined") kairosModels.open("licences"); };
   ov.querySelector(".sm-about-models").onclick = () => { done(); if (typeof kairosModels !== "undefined") kairosModels.open("downloads"); };
+  ov.querySelector(".sm-about-prompts").onclick = () => { done(); openStudio("prompts"); };   // [R92] the system prompts
   ov.onclick = (e) => { if (e.target === ov) done(); };
   setTimeout(() => ov.querySelector(".ui-prompt-ok").focus(), 30);
 }
